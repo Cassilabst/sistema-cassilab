@@ -19,12 +19,18 @@ def hash_senha(senha):
 # --- Configuração da Página ---
 st.set_page_config(page_title="SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO", layout="wide")
 
-# --- Conexão e Inicialização do Banco de Dados (Sem colunas de ID) ---
+# --- Conexão e Inicialização do Banco de Dados ---
 def init_db():
+    # --- AUTO-LIMPEZA: Apaga o banco antigo da nuvem para remover os IDs ---
+    if os.path.exists('cassilab_gestao.db'):
+        try:
+            os.remove('cassilab_gestao.db')
+        except:
+            pass
+
     conn = sqlite3.connect('cassilab_gestao.db')
     cursor = conn.cursor()
     
-    # Tabelas criadas estritamente sem nenhum campo de ID
     cursor.execute('''CREATE TABLE IF NOT EXISTS empresas (
                         nome TEXT, contato TEXT, cnpj TEXT, 
                         qtd_funcionarios INTEGER, grau_risco INTEGER,
@@ -164,7 +170,6 @@ if 'logado' not in st.session_state:
     st.session_state['empresa_vinculada'] = ""
 
 if not st.session_state['logado']:
-    # --- LOGO DISCRETA NA TELA DE LOGIN ---
     if os.path.exists("logo.png"):
         try:
             logo_login = Image.open("logo.png")
@@ -209,7 +214,6 @@ if not st.session_state['logado']:
         st.markdown("### Cadastro de Cliente / Funcionário")
         st.info("Informe o nome da empresa, CPF (com ou sem pontos), usuário e nova senha.")
         
-        # --- LIGHTBOX LEGISLATIVA E TERMO LGPD ---
         with st.expander("⚖️ Clique aqui para ler as Leis de Proteção de Dados e Termos LGPD (Lei nº 13.709/2018)"):
             st.markdown("""
             **TERMO DE CONSENTIMENTO E CONFORMIDADE COM A LGPD (Lei Geral de Proteção de Dados - Lei nº 13.709/2018):**
@@ -273,7 +277,6 @@ if not st.session_state['logado']:
                     rec_limpo = limpar_cpf(rec_usuario)
                     conn = sqlite3.connect('cassilab_gestao.db')
                     cursor = conn.cursor()
-                    # Removido verificação por id, buscando por usuario ou cpf
                     cursor.execute("SELECT usuario FROM usuarios WHERE usuario = ? OR cpf = ? OR cpf = ?", (rec_usuario, rec_usuario, rec_limpo))
                     user_exist = cursor.fetchone()
                     if user_exist:
@@ -338,7 +341,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Área discreta de backup para o Admin
     if tipo_usuario == "Admin":
         with st.expander("⚙️ Administração"):
             if os.path.exists('cassilab_gestao.db'):
