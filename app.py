@@ -6,6 +6,12 @@ import os
 import hashlib
 from PIL import Image
 
+# --- Função para limpar CPF (remove pontos e traços) ---
+def limpar_cpf(cpf):
+    if not cpf:
+        return ""
+    return "".join(filter(str.isdigit, str(cpf)))
+
 # --- Função para criptografar senhas ---
 def hash_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
@@ -76,7 +82,7 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM usuarios WHERE tipo = 'Admin'")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO usuarios (usuario, senha, tipo, empresa_vinculada, cpf) VALUES (?, ?, ?, ?, ?)",
-                       ("admin", hash_senha("Disc@5232"), "Admin", "Todas", "000.000.000-00"))
+                       ("admin", hash_senha("Disc@5232"), "Admin", "Todas", "00000000000"))
     else:
         cursor.execute("UPDATE usuarios SET senha = ? WHERE tipo = 'Admin' AND usuario = 'admin'", (hash_senha("Disc@5232"),))
 
@@ -107,8 +113,10 @@ def importar_planilhas_iniciais():
                         if cursor.fetchone()[0] == 0:
                             cursor.execute("INSERT INTO cargos (cargo) VALUES (?)", (cargo_lido,))
                             
+                        # Limpa o CPF ao importar também
+                        cpf_limpo = limpar_cpf(str(row.iloc[6]))
                         cursor.execute("INSERT INTO funcionarios (matricula, nome, cargo, setor, cpf, data_admissao, status, empresa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                      (str(row.iloc[2]), str(row.iloc[3]), cargo_lido, str(row.iloc[5]), str(row.iloc[6]), str(row.iloc[7]), str(row.iloc[8]), "Xpto Ltda"))
+                                      (str(row.iloc[2]), str(row.iloc[3]), cargo_lido, str(row.iloc[5]), cpf_limpo, str(row.iloc[7]), str(row.iloc[8]), "Xpto Ltda"))
 
             if os.path.exists("Controle de Treinamentos.xlsx"):
                 df = pd.read_excel("Controle de Treinamentos.xlsx")
@@ -175,14 +183,19 @@ if not st.session_state['logado']:
     with aba_login:
         st.markdown("### Acesso Restrito")
         with st.form("form_login"):
-            usuario_input = st.text_input("Usuário ou CPF")
+            usuario_input = st.text_input("Usuário ou CPF (com ou sem pontos/traço)")
             senha_input = st.text_input("Senha", type="password")
             btn_entrar = st.form_submit_button("Entrar")
             
             if btn_entrar:
                 conn = sqlite3.connect('cassilab_gestao.db')
                 cursor = conn.cursor()
-                cursor.execute("SELECT senha, tipo, empresa_vinculada FROM usuarios WHERE usuario = ?", (usuario_input,))
+                
+                # Trata caso o login seja feito digitando o CPF limpo ou com máscara
+                usuario_limpo = limpar_cpf(usuario_input)
+                
+                cursor.execute("SELECT senha, tipo, empresa_vinculada FROM usuarios WHERE usuario = ? OR cpf = ? OR cpf = ?", 
+                               (usuario_input, usuario_input, usuario_limpo))
                 res = cursor.fetchone()
                 conn.close()
                 
@@ -198,7 +211,7 @@ if not st.session_state['logado']:
 
     with aba_cadastro:
         st.markdown("### Cadastro de Cliente / Funcionário")
-        st.info("Informe o nome da empresa, CPF, usuário e nova senha para criar seu acesso.")
+        st.info("Informe o nome da empresa, CPF (com ou sem pontos), usuário e nova senha.")
         
         conn_emp = sqlite3.connect('cassilab_gestao.db')
         empresas_disponiveis = pd.read_sql("SELECT nome FROM empresas", conn_emp)['nome'].tolist()
@@ -206,22 +219,27 @@ if not st.session_state['logado']:
 
         with st.form("form_novo_usuario"):
             cad_empresa = st.selectbox("Empresa", empresas_disponiveis if empresas_disponiveis else ["Nenhuma empresa cadastrada"])
-            cad_cpf = st.text_input("Digite seu CPF (Ex: 000.000.000-00)")
+            cad_cpf = st.text_input("Digite seu CPF (Ex: 000.000.000-00 ou só números)")
             cad_usuario = st.text_input("Escolha um Nome de Usuário para Login")
             cad_senha = st.text_input("Escolha uma Senha", type="password")
             btn_cadastrar = st.form_submit_button("Cadastrar Conta")
             
             if btn_cadastrar:
                 if cad_cpf and cad_usuario and cad_senha and cad_empresa:
+                    cpf_cad_limpo = limpar_cpf(cad_cpf)
+                    
                     conn = sqlite3.connect('cassilab_gestao.db')
                     cursor = conn.cursor()
-                    cursor.execute("SELECT empresa, nome FROM funcionarios WHERE cpf = ? AND empresa = ?", (cad_cpf, cad_empresa))
+                    
+                    # Busca o funcionário aceitando tanto formatado quanto limpo na base
+                    cursor.execute("SELECT empresa, nome FROM funcionarios WHERE (cpf = ? OR cpf = ?) AND empresa = ?", 
+                                   (cad_cpf, cpf_cad_limpo, cad_empresa))
                     func_res = cursor.fetchone()
                     
                     if func_res:
                         try:
                             cursor.execute("INSERT INTO usuarios (usuario, senha, tipo, empresa_vinculada, cpf) VALUES (?, ?, ?, ?, ?)",
-                                          (cad_usuario, hash_senha(cad_senha), "Cliente", cad_empresa, cad_cpf))
+                                          (cad_usuario, hash_senha(cad_senha), "Cliente", cad_empresa, cpf_cad_limpo))
                             conn.commit()
                             st.success(f"Cadastro realizado com sucesso para a empresa {cad_empresa}! Vá na aba 'Entrar no Sistema'.")
                         except:
@@ -241,12 +259,14 @@ if not st.session_state['logado']:
             
             if btn_rec:
                 if rec_usuario and nova_senha:
+                    rec_limpo = limpar_cpf(rec_usuario)
                     conn = sqlite3.connect('cassilab_gestao.db')
                     cursor = conn.cursor()
-                    cursor.execute("SELECT id FROM usuarios WHERE usuario = ? OR cpf = ?", (rec_usuario, rec_usuario))
+                    cursor.execute("SELECT id FROM usuarios WHERE usuario = ? OR cpf = ? OR cpf = ?", (rec_usuario, rec_usuario, rec_limpo))
                     user_exist = cursor.fetchone()
                     if user_exist:
-                        cursor.execute("UPDATE usuarios SET senha = ? WHERE usuario = ? OR cpf = ?", (hash_senha(nova_senha), rec_usuario, rec_usuario))
+                        cursor.execute("UPDATE usuarios SET senha = ? WHERE usuario = ? OR cpf = ? OR cpf = ?", 
+                                       (hash_senha(nova_senha), rec_usuario, rec_usuario, rec_limpo))
                         conn.commit()
                         st.success("Senha alterada com sucesso! Vá na aba 'Entrar no Sistema'.")
                     else:
@@ -459,10 +479,11 @@ elif menu in ["Funcionários", "Funcionários da Empresa"]:
                 submit_func = st.form_submit_button("Salvar Funcionário")
                 if submit_func:
                     if nome_func:
+                        cpf_limpo = limpar_cpf(cpf)
                         conn = sqlite3.connect('cassilab_gestao.db')
                         cursor = conn.cursor()
                         cursor.execute("INSERT INTO funcionarios (matricula, nome, cargo, setor, cpf, data_admissao, status, empresa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                      (matricula, nome_func, cargo, setor, cpf, data_adm, status_func, empresa_escolhida))
+                                      (matricula, nome_func, cargo, setor, cpf_limpo, data_adm, status_func, empresa_escolhida))
                         conn.commit()
                         conn.close()
                         st.success("Funcionário cadastrado com sucesso!")
