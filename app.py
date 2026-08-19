@@ -1,304 +1,803 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, date
-from fpdf import FPDF
+import datetime
 import os
+import hashlib
+from PIL import Image
 
-st.set_page_config(page_title="SST - Cassilab", layout="wide")
-DB_NAME = "cassilab.db"
+# --- Função para criptografar senhas ---
+def hash_senha(senha):
+    return hashlib.sha256(senha.encode()).hexdigest()
 
-# --- Inicialização do Banco de Dados e Tabelas ---
+# --- Configuração da Página ---
+st.set_page_config(page_title="SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO", layout="wide")
+
+# --- Conexão e Inicialização do Banco de Dados ---
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect('cassilab_gestao.db')
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS empresas (id INTEGER PRIMARY KEY AUTOINCREMENT, Empresa TEXT, Contato_Tel TEXT, Contato_Nome TEXT, CNPJ TEXT, Qtd_Func INTEGER, Endereco TEXT, Bairro TEXT, CEP TEXT, Cidade_UF TEXT, Email TEXT, Data_Cadastro TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios (id INTEGER PRIMARY KEY AUTOINCREMENT, Empresa TEXT, Matricula TEXT, Nome TEXT, Cargo TEXT, Setor TEXT, CPF TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, Empresa TEXT, Treinamento TEXT, Carga_Horaria TEXT, Data TEXT, Status TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS documentos (id INTEGER PRIMARY KEY AUTOINCREMENT, EMPRESA TEXT, Data TEXT, Documento_Programa TEXT, Vencimento TEXT, Status TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS exames (id INTEGER PRIMARY KEY AUTOINCREMENT, Empresa TEXT, Funcionario TEXT, Exame TEXT, Data TEXT, Status TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, EMPRESA TEXT, Data TEXT, Serviço_executado TEXT, Valor_do_Serviço REAL, NFES TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS cargos (id INTEGER PRIMARY KEY AUTOINCREMENT, Empresa TEXT, Cargo TEXT)''')
     
-    # Tabela de Usuários do Sistema
-    cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, Empresa TEXT, Nome TEXT, CPF TEXT, Email TEXT, Senha TEXT)''')
-    
-    try:
-        cursor.execute("ALTER TABLE treinamentos ADD COLUMN Carga_Horaria TEXT")
-    except:
-        pass
+    cursor.execute('''CREATE TABLE IF NOT EXISTS empresas (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        nome TEXT, contato TEXT, cnpj TEXT, 
+                        qtd_funcionarios INTEGER, grau_risco INTEGER,
+                        endereco TEXT, bairro TEXT, cep TEXT, 
+                        cidade_uf TEXT, email TEXT)''')
+                        
+    cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        matricula TEXT, nome TEXT, cargo TEXT, 
+                        setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT)''')
 
-    conn.commit(); conn.close()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS cargos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        cargo TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tipos_treinamentos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        nome_treinamento TEXT,
+                        carga_horaria_padrao TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS treinamentos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        empresa TEXT, funcionario TEXT, treinamento TEXT, 
+                        carga_horaria TEXT, data_realizacao TEXT, validade TEXT, status TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS documentos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        empresa TEXT, data TEXT, servico TEXT, 
+                        vencimento TEXT, status TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS exames (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        matricula TEXT, funcionario TEXT, cargo TEXT, 
+                        setor TEXT, ultimo_exame TEXT, tipo_exame TEXT, 
+                        proximo_exame TEXT, status TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS servicos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        empresa TEXT, data TEXT, servico TEXT, 
+                        valor REAL, nfes TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS epis (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        data_lancamento TEXT, funcionario TEXT, cargo TEXT, 
+                        setor TEXT, epi TEXT, ca TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        usuario TEXT UNIQUE,
+                        senha TEXT,
+                        tipo TEXT,
+                        empresa_vinculada TEXT,
+                        cpf TEXT)''')
+
+    cursor.execute("SELECT COUNT(*) FROM usuarios WHERE tipo = 'Admin'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO usuarios (usuario, senha, tipo, empresa_vinculada, cpf) VALUES (?, ?, ?, ?, ?)",
+                       ("admin", hash_senha("Disc@5232"), "Admin", "Todas", "000.000.000-00"))
+    else:
+        cursor.execute("UPDATE usuarios SET senha = ? WHERE tipo = 'Admin' AND usuario = 'admin'", (hash_senha("Disc@5232"),))
+
+    conn.commit()
+    conn.close()
+
+def importar_planilhas_iniciais():
+    conn = sqlite3.connect('cassilab_gestao.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM empresas")
+    count = cursor.fetchone()[0]
+    
+    if count == 0:
+        try:
+            if os.path.exists("Empresas.xlsx"):
+                df = pd.read_excel("Empresas.xlsx")
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[1]):
+                        cursor.execute("INSERT INTO empresas (nome, contato, cnpj, qtd_funcionarios, grau_risco, endereco, bairro, cep, cidade_uf, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                      (str(row.iloc[1]), str(row.iloc[2]), str(row.iloc[4]), row.iloc[5], row.iloc[6], str(row.iloc[7]), str(row.iloc[8]), str(row.iloc[9]), str(row.iloc[10]), str(row.iloc[11])))
+            
+            if os.path.exists("cadastro de funcionarios por empresa.xlsx"):
+                df = pd.read_excel("cadastro de funcionarios por empresa.xlsx", skiprows=2)
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[3]):
+                        cargo_lido = str(row.iloc[4])
+                        cursor.execute("SELECT COUNT(*) FROM cargos WHERE cargo = ?", (cargo_lido,))
+                        if cursor.fetchone()[0] == 0:
+                            cursor.execute("INSERT INTO cargos (cargo) VALUES (?)", (cargo_lido,))
+                            
+                        cursor.execute("INSERT INTO funcionarios (matricula, nome, cargo, setor, cpf, data_admissao, status, empresa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                      (str(row.iloc[2]), str(row.iloc[3]), cargo_lido, str(row.iloc[5]), str(row.iloc[6]), str(row.iloc[7]), str(row.iloc[8]), "Xpto Ltda"))
+
+            if os.path.exists("Controle de Treinamentos.xlsx"):
+                df = pd.read_excel("Controle de Treinamentos.xlsx")
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[1]):
+                        trein_lido = str(row.iloc[2])
+                        carga_lida = str(row.iloc[3])
+                        cursor.execute("SELECT COUNT(*) FROM tipos_treinamentos WHERE nome_treinamento = ? AND carga_horaria_padrao = ?", (trein_lido, carga_lida))
+                        if cursor.fetchone()[0] == 0:
+                            cursor.execute("INSERT INTO tipos_treinamentos (nome_treinamento, carga_horaria_padrao) VALUES (?, ?)", (trein_lido, carga_lida))
+
+                        cursor.execute("INSERT INTO treinamentos (empresa, funcionario, treinamento, carga_horaria, data_realizacao, validade, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                      (str(row.iloc[0]), str(row.iloc[1]), trein_lido, carga_lida, str(row.iloc[5]), str(row.iloc[6]), str(row.iloc[7])))
+
+            if os.path.exists("Controle de Documentos por empresa.xlsx"):
+                df = pd.read_excel("Controle de Documentos por empresa.xlsx")
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[0]):
+                        cursor.execute("INSERT INTO documentos (empresa, data, servico, vencimento, status) VALUES (?, ?, ?, ?, ?)",
+                                      (str(row.iloc[0]), str(row.iloc[1]), str(row.iloc[2]), str(row.iloc[3]), str(row.iloc[4])))
+
+            if os.path.exists("Exames ocupacionais.xlsx"):
+                df = pd.read_excel("Exames ocupacionais.xlsx", skiprows=1)
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[2]):
+                        cursor.execute("INSERT INTO exames (matricula, funcionario, cargo, setor, ultimo_exame, tipo_exame, proximo_exame, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                      (str(row.iloc[1]), str(row.iloc[2]), str(row.iloc[3]), str(row.iloc[4]), str(row.iloc[5]), str(row.iloc[6]), str(row.iloc[7]), str(row.iloc[8])))
+
+            if os.path.exists("Serviços executados por empresa.xlsx"):
+                df = pd.read_excel("Serviços executados por empresa.xlsx")
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[0]):
+                        cursor.execute("INSERT INTO servicos (empresa, data, servico, valor, nfes) VALUES (?, ?, ?, ?, ?)",
+                                      (str(row.iloc[0]), str(row.iloc[1]), str(row.iloc[2]), float(row.iloc[3]) if pd.notna(row.iloc[3]) else 0.0, str(row.iloc[4])))
+
+            if os.path.exists("Controle de EPI - Equipamentos de Proteção Individual.xlsx"):
+                df = pd.read_excel("Controle de EPI - Equipamentos de Proteção Individual.xlsx", skiprows=1)
+                for index, row in df.iterrows():
+                    if pd.notna(row.iloc[2]):
+                        cursor.execute("INSERT INTO epis (data_lancamento, funcionario, cargo, setor, epi, ca) VALUES (?, ?, ?, ?, ?, ?)",
+                                      (str(row.iloc[1]), str(row.iloc[2]), str(row.iloc[3]), str(row.iloc[4]), str(row.iloc[5]), str(row.iloc[6])))
+
+            conn.commit()
+        except Exception as e:
+            print("Erro:", e)
+    conn.close()
 
 init_db()
+importar_planilhas_iniciais()
 
-# --- Sistema de Autenticação e Cadastro ---
-def tela_autenticacao():
-    if "autenticado" not in st.session_state:
-        st.session_state.autenticado = False
+if 'logado' not in st.session_state:
+    st.session_state['logado'] = False
+    st.session_state['usuario'] = ""
+    st.session_state['tipo'] = ""
+    st.session_state['empresa_vinculada'] = ""
 
-    if not st.session_state.autenticado:
-        st.sidebar.title("🔐 Acesso ao Sistema")
-        modo = st.sidebar.radio("Escolha:", ["Entrar (Login)", "Cadastrar Novo Usuário"])
-
-        if modo == "Entrar (Login)":
-            st.title("🔐 Entrar no Sistema - Cassilab SST")
-            with st.form("form_login"):
-                email_login = st.text_input("E-mail, CPF ou Usuário")
-                senha_login = st.text_input("Senha", type="password")
-                botao_login = st.form_submit_button("Entrar")
-                
-                if botao_login:
-                    # Validação do Admin Principal
-                    if email_login == "admin" and senha_login == "Disc@5232":
-                        st.session_state.autenticado = True
-                        st.session_state.usuario_logado = "Administrador"
-                        st.success("Acesso administrativo realizado com sucesso!")
-                        st.rerun()
-                    else:
-                        # Validação de usuários cadastrados no banco
-                        conn = sqlite3.connect(DB_NAME)
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT * FROM usuarios WHERE (Email = ? OR CPF = ?) AND Senha = ?", (email_login, email_login, senha_login))
-                        usuario = cursor.fetchone()
-                        conn.close()
-                        
-                        if usuario:
-                            st.session_state.autenticado = True
-                            st.session_state.usuario_logado = email_login
-                            st.success("Login realizado com sucesso!")
-                            st.rerun()
-                        else:
-                            st.error("Credenciais inválidas. Verifique seus dados ou faça o cadastro.")
-
-        elif modo == "Cadastrar Novo Usuário":
-            st.title("📝 Cadastro de Novo Usuário")
-            st.info("Para se cadastrar, a empresa e seus dados já devem estar cadastrados no sistema.")
-            
-            with st.form("form_cadastro_usuario"):
-                empresa_cad = st.text_input("Nome exato da Empresa cadastrada")
-                nome_cad = st.text_input("Seu Nome Completo")
-                cpf_cad = st.text_input("Seu CPF")
-                email_cad = st.text_input("Seu E-mail")
-                senha_cad = st.text_input("Crie uma Senha", type="password")
-                confirma_senha = st.text_input("Confirme a Senha", type="password")
-                
-                botao_cadastrar = st.form_submit_button("Finalizar Cadastro")
-                
-                if botao_cadastrar:
-                    if not empresa_cad or not nome_cad or not cpf_cad or not email_cad or not senha_cad:
-                        st.error("Todos os campos são obrigatórios!")
-                    elif senha_cad != confirma_senha:
-                        st.error("As senhas não coincidem!")
-                    else:
-                        conn = sqlite3.connect(DB_NAME)
-                        df_emp = pd.read_sql("SELECT * FROM empresas WHERE Empresa = ?", conn, params=(empresa_cad,))
-                        
-                        if df_emp.empty:
-                            st.error(f"A empresa '{empresa_cad}' não está cadastrada no sistema.")
-                            conn.close()
-                        else:
-                            cursor = conn.cursor()
-                            cursor.execute("INSERT INTO usuarios (Empresa, Nome, CPF, Email, Senha) VALUES (?, ?, ?, ?, ?)", 
-                                           (empresa_cad, nome_cad, cpf_cad, email_cad, senha_cad))
-                            conn.commit()
-                            conn.close()
-                            st.success("Cadastro realizado com sucesso! Alterne para a aba 'Entrar (Login)' para acessar.")
-        return False
-    return True
-
-# --- Funções Auxiliares ---
-def formatar_tabela(df, tipo="padrao"):
-    if not df.empty:
-        df_ex = df.copy()
-        if 'CNPJ' in df_ex.columns: 
-            df_ex = df_ex.rename(columns={'CNPJ': 'CNPJ/CPF'})
-        
-        # Reposicionar Data_Cadastro antes de Empresa na aba de Empresas
-        if tipo == "empresas" and all(col in df_ex.columns for col in ['Data_Cadastro', 'Empresa']):
-            cols_atuais = list(df_ex.columns)
-            cols_atuais.remove('Data_Cadastro')
-            idx_empresa = cols_atuais.index('Empresa')
-            cols_atuais.insert(idx_empresa, 'Data_Cadastro')
-            df_ex = df_ex[cols_atuais]
-
-        # Reordenar colunas para a aba de Treinamentos (Carga_Horaria rigorosamente à esquerda de Data)
-        if tipo == "treinamentos" and all(col in df_ex.columns for col in ['Carga_Horaria', 'Data']):
-            cols_atuais = list(df_ex.columns)
-            cols_atuais.remove('Carga_Horaria')
-            idx_data = cols_atuais.index('Data')
-            cols_atuais.insert(idx_data, 'Carga_Horaria')
-            df_ex = df_ex[cols_atuais]
-
-        df_ex.index = range(1, len(df_ex) + 1)
-        return df_ex
-    return df
-
-def criar_grafico_rosca(titulo, executado, meta):
-    falta = max(0, meta - executado)
-    porcentagem = int((executado / meta * 100)) if meta > 0 else 0
-    fig = go.Figure(data=[go.Pie(labels=['Executado', 'Faltante'], values=[executado, falta], hole=.7, marker_colors=['#6366f1', '#e2e8f0'], textinfo='none')])
-    fig.update_layout(title_text=titulo, title_x=0.5, showlegend=False, annotations=[dict(text=f"{porcentagem}%", x=0.5, y=0.5, font_size=14, showarrow=False)], height=200, margin=dict(t=30, b=10, l=10, r=10))
-    return fig
-
-def get_data():
-    conn = sqlite3.connect(DB_NAME)
-    df_e = pd.read_sql("SELECT * FROM empresas", conn)
-    df_f = pd.read_sql("SELECT * FROM funcionarios", conn)
-    df_t = pd.read_sql("SELECT * FROM treinamentos", conn)
-    df_d = pd.read_sql("SELECT * FROM documentos", conn)
-    df_ex = pd.read_sql("SELECT * FROM exames", conn)
-    df_s = pd.read_sql("SELECT * FROM servicos", conn)
-    conn.close()
-    return df_e, df_f, df_t, df_d, df_ex, df_s
-
-# --- Execução Principal Protegida por Login ---
-if tela_autenticacao():
-    df_e, df_f, df_t, df_d, df_ex, df_s = get_data()
-
-    # --- Interface ---
-    if os.path.exists("logo.png"): st.sidebar.image("logo.png", use_container_width=True)
-    st.sidebar.title("Navegação")
-    menu = st.sidebar.radio("Escolha:", ["Painel", "🏢 Empresas (Central de Gestão)", "➕ Cadastrar Nova Empresa"])
+if not st.session_state['logado']:
+    st.title("SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO")
+    st.subheader("Cassilab Consultoria e Treinamentos — Área de Acesso")
+    st.markdown("---")
     
-    if st.sidebar.button("🚪 Sair / Logout"):
-        st.session_state.autenticado = False
+    aba_login, aba_cadastro, aba_recuperar = st.tabs(["🔑 Entrar no Sistema", "📝 Primeiro Acesso (Funcionário)", "🔄 Esqueci minha senha"])
+    
+    with aba_login:
+        st.markdown("### Acesso Restrito")
+        with st.form("form_login"):
+            usuario_input = st.text_input("Usuário ou CPF")
+            senha_input = st.text_input("Senha", type="password")
+            btn_entrar = st.form_submit_button("Entrar")
+            
+            if btn_entrar:
+                conn = sqlite3.connect('cassilab_gestao.db')
+                cursor = conn.cursor()
+                cursor.execute("SELECT senha, tipo, empresa_vinculada FROM usuarios WHERE usuario = ?", (usuario_input,))
+                res = cursor.fetchone()
+                conn.close()
+                
+                if res and res[0] == hash_senha(senha_input):
+                    st.session_state['logado'] = True
+                    st.session_state['usuario'] = usuario_input
+                    st.session_state['tipo'] = res[1]
+                    st.session_state['empresa_vinculada'] = res[2]
+                    st.success("Login realizado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos.")
+
+    with aba_cadastro:
+        st.markdown("### Cadastro de Cliente / Funcionário")
+        st.info("Informe o nome da empresa, CPF, usuário e nova senha para criar seu acesso.")
+        
+        conn_emp = sqlite3.connect('cassilab_gestao.db')
+        empresas_disponiveis = pd.read_sql("SELECT nome FROM empresas", conn_emp)['nome'].tolist()
+        conn_emp.close()
+
+        with st.form("form_novo_usuario"):
+            cad_empresa = st.selectbox("Empresa", empresas_disponiveis if empresas_disponiveis else ["Nenhuma empresa cadastrada"])
+            cad_cpf = st.text_input("Digite seu CPF (Ex: 000.000.000-00)")
+            cad_usuario = st.text_input("Escolha um Nome de Usuário para Login")
+            cad_senha = st.text_input("Escolha uma Senha", type="password")
+            btn_cadastrar = st.form_submit_button("Cadastrar Conta")
+            
+            if btn_cadastrar:
+                if cad_cpf and cad_usuario and cad_senha and cad_empresa:
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT empresa, nome FROM funcionarios WHERE cpf = ? AND empresa = ?", (cad_cpf, cad_empresa))
+                    func_res = cursor.fetchone()
+                    
+                    if func_res:
+                        try:
+                            cursor.execute("INSERT INTO usuarios (usuario, senha, tipo, empresa_vinculada, cpf) VALUES (?, ?, ?, ?, ?)",
+                                          (cad_usuario, hash_senha(cad_senha), "Cliente", cad_empresa, cad_cpf))
+                            conn.commit()
+                            st.success(f"Cadastro realizado com sucesso para a empresa {cad_empresa}! Vá na aba 'Entrar no Sistema'.")
+                        except:
+                            st.error("Este nome de usuário já está em uso. Escolha outro.")
+                    else:
+                        st.error("CPF não encontrado para esta empresa na base de dados de funcionários.")
+                    conn.close()
+                else:
+                    st.warning("Preencha todos os campos.")
+
+    with aba_recuperar:
+        st.markdown("### Recuperação de Senha")
+        with st.form("form_recuperar"):
+            rec_usuario = st.text_input("Seu Usuário ou CPF cadastrado")
+            nova_senha = st.text_input("Nova Senha Desejada", type="password")
+            btn_rec = st.form_submit_button("Atualizar Senha")
+            
+            if btn_rec:
+                if rec_usuario and nova_senha:
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id FROM usuarios WHERE usuario = ? OR cpf = ?", (rec_usuario, rec_usuario))
+                    user_exist = cursor.fetchone()
+                    if user_exist:
+                        cursor.execute("UPDATE usuarios SET senha = ? WHERE usuario = ? OR cpf = ?", (hash_senha(nova_senha), rec_usuario, rec_usuario))
+                        conn.commit()
+                        st.success("Senha alterada com sucesso! Vá na aba 'Entrar no Sistema'.")
+                    else:
+                        st.error("Usuário ou CPF não encontrado.")
+                    conn.close()
+                else:
+                    st.warning("Preencha todos os campos.")
+
+    st.stop()
+
+tipo_usuario = st.session_state['tipo']
+empresa_usuario = st.session_state['empresa_vinculada']
+
+with st.sidebar:
+    if os.path.exists("logo.png"):
+        try:
+            logo = Image.open("logo.png")
+            st.image(logo, width=200)
+        except:
+            st.markdown("## CASSILAB")
+    else:
+        st.markdown("## CASSILAB")
+        
+    st.markdown("### Gestão em SST")
+    st.markdown(f"👤 **Logado como:** {st.session_state['usuario']}")
+    if tipo_usuario == "Cliente":
+        st.markdown(f"🏢 **Empresa:** {empresa_usuario}")
+    st.markdown("---")
+    
+    if tipo_usuario == "Admin":
+        menu = st.selectbox(
+            "Menu Principal", 
+            [
+                "Dashboard Inicial", 
+                "Gestão de Empresas", 
+                "Funcionários", 
+                "Controle de Treinamentos", 
+                "Documentos SST", 
+                "Exames Ocupacionais", 
+                "Serviços Executados", 
+                "Controle de EPI", 
+                "Relatórios"
+            ]
+        )
+    else:
+        menu = st.selectbox(
+            "Menu Principal", 
+            [
+                "Dashboard Inicial", 
+                "Funcionários da Empresa", 
+                "Treinamentos da Empresa", 
+                "Documentos SST", 
+                "Exames Ocupacionais", 
+                "Controle de EPI"
+            ]
+        )
+    
+    st.markdown("---")
+    if st.button("🚪 Sair do Sistema"):
+        st.session_state['logado'] = False
         st.rerun()
 
-    st.title("Sistema para Gestão em Saúde e Segurança do Trabalho")
+st.title("SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO")
+st.subheader("Cassilab Consultoria e Treinamentos")
+st.markdown("---")
 
-    if menu == "Painel":
-        st.subheader("📊 Painel Geral de Controle & Indicadores")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Empresas", len(df_e)); c2.metric("Funcionários", len(df_f)); c3.metric("Documentos", len(df_d)); c4.metric("Exames", len(df_ex))
+if menu == "Dashboard Inicial":
+    st.header("Painel Geral de Vencimentos e Alertas")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    
+    if tipo_usuario == "Admin":
+        df_emp = pd.read_sql("SELECT * FROM empresas", conn)
+        df_trein = pd.read_sql("SELECT * FROM treinamentos", conn)
+        df_doc = pd.read_sql("SELECT * FROM documentos", conn)
+    else:
+        df_emp = pd.read_sql("SELECT * FROM empresas WHERE nome = ?", conn, params=(empresa_usuario,))
+        df_trein = pd.read_sql("SELECT * FROM treinamentos WHERE empresa = ?", conn, params=(empresa_usuario,))
+        df_doc = pd.read_sql("SELECT * FROM documentos WHERE empresa = ?", conn, params=(empresa_usuario,))
+    conn.close()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Empresas Vinculadas", len(df_emp))
+    with col2:
+        st.metric("Treinamentos Registrados", len(df_trein))
+    with col3:
+        st.metric("Documentos SST Registrados", len(df_doc))
         
-        st.markdown("---")
-        st.subheader("🚨 Alertas e Status Operacionais")
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.markdown("#### 📚 Treinamentos")
-            r = len(df_t[df_t['Status'] == 'Realizado']) if not df_t.empty else 0
-            p = len(df_t[df_t['Status'] != 'Realizado']) if not df_t.empty else 0
-            st.metric("Realizados", r); st.metric("Pendentes", p)
-            if not df_t.empty: st.plotly_chart(criar_grafico_rosca("Treinamentos", r, r+p), use_container_width=True)
-        with col_b:
-            st.markdown("#### 🩺 Exames")
-            a = len(df_ex[df_ex['Status'] == 'APTO']) if not df_ex.empty else 0
-            pend = len(df_ex[df_ex['Status'] != 'APTO']) if not df_ex.empty else 0
-            st.metric("Em Dia", a); st.metric("Pendentes", pend)
-            if not df_ex.empty: st.plotly_chart(criar_grafico_rosca("Exames", a, a+pend), use_container_width=True)
-        with col_c:
-            st.markdown("#### 📄 Documentos")
-            v = len(df_d[df_d['Status'] == 'Vigente']) if not df_d.empty else 0
-            venc = len(df_d[df_d['Status'] != 'Vigente']) if not df_d.empty else 0
-            st.metric("Vigentes", v); st.metric("Vencidos", venc)
-            if not df_d.empty: st.plotly_chart(criar_grafico_rosca("Documentos", v, v+venc), use_container_width=True)
+    st.markdown("### ⚠️ Alertas de Vencimentos Ativos")
+    st.info("Sistema operando com segurança e restrição de acesso por perfil.")
 
-    elif menu == "➕ Cadastrar Nova Empresa":
-        st.subheader("🏢 Cadastro de Nova Empresa")
-        with st.form("form_cad", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            n = c1.text_input("Nome da Empresa")
-            cnpj = c2.text_input("CNPJ/CPF")
-            contato = c1.text_input("Nome do Contato")
-            tel = c2.text_input("Telefone")
-            email = c1.text_input("E-mail")
-            qtd = c2.number_input("Qtd de Funcionários", min_value=0)
-            end = c1.text_input("Endereço")
-            bairro = c2.text_input("Bairro")
-            cep = c1.text_input("CEP")
-            cidade = c2.text_input("Cidade/UF")
-            if st.form_submit_button("Salvar Empresa"):
-                conn = sqlite3.connect(DB_NAME)
-                conn.execute("INSERT INTO empresas (Empresa, Contato_Tel, Contato_Nome, CNPJ, Qtd_Func, Endereco, Bairro, CEP, Cidade_UF, Email, Data_Cadastro) VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
-                             (n, tel, contato, cnpj, qtd, end, bairro, cep, cidade, email, datetime.now().strftime('%d/%m/%Y')))
-                conn.commit(); conn.close(); st.rerun()
+elif menu == "Gestão de Empresas" and tipo_usuario == "Admin":
+    st.header("Cadastro e Consulta de Empresas")
+    
+    with st.expander("➕ Cadastrar Nova Empresa"):
+        with st.form("form_empresa"):
+            nome = st.text_input("Nome da Empresa")
+            contato = st.text_input("Contato (Telefone)")
+            responsavel = st.text_input("Nome do Contato/Responsável")
+            cnpj = st.text_input("CNPJ")
+            qtd_func = st.number_input("Quantidade de Funcionários", min_value=0, step=1)
+            grau_risco = st.selectbox("Grau de Risco", [1, 2, 3, 4])
+            endereco = st.text_input("Endereço")
+            bairro = st.text_input("Bairro")
+            cep = st.text_input("CEP")
+            cidade_uf = st.text_input("Cidade/UF")
+            email = st.text_input("E-mail")
+            
+            submit_emp = st.form_submit_button("Salvar Empresa")
+            if submit_emp:
+                if nome:
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO empresas (nome, contato, cnpj, qtd_funcionarios, grau_risco, endereco, bairro, cep, cidade_uf, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (nome, f"{contato} - {responsavel}", cnpj, qtd_func, grau_risco, endereco, bairro, cep, cidade_uf, email))
+                    conn.commit()
+                    conn.close()
+                    st.success("Empresa cadastrada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("O nome da empresa é obrigatório.")
 
-    elif menu == "🏢 Empresas (Central de Gestão)":
-        if not df_e.empty:
-            emp = st.selectbox("Selecione a Empresa:", sorted(df_e['Empresa'].unique().tolist()))
-            tabs = st.tabs(["🏢 Empresas", "👥 Funcionários", "📚 Treinamentos", "📄 Documentos", "🩺 Exames", "🛠️ Serviços"])
-            
-            with tabs[0]: 
-                st.dataframe(formatar_tabela(df_e[df_e['Empresa'] == emp], tipo="empresas"), use_container_width=True)
-                with st.expander("✏️ Editar Empresa"):
-                    st.info("Ferramenta de edição de empresa selecionada.")
-            
-            with tabs[1]:
-                st.subheader("Relação de Funcionários")
-                st.dataframe(formatar_tabela(df_f[df_f['Empresa'] == emp]), use_container_width=True)
-                with st.expander("➕ Cadastrar Novo Funcionário"):
-                    with st.form("cad_f", clear_on_submit=True):
-                        nome = st.text_input("Nome"); mat = st.text_input("Matrícula")
-                        conn = sqlite3.connect(DB_NAME)
-                        cargos_op = pd.read_sql(f"SELECT Cargo FROM cargos WHERE Empresa = '{emp}'", conn)['Cargo'].tolist()
+    st.markdown("### Empresas Cadastradas")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    df_emp = pd.read_sql("SELECT * FROM empresas", conn)
+    conn.close()
+    
+    edited_df_emp = st.data_editor(df_emp, use_container_width=True, key="editor_empresas")
+    if st.button("Salvar Alterações em Empresas"):
+        conn = sqlite3.connect('cassilab_gestao.db')
+        edited_df_emp.to_sql('empresas', conn, if_exists='replace', index=False)
+        conn.close()
+        st.success("Alterações salvas com sucesso!")
+        st.rerun()
+
+elif menu in ["Funcionários", "Funcionários da Empresa"]:
+    st.header("Cadastro e Controle de Funcionários")
+    
+    conn = sqlite3.connect('cassilab_gestao.db')
+    empresas_list = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    cargos_list = pd.read_sql("SELECT cargo FROM cargos", conn)['cargo'].tolist()
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        with st.expander("➕ Cadastrar Novo Cargo/Função"):
+            with st.form("form_novo_cargo"):
+                novo_cargo = st.text_input("Nome da Nova Função / Cargo")
+                submit_cargo = st.form_submit_button("Salvar Cargo")
+                if submit_cargo:
+                    if novo_cargo:
+                        conn = sqlite3.connect('cassilab_gestao.db')
+                        cursor = conn.cursor()
+                        cursor.execute("INSERT INTO cargos (cargo) VALUES (?)", (novo_cargo,))
+                        conn.commit()
                         conn.close()
-                        cargo = st.selectbox("Cargo", cargos_op if cargos_op else ["Cadastre cargo abaixo"])
-                        if st.form_submit_button("Salvar"):
-                            conn = sqlite3.connect(DB_NAME)
-                            conn.execute("INSERT INTO funcionarios (Empresa, Nome, Cargo, Matricula) VALUES (?,?,?,?)", (emp, nome, cargo, mat))
-                            conn.commit(); conn.close(); st.rerun()
-                with st.expander("⚙️ Gerenciar Cargos"):
-                    novo_c = st.text_input("Novo Cargo")
-                    if st.button("Salvar Cargo"):
-                        conn = sqlite3.connect(DB_NAME)
-                        conn.execute("INSERT INTO cargos (Empresa, Cargo) VALUES (?,?)", (emp, novo_c))
-                        conn.commit(); conn.close(); st.rerun()
-                with st.expander("✏️ Editar Funcionário"):
-                    st.info("Ferramenta de edição de funcionário.")
+                        st.success(f"Cargo '{novo_cargo}' cadastrado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Digite o nome do cargo.")
 
-            with tabs[2]:
-                st.subheader("Treinamentos")
-                st.dataframe(formatar_tabela(df_t[df_t['Empresa'] == emp], tipo="treinamentos"), use_container_width=True)
-                with st.expander("➕ Registrar Treinamento"):
-                    with st.form("cad_t", clear_on_submit=True):
-                        t = st.text_input("Nome Treinamento")
-                        ch = st.text_input("Carga Horária (ex: 8h)")
-                        d = st.date_input("Data")
-                        if st.form_submit_button("Salvar"):
-                            conn = sqlite3.connect(DB_NAME)
-                            conn.execute("INSERT INTO treinamentos (Empresa, Treinamento, Carga_Horaria, Data, Status) VALUES (?,?,?,?,?)", (emp, t, ch, d.strftime('%d/%m/%Y'), 'Pendente'))
-                            conn.commit(); conn.close(); st.rerun()
-                with st.expander("✏️ Editar Treinamento"):
-                    st.info("Ferramenta de edição de treinamento.")
+        with st.expander("➕ Cadastrar Novo Funcionário"):
+            with st.form("form_func"):
+                empresa_escolhida = st.selectbox("Empresa", empresas_list if empresas_list else ["Nenhuma empresa cadastrada"])
+                matricula = st.text_input("Matrícula")
+                nome_func = st.text_input("Nome do Colaborador")
+                cargo = st.selectbox("Cargo / Função", cargos_list if cargos_list else ["Nenhum cargo cadastrado"])
+                setor = st.text_input("Setor")
+                cpf = st.text_input("CPF")
+                data_adm = st.text_input("Data de Admissão (AAAA-MM-DD)")
+                status_func = st.selectbox("Status", ["Ativo", "Afastado", "Férias", "Demitido"])
+                
+                submit_func = st.form_submit_button("Salvar Funcionário")
+                if submit_func:
+                    if nome_func:
+                        conn = sqlite3.connect('cassilab_gestao.db')
+                        cursor = conn.cursor()
+                        cursor.execute("INSERT INTO funcionarios (matricula, nome, cargo, setor, cpf, data_admissao, status, empresa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                      (matricula, nome_func, cargo, setor, cpf, data_adm, status_func, empresa_escolhida))
+                        conn.commit()
+                        conn.close()
+                        st.success("Funcionário cadastrado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("O nome do funcionário é obrigatório.")
 
-            with tabs[3]:
-                st.subheader("Documentos")
-                st.dataframe(formatar_tabela(df_d[df_d['EMPRESA'] == emp]), use_container_width=True)
-                with st.expander("➕ Registrar Documento"):
-                    with st.form("cad_d", clear_on_submit=True):
-                        doc = st.text_input("Nome Documento"); d = st.date_input("Data")
-                        if st.form_submit_button("Salvar"):
-                            conn = sqlite3.connect(DB_NAME)
-                            conn.execute("INSERT INTO documentos (EMPRESA, Data, Documento_Programa, Status) VALUES (?,?,?,?)", (emp, d.strftime('%d/%m/%Y'), doc, 'Vigente'))
-                            conn.commit(); conn.close(); st.rerun()
-                with st.expander("✏️ Editar Documento"):
-                    st.info("Ferramenta de edição de documento.")
+    st.markdown("### Relação de Funcionários Cadastrados")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    if tipo_usuario == "Admin":
+        if empresas_list:
+            empresa_filtro = st.selectbox("🔍 Selecione a Empresa para filtrar:", ["Todas as Empresas"] + empresas_list, key="filtro_empresa_func")
+            if empresa_filtro == "Todas as Empresas":
+                df_func = pd.read_sql("SELECT * FROM funcionarios", conn)
+            else:
+                df_func = pd.read_sql("SELECT * FROM funcionarios WHERE empresa = ?", conn, params=(empresa_filtro,))
+        else:
+            df_func = pd.read_sql("SELECT * FROM funcionarios", conn)
+    else:
+        df_func = pd.read_sql("SELECT * FROM funcionarios WHERE empresa = ?", conn, params=(empresa_usuario,))
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        edited_df_func = st.data_editor(df_func, use_container_width=True, key="editor_func")
+        if st.button("Salvar Alterações em Funcionários"):
+            conn = sqlite3.connect('cassilab_gestao.db')
+            edited_df_func.to_sql('funcionarios', conn, if_exists='replace', index=False)
+            conn.close()
+            st.success("Alterações salvas com sucesso!")
+            st.rerun()
+    else:
+        st.dataframe(df_func, use_container_width=True)
 
-            with tabs[4]:
-                st.subheader("Exames")
-                st.dataframe(formatar_tabela(df_ex[df_ex['Empresa'] == emp]), use_container_width=True)
-                with st.expander("➕ Registrar Exame"):
-                    with st.form("cad_ex", clear_on_submit=True):
-                        ex = st.text_input("Exame"); d = st.date_input("Data")
-                        if st.form_submit_button("Salvar"):
-                            conn = sqlite3.connect(DB_NAME)
-                            conn.execute("INSERT INTO exames (Empresa, Exame, Data, Status) VALUES (?,?,?,?)", (emp, ex, d.strftime('%d/%m/%Y'), 'APTO'))
-                            conn.commit(); conn.close(); st.rerun()
-                with st.expander("✏️ Editar Exame"):
-                    st.info("Ferramenta de edição de exame.")
+elif menu in ["Controle de Treinamentos", "Treinamentos da Empresa"]:
+    st.header("Controle e Catálogo de Treinamentos")
+    
+    conn = sqlite3.connect('cassilab_gestao.db')
+    empresas_list = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    df_cat_completo = pd.read_sql("SELECT * FROM tipos_treinamentos", conn)
+    conn.close()
+    
+    if not df_cat_completo.empty:
+        df_cat_completo['opcao_formatada'] = df_cat_completo['nome_treinamento'] + " — (" + df_cat_completo['carga_horaria_padrao'].astype(str) + ")"
+        tipos_trein_list = df_cat_completo['opcao_formatada'].tolist()
+    else:
+        tipos_trein_list = []
+    
+    if tipo_usuario == "Admin":
+        with st.expander("➕ Cadastrar / Gerenciar Catálogo de Treinamentos"):
+            with st.form("form_novo_tipo_trein"):
+                novo_trein_nome = st.text_input("Nome do Treinamento")
+                carga_padrao = st.text_input("Carga Horária Padrão")
+                submit_novo_trein = st.form_submit_button("Salvar Treinamento no Catálogo")
+                if submit_novo_trein:
+                    if novo_trein_nome:
+                        conn = sqlite3.connect('cassilab_gestao.db')
+                        cursor = conn.cursor()
+                        cursor.execute("INSERT INTO tipos_treinamentos (nome_treinamento, carga_horaria_padrao) VALUES (?, ?)", (novo_trein_nome, carga_padrao))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Treinamento '{novo_trein_nome}' adicionado ao catálogo!")
+                        st.rerun()
+                    else:
+                        st.error("O nome do treinamento é obrigatório.")
 
-            with tabs[5]:
-                st.subheader("Serviços")
-                st.dataframe(formatar_tabela(df_s[df_s['EMPRESA'] == emp]), use_container_width=True)
-                with st.expander("➕ Registrar Serviço"):
-                    with st.form("cad_s", clear_on_submit=True):
-                        serv = st.text_input("Serviço"); d = st.date_input("Data")
-                        if st.form_submit_button("Salvar"):
-                            conn = sqlite3.connect(DB_NAME)
-                            conn.execute("INSERT INTO servicos (EMPRESA, Data, Serviço_executado) VALUES (?,?,?)", (emp, d.strftime('%d/%m/%Y'), serv))
-                            conn.commit(); conn.close(); st.rerun()
-                with st.expander("✏️ Editar Serviço"):
-                    st.info("Ferramenta de edição de serviço.")
+        with st.expander("➕ Lançar Treinamento para Funcionário"):
+            empresa = st.selectbox("Empresa", empresas_list if empresas_list else [""], key="sel_empresa_trein")
+            conn = sqlite3.connect('cassilab_gestao.db')
+            if empresa:
+                funcionarios_list = pd.read_sql("SELECT nome FROM funcionarios WHERE empresa = ?", conn, params=(empresa,))['nome'].tolist()
+            else:
+                funcionarios_list = []
+            conn.close()
+
+            funcionario = st.selectbox("Nome do Funcionário", funcionarios_list if funcionarios_list else ["Nenhum funcionário"])
+            treinamento_selecionado = st.selectbox("Tipo de Treinamento", tipos_trein_list if tipos_trein_list else ["Nenhum treinamento"], key="trein_selectbox")
+            
+            carga_sugerida = ""
+            treinamento_nome_real = ""
+            if tipos_trein_list and treinamento_selecionado and " — (" in treinamento_selecionado:
+                partes = treinamento_selecionado.split(" — (")
+                treinamento_nome_real = partes[0]
+                carga_sugerida = partes[1].replace(")", "")
+
+            carga = st.text_input("Carga Horária", value=carga_sugerida, key="input_carga_dinamica")
+            data_real = st.text_input("Data da Realização (AAAA-MM-DD)", key="input_data_real")
+            validade = st.text_input("Validade", key="input_validade")
+            status = st.selectbox("Status", ["em dia", "vencido"], key="input_status_trein")
+            
+            if st.button("Salvar Lançamento de Treinamento", type="primary"):
+                if treinamento_nome_real and funcionario and funcionario != "Nenhum funcionário":
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO treinamentos (empresa, funcionario, treinamento, carga_horaria, data_realizacao, validade, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                  (empresa, funcionario, treinamento_nome_real, carga, data_real, validade, status))
+                    conn.commit()
+                    conn.close()
+                    st.success("Treinamento lançado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Selecione uma empresa e um funcionário válido.")
+
+    st.markdown("### Treinamentos Registrados")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    if tipo_usuario == "Admin":
+        if empresas_list:
+            empresa_filtro_trein = st.selectbox("🔍 Selecione a Empresa:", ["Todas as Empresas"] + empresas_list, key="filtro_empresa_trein")
+            if empresa_filtro_trein == "Todas as Empresas":
+                df_trein = pd.read_sql("SELECT * FROM treinamentos", conn)
+            else:
+                df_trein = pd.read_sql("SELECT * FROM treinamentos WHERE empresa = ?", conn, params=(empresa_filtro_trein,))
+        else:
+            df_trein = pd.read_sql("SELECT * FROM treinamentos", conn)
+    else:
+        df_trein = pd.read_sql("SELECT * FROM treinamentos WHERE empresa = ?", conn, params=(empresa_usuario,))
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        nomes_puros_trein = df_cat_completo['nome_treinamento'].unique().tolist() if not df_cat_completo.empty else []
+        edited_df_trein = st.data_editor(
+            df_trein, use_container_width=True, key="editor_trein",
+            column_config={
+                "treinamento": st.column_config.SelectboxColumn("Treinamento", options=nomes_puros_trein if nomes_puros_trein else [""], required=True)
+            }
+        )
+        if st.button("Salvar Alterações em Treinamentos Registrados"):
+            conn = sqlite3.connect('cassilab_gestao.db')
+            edited_df_trein.to_sql('treinamentos', conn, if_exists='replace', index=False)
+            conn.close()
+            st.success("Alterações salvas com sucesso!")
+            st.rerun()
+    else:
+        st.dataframe(df_trein, use_container_width=True)
+
+elif menu == "Documentos SST":
+    st.header("Controle de Documentos de SST")
+    
+    conn = sqlite3.connect('cassilab_gestao.db')
+    empresas_list = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        with st.expander("➕ Adicionar Novo Documento"):
+            with st.form("form_doc"):
+                empresa = st.selectbox("Empresa", empresas_list if empresas_list else [""])
+                data = st.text_input("Data (AAAA-MM-DD)")
+                servico = st.text_input("Serviço Executado")
+                vencimento = st.text_input("Vencimento (AAAA-MM-DD)")
+                status = st.selectbox("Status", ["em dia", "vencido"])
+                
+                if st.form_submit_button("Salvar Documento"):
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO documentos (empresa, data, servico, vencimento, status) VALUES (?, ?, ?, ?, ?)",
+                                  (empresa, data, servico, vencimento, status))
+                    conn.commit()
+                    conn.close()
+                    st.success("Documento salvo com sucesso!")
+                    st.rerun()
+
+    st.markdown("### Documentos Registrados")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    if tipo_usuario == "Admin":
+        if empresas_list:
+            empresa_filtro_doc = st.selectbox("🔍 Selecione a Empresa:", ["Todas as Empresas"] + empresas_list, key="filtro_empresa_doc")
+            if empresa_filtro_doc == "Todas as Empresas":
+                df_doc = pd.read_sql("SELECT * FROM documentos", conn)
+            else:
+                df_doc = pd.read_sql("SELECT * FROM documentos WHERE empresa = ?", conn, params=(empresa_filtro_doc,))
+        else:
+            df_doc = pd.read_sql("SELECT * FROM documentos", conn)
+    else:
+        df_doc = pd.read_sql("SELECT * FROM documentos WHERE empresa = ?", conn, params=(empresa_usuario,))
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        edited_df_doc = st.data_editor(df_doc, use_container_width=True, key="editor_doc")
+        if st.button("Salvar Alterações em Documentos"):
+            conn = sqlite3.connect('cassilab_gestao.db')
+            edited_df_doc.to_sql('documentos', conn, if_exists='replace', index=False)
+            conn.close()
+            st.success("Alterações salvas com sucesso!")
+            st.rerun()
+    else:
+        st.dataframe(df_doc, use_container_width=True)
+
+elif menu == "Exames Ocupacionais":
+    st.header("Controle de Exames Ocupacionais e Periódicos")
+    
+    conn = sqlite3.connect('cassilab_gestao.db')
+    empresas_list = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    if tipo_usuario == "Admin":
+        funcionarios_list = pd.read_sql("SELECT nome FROM funcionarios", conn)['nome'].tolist()
+    else:
+        funcionarios_list = pd.read_sql("SELECT nome FROM funcionarios WHERE empresa = ?", conn, params=(empresa_usuario,))['nome'].tolist()
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        with st.expander("➕ Adicionar Novo Exame"):
+            with st.form("form_ex"):
+                matricula = st.text_input("Matrícula")
+                funcionario = st.selectbox("Nome do Colaborador", funcionarios_list if funcionarios_list else [""])
+                cargo = st.text_input("Cargo")
+                setor = st.text_input("Setor")
+                ultimo_exame = st.text_input("Data do Último Exame (AAAA-MM-DD)")
+                tipo_exame = st.selectbox("Tipo de Exame", ["Periodico", "Admissional", "Demissional", "De retorno", "Mudança de função"])
+                proximo_exame = st.text_input("Data do Próximo Exame (AAAA-MM-DD)")
+                status = st.selectbox("Status", ["Válido", "Vencido"])
+                
+                if st.form_submit_button("Salvar Exame"):
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO exames (matricula, funcionario, cargo, setor, ultimo_exame, tipo_exame, proximo_exame, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (matricula, funcionario, cargo, setor, ultimo_exame, tipo_exame, proximo_exame, status))
+                    conn.commit()
+                    conn.close()
+                    st.success("Exame salvo com sucesso!")
+                    st.rerun()
+
+    st.markdown("### Exames Registrados")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    if tipo_usuario == "Admin":
+        if empresas_list:
+            empresa_filtro_exames = st.selectbox("🔍 Selecione a Empresa:", ["Todas as Empresas"] + empresas_list, key="filtro_empresa_exames")
+            if empresa_filtro_exames == "Todas as Empresas":
+                df_ex = pd.read_sql("SELECT * FROM exames", conn)
+            else:
+                df_ex = pd.read_sql("SELECT e.* FROM exames e JOIN funcionarios f ON e.funcionario = f.nome WHERE f.empresa = ?", conn, params=(empresa_filtro_exames,))
+        else:
+            df_ex = pd.read_sql("SELECT * FROM exames", conn)
+    else:
+        df_ex = pd.read_sql("SELECT e.* FROM exames e JOIN funcionarios f ON e.funcionario = f.nome WHERE f.empresa = ?", conn, params=(empresa_usuario,))
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        edited_df_ex = st.data_editor(df_ex, use_container_width=True, key="editor_exames")
+        if st.button("Salvar Alterações em Exames"):
+            conn = sqlite3.connect('cassilab_gestao.db')
+            edited_df_ex.to_sql('exames', conn, if_exists='replace', index=False)
+            conn.close()
+            st.success("Alterações salvas com sucesso!")
+            st.rerun()
+    else:
+        st.dataframe(df_ex, use_container_width=True)
+
+elif menu == "Serviços Executados" and tipo_usuario == "Admin":
+    st.header("Controle de Serviços Executados por Empresa")
+    
+    conn = sqlite3.connect('cassilab_gestao.db')
+    empresas_list = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    conn.close()
+    
+    with st.expander("➕ Lançar Novo Serviço"):
+        with st.form("form_serv"):
+            empresa = st.selectbox("Empresa", empresas_list if empresas_list else [""])
+            data = st.text_input("Data (AAAA-MM-DD)")
+            servico = st.text_input("Serviço Executado")
+            valor = st.number_input("Valor do Serviço (R$)", min_value=0.0, format="%.2f")
+            nfes = st.text_input("Número da NF (NFES)")
+            
+            if st.form_submit_button("Salvar Serviço"):
+                conn = sqlite3.connect('cassilab_gestao.db')
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO servicos (empresa, data, servico, valor, nfes) VALUES (?, ?, ?, ?, ?)",
+                              (empresa, data, servico, valor, nfes))
+                conn.commit()
+                conn.close()
+                st.success("Serviço registrado com sucesso!")
+                st.rerun()
+
+    st.markdown("### Serviços Registrados")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    df_serv = pd.read_sql("SELECT * FROM servicos", conn)
+    conn.close()
+    
+    edited_df_serv = st.data_editor(df_serv, use_container_width=True, key="editor_serv")
+    if st.button("Salvar Alterações em Serviços"):
+        conn = sqlite3.connect('cassilab_gestao.db')
+        edited_df_serv.to_sql('servicos', conn, if_exists='replace', index=False)
+        conn.close()
+        st.success("Alterações salvas com sucesso!")
+        st.rerun()
+
+elif menu == "Controle de EPI":
+    st.header("Controle de Equipamentos de Proteção Individual (EPI)")
+    
+    conn = sqlite3.connect('cassilab_gestao.db')
+    empresas_list = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    if tipo_usuario == "Admin":
+        funcionarios_list = pd.read_sql("SELECT nome FROM funcionarios", conn)['nome'].tolist()
+    else:
+        funcionarios_list = pd.read_sql("SELECT nome FROM funcionarios WHERE empresa = ?", conn, params=(empresa_usuario,))['nome'].tolist()
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        with st.expander("➕ Entregar Novo EPI"):
+            with st.form("form_epi"):
+                data_lanc = st.text_input("Data de Lançamento (AAAA-MM-DD)")
+                funcionario = st.selectbox("Nome do Colaborador", funcionarios_list if funcionarios_list else [""])
+                cargo = st.text_input("Cargo")
+                setor = st.text_input("Setor")
+                epi = st.text_input("EPI")
+                ca = st.text_input("CA")
+                
+                if st.form_submit_button("Salvar Entrega de EPI"):
+                    conn = sqlite3.connect('cassilab_gestao.db')
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO epis (data_lancamento, funcionario, cargo, setor, epi, ca) VALUES (?, ?, ?, ?, ?, ?)",
+                                  (data_lanc, funcionario, cargo, setor, epi, ca))
+                    conn.commit()
+                    conn.close()
+                    st.success("EPI registrado com sucesso!")
+                    st.rerun()
+
+    st.markdown("### EPIs Registrados")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    if tipo_usuario == "Admin":
+        if empresas_list:
+            empresa_filtro_epi = st.selectbox("🔍 Selecione a Empresa:", ["Todas as Empresas"] + empresas_list, key="filtro_empresa_epi")
+            if empresa_filtro_epi == "Todas as Empresas":
+                df_epi = pd.read_sql("SELECT * FROM epis", conn)
+            else:
+                df_epi = pd.read_sql("SELECT e.* FROM epis e JOIN funcionarios f ON e.funcionario = f.nome WHERE f.empresa = ?", conn, params=(empresa_filtro_epi,))
+        else:
+            df_epi = pd.read_sql("SELECT * FROM epis", conn)
+    else:
+        df_epi = pd.read_sql("SELECT e.* FROM epis e JOIN funcionarios f ON e.funcionario = f.nome WHERE f.empresa = ?", conn, params=(empresa_usuario,))
+    conn.close()
+    
+    if tipo_usuario == "Admin":
+        edited_df_epi = st.data_editor(df_epi, use_container_width=True, key="editor_epi")
+        if st.button("Salvar Alterações em EPIs"):
+            conn = sqlite3.connect('cassilab_gestao.db')
+            edited_df_epi.to_sql('epis', conn, if_exists='replace', index=False)
+            conn.close()
+            st.success("Alterações salvas com sucesso!")
+            st.rerun()
+    else:
+        st.dataframe(df_epi, use_container_width=True)
+
+elif menu == "Relatórios" and tipo_usuario == "Admin":
+    st.header("Gerador de Relatórios Personalizados")
+    st.write("Marque abaixo os módulos que deseja visualizar no relatório:")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        r_emp = st.checkbox("Empresas")
+        r_func = st.checkbox("Funcionários")
+    with col2:
+        r_trein = st.checkbox("Treinamentos")
+        r_doc = st.checkbox("Documentos SST")
+    with col3:
+        r_ex = st.checkbox("Exames Ocupacionais")
+        r_epi = st.checkbox("Controle de EPI")
+        
+    if st.button("Gerar Relatório na Tela"):
+        conn = sqlite3.connect('cassilab_gestao.db')
+        if r_emp:
+            st.subheader("Relatório de Empresas")
+            st.dataframe(pd.read_sql("SELECT * FROM empresas", conn), use_container_width=True)
+        if r_func:
+            st.subheader("Relatório de Funcionários")
+            st.dataframe(pd.read_sql("SELECT * FROM funcionarios", conn), use_container_width=True)
+        if r_trein:
+            st.subheader("Relatório de Treinamentos")
+            st.dataframe(pd.read_sql("SELECT * FROM treinamentos", conn), use_container_width=True)
+        if r_doc:
+            st.subheader("Relatório de Documentos")
+            st.dataframe(pd.read_sql("SELECT * FROM documentos", conn), use_container_width=True)
+        if r_ex:
+            st.subheader("Relatório de Exames")
+            st.dataframe(pd.read_sql("SELECT * FROM exames", conn), use_container_width=True)
+        if r_epi:
+            st.subheader("Relatório de EPIs")
+            st.dataframe(pd.read_sql("SELECT * FROM epis", conn), use_container_width=True)
+        conn.close()
