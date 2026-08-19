@@ -19,15 +19,8 @@ def hash_senha(senha):
 # --- Configuração da Página ---
 st.set_page_config(page_title="SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO", layout="wide")
 
-# --- Conexão e Inicialização do Banco de Dados ---
+# --- Conexão e Inicialização do Banco de Dados (Preservando os dados salvos) ---
 def init_db():
-    # --- AUTO-LIMPEZA: Apaga o banco antigo da nuvem para remover os IDs ---
-    if os.path.exists('cassilab_gestao.db'):
-        try:
-            os.remove('cassilab_gestao.db')
-        except:
-            pass
-
     conn = sqlite3.connect('cassilab_gestao.db')
     cursor = conn.cursor()
     
