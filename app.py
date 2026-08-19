@@ -398,6 +398,28 @@ elif menu == "Gestão de Empresas" and tipo_usuario == "Admin":
         st.success("Alterações salvas com sucesso!")
         st.rerun()
 
+    # Seção limpa para excluir empresa sem deixar linhas vazias
+    st.markdown("---")
+    st.markdown("### 🗑️ Excluir Empresa do Sistema")
+    conn = sqlite3.connect('cassilab_gestao.db')
+    lista_empresas_exc = pd.read_sql("SELECT nome FROM empresas", conn)['nome'].tolist()
+    conn.close()
+
+    if lista_empresas_exc:
+        empresa_para_excluir = st.selectbox("Selecione a empresa que deseja remover completamente:", lista_empresas_exc, key="select_del_empresa")
+        if st.button("🗑️ Excluir Empresa Selecionada Definitivamente", type="primary"):
+            conn = sqlite3.connect('cassilab_gestao.db')
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM empresas WHERE nome = ?", (empresa_para_excluir,))
+            cursor.execute("DELETE FROM funcionarios WHERE empresa = ?", (empresa_para_excluir,))
+            cursor.execute("DELETE FROM treinamentos WHERE empresa = ?", (empresa_para_excluir,))
+            conn.commit()
+            conn.close()
+            st.success(f"Empresa '{empresa_para_excluir}' e seus dados vinculados foram removidos com sucesso!")
+            st.rerun()
+    else:
+        st.info("Nenhuma empresa cadastrada para excluir.")
+
 elif menu in ["Funcionários", "Funcionários da Empresa"]:
     st.header("Cadastro e Controle de Funcionários")
     
