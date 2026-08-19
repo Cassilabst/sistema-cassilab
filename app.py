@@ -19,60 +19,50 @@ def hash_senha(senha):
 # --- Configuração da Página ---
 st.set_page_config(page_title="SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO", layout="wide")
 
-# --- Conexão e Inicialização do Banco de Dados ---
+# --- Conexão e Inicialização do Banco de Dados (Sem colunas de ID) ---
 def init_db():
     conn = sqlite3.connect('cassilab_gestao.db')
     cursor = conn.cursor()
     
     cursor.execute('''CREATE TABLE IF NOT EXISTS empresas (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         nome TEXT, contato TEXT, cnpj TEXT, 
                         qtd_funcionarios INTEGER, grau_risco INTEGER,
                         endereco TEXT, bairro TEXT, cep TEXT, 
                         cidade_uf TEXT, email TEXT)''')
                         
     cursor.execute('''CREATE TABLE IF NOT EXISTS funcionarios (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         matricula TEXT, nome TEXT, cargo TEXT, 
                         setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS cargos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         cargo TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS tipos_treinamentos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         nome_treinamento TEXT,
                         carga_horaria_padrao TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS treinamentos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         empresa TEXT, funcionario TEXT, treinamento TEXT, 
                         carga_horaria TEXT, data_realizacao TEXT, validade TEXT, status TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS documentos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         empresa TEXT, data TEXT, servico TEXT, 
                         vencimento TEXT, status TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS exames (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         matricula TEXT, funcionario TEXT, cargo TEXT, 
                         setor TEXT, ultimo_exame TEXT, tipo_exame TEXT, 
                         proximo_exame TEXT, status TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS servicos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         empresa TEXT, data TEXT, servico TEXT, 
                         valor REAL, nfes TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS epis (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         data_lancamento TEXT, funcionario TEXT, cargo TEXT, 
                         setor TEXT, epi TEXT, ca TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         usuario TEXT UNIQUE,
                         senha TEXT,
                         tipo TEXT,
@@ -177,7 +167,7 @@ if not st.session_state['logado']:
     if os.path.exists("logo.png"):
         try:
             logo_login = Image.open("logo.png")
-            st.image(logo_login, width=150) # Logo menor e discreta
+            st.image(logo_login, width=150)
         except:
             pass
 
@@ -240,7 +230,6 @@ if not st.session_state['logado']:
             cad_usuario = st.text_input("Escolha um Nome de Usuário para Login")
             cad_senha = st.text_input("Escolha uma Senha", type="password")
             
-            # Caixa de confirmação de aceite obrigatória alinhada à LGPD
             aceite_lgpd = st.checkbox("Declaro que li e concordo com os termos acima e autorizo o tratamento dos meus dados estritamente para os fins de SST (Lei nº 13.709/2018).")
             
             btn_cadastrar = st.form_submit_button("Cadastrar Conta")
@@ -848,7 +837,7 @@ elif menu == "Relatórios" and tipo_usuario == "Admin":
     st.header("Gerador de Relatórios Personalizados")
     st.write("Marque abaixo os módulos que deseja visualizar no relatório:")
     
-    col1, col2, col3 = st.columns3(3) # Nota: manteve-se a estrutura exata do código original
+    col1, col2, col3 = st.columns(3)
     with col1:
         r_emp = st.checkbox("Empresas")
         r_func = st.checkbox("Funcionários")
