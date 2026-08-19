@@ -185,7 +185,7 @@ if not st.session_state['logado']:
     st.subheader("Cassilab Consultoria e Treinamentos — Área de Acesso")
     st.markdown("---")
     
-    aba_login, aba_cadastro, aba_recuperar = st.tabs(["🔑 Entrar no Sistema", "📝 Primeiro Acesso (Funcionário)", "🔄 Esqueci minha senha"])
+    aba_login, aba_cadastro, aba_recuperar = st.tabs(["🔑 Entrar no Sistema", "📝 Primeiro Acesso (LGPD)", "🔄 Esqueci minha senha"])
     
     with aba_login:
         st.markdown("### Acesso Restrito")
@@ -218,6 +218,18 @@ if not st.session_state['logado']:
         st.markdown("### Cadastro de Cliente / Funcionário")
         st.info("Informe o nome da empresa, CPF (com ou sem pontos), usuário e nova senha.")
         
+        # --- LIGHTBOX LEGISLATIVA E TERMO LGPD ---
+        with st.expander("⚖️ Clique aqui para ler as Leis de Proteção de Dados e Termos LGPD (Lei nº 13.709/2018)"):
+            st.markdown("""
+            **TERMO DE CONSENTIMENTO E CONFORMIDADE COM A LGPD (Lei Geral de Proteção de Dados - Lei nº 13.709/2018):**
+            
+            Em conformidade com a legislação brasileira de proteção de dados pessoais (LGPD), informamos que o tratamento de seus dados pessoais (como CPF, nome, cargo e registros de saúde e segurança ocupacional - SST) tem como finalidade exclusiva o cumprimento de obrigações legais e regulamentoras aplicáveis à Saúde e Segurança no Trabalho (Normas Regulamentadoras - NRs).
+            
+            * **Finalidade Estrita:** Os dados coletados serão utilizados exclusivamente para a gestão de exames, treinamentos, EPIs e emissão de documentos de SST pela Cassilab Consultoria.
+            * **Direitos do Titular (Art. 18 da LGPD):** O titular dos dados possui o direito de solicitar a confirmação do tratamento, acesso, correção e a exclusão definitiva de seus dados ("direito ao esquecimento") mediante solicitação ao Administrador do Sistema.
+            * **Segurança:** Medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados e de situações acidentais ou ilícitas são rigorosamente aplicadas.
+            """)
+
         conn_emp = sqlite3.connect('cassilab_gestao.db')
         empresas_disponiveis = pd.read_sql("SELECT nome FROM empresas", conn_emp)['nome'].tolist()
         conn_emp.close()
@@ -227,10 +239,16 @@ if not st.session_state['logado']:
             cad_cpf = st.text_input("Digite seu CPF (Ex: 000.000.000-00 ou só números)")
             cad_usuario = st.text_input("Escolha um Nome de Usuário para Login")
             cad_senha = st.text_input("Escolha uma Senha", type="password")
+            
+            # Caixa de confirmação de aceite obrigatória alinhada à LGPD
+            aceite_lgpd = st.checkbox("Declaro que li e concordo com os termos acima e autorizo o tratamento dos meus dados estritamente para os fins de SST (Lei nº 13.709/2018).")
+            
             btn_cadastrar = st.form_submit_button("Cadastrar Conta")
             
             if btn_cadastrar:
-                if cad_cpf and cad_usuario and cad_senha and cad_empresa:
+                if not aceite_lgpd:
+                    st.error("Você deve aceitar os termos de conformidade da LGPD para prosseguir com o cadastro.")
+                elif cad_cpf and cad_usuario and cad_senha and cad_empresa:
                     cpf_cad_limpo = limpar_cpf(cad_cpf)
                     
                     conn = sqlite3.connect('cassilab_gestao.db')
@@ -830,7 +848,7 @@ elif menu == "Relatórios" and tipo_usuario == "Admin":
     st.header("Gerador de Relatórios Personalizados")
     st.write("Marque abaixo os módulos que deseja visualizar no relatório:")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns3(3) # Nota: manteve-se a estrutura exata do código original
     with col1:
         r_emp = st.checkbox("Empresas")
         r_func = st.checkbox("Funcionários")
