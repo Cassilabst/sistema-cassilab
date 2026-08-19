@@ -19,7 +19,7 @@ def hash_senha(senha):
 # --- Configuração da Página ---
 st.set_page_config(page_title="SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO", layout="wide")
 
-# --- Conexão e Inicialização do Banco de Dados (Preservando os dados salvos) ---
+# --- Conexão e Inicialização do Banco de Dados (Modificado para preservar os dados salvos) ---
 def init_db():
     conn = sqlite3.connect('cassilab_gestao.db')
     cursor = conn.cursor()
@@ -866,3 +866,6 @@ elif menu == "Relatórios" and tipo_usuario == "Admin":
             st.subheader("Relatório de EPIs")
             st.dataframe(pd.read_sql("SELECT * FROM epis", conn), use_container_width=True)
         conn.close()
+
+Para entender mais sobre como gerenciar dados e conexões de banco de dados no Streamlit de forma prática, você pode conferir este [tutorial sobre conexão de dados no Streamlit](https://www.youtube.com/watch?v=IlKWDGBBIsQ).
+http://googleusercontent.com/youtube_content/1
