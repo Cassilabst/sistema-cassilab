@@ -24,6 +24,7 @@ def init_db():
     conn = sqlite3.connect('cassilab_gestao.db')
     cursor = conn.cursor()
     
+    # Tabelas criadas estritamente sem nenhum campo de ID
     cursor.execute('''CREATE TABLE IF NOT EXISTS empresas (
                         nome TEXT, contato TEXT, cnpj TEXT, 
                         qtd_funcionarios INTEGER, grau_risco INTEGER,
@@ -272,7 +273,8 @@ if not st.session_state['logado']:
                     rec_limpo = limpar_cpf(rec_usuario)
                     conn = sqlite3.connect('cassilab_gestao.db')
                     cursor = conn.cursor()
-                    cursor.execute("SELECT id FROM usuarios WHERE usuario = ? OR cpf = ? OR cpf = ?", (rec_usuario, rec_usuario, rec_limpo))
+                    # Removido verificação por id, buscando por usuario ou cpf
+                    cursor.execute("SELECT usuario FROM usuarios WHERE usuario = ? OR cpf = ? OR cpf = ?", (rec_usuario, rec_usuario, rec_limpo))
                     user_exist = cursor.fetchone()
                     if user_exist:
                         cursor.execute("UPDATE usuarios SET senha = ? WHERE usuario = ? OR cpf = ? OR cpf = ?", 
