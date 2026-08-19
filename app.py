@@ -387,8 +387,7 @@ elif menu == "Gestão de Empresas" and tipo_usuario == "Admin":
     with st.expander("➕ Cadastrar Nova Empresa"):
         with st.form("form_empresa"):
             nome = st.text_input("Nome da Empresa")
-            contato = st.text_input("Contato (Telefone)")
-            responsavel = st.text_input("Nome do Contato/Responsável")
+            contato = st.text_input("Contato (Telefone / Responsável)")
             cnpj = st.text_input("CNPJ")
             qtd_func = st.number_input("Quantidade de Funcionários", min_value=0, step=1)
             grau_risco = st.selectbox("Grau de Risco", [1, 2, 3, 4])
@@ -404,7 +403,7 @@ elif menu == "Gestão de Empresas" and tipo_usuario == "Admin":
                     conn = sqlite3.connect('cassilab_gestao.db')
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO empresas (nome, contato, cnpj, qtd_funcionarios, grau_risco, endereco, bairro, cep, cidade_uf, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                  (nome, f"{contato} - {responsavel}", cnpj, qtd_func, grau_risco, endereco, bairro, cep, cidade_uf, email))
+                                  (nome, contato, cnpj, qtd_func, grau_risco, endereco, bairro, cep, cidade_uf, email))
                     conn.commit()
                     conn.close()
                     st.success("Empresa cadastrada com sucesso!")
