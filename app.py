@@ -113,7 +113,6 @@ def importar_planilhas_iniciais():
                         if cursor.fetchone()[0] == 0:
                             cursor.execute("INSERT INTO cargos (cargo) VALUES (?)", (cargo_lido,))
                             
-                        # Limpa o CPF ao importar também
                         cpf_limpo = limpar_cpf(str(row.iloc[6]))
                         cursor.execute("INSERT INTO funcionarios (matricula, nome, cargo, setor, cpf, data_admissao, status, empresa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                       (str(row.iloc[2]), str(row.iloc[3]), cargo_lido, str(row.iloc[5]), cpf_limpo, str(row.iloc[7]), str(row.iloc[8]), "Xpto Ltda"))
@@ -174,6 +173,14 @@ if 'logado' not in st.session_state:
     st.session_state['empresa_vinculada'] = ""
 
 if not st.session_state['logado']:
+    # --- LOGO DISCRETA NA TELA DE LOGIN ---
+    if os.path.exists("logo.png"):
+        try:
+            logo_login = Image.open("logo.png")
+            st.image(logo_login, width=150) # Logo menor e discreta
+        except:
+            pass
+
     st.title("SISTEMA PARA GESTÃO EM SAÚDE E SEGURANÇA DO TRABALHO")
     st.subheader("Cassilab Consultoria e Treinamentos — Área de Acesso")
     st.markdown("---")
@@ -190,8 +197,6 @@ if not st.session_state['logado']:
             if btn_entrar:
                 conn = sqlite3.connect('cassilab_gestao.db')
                 cursor = conn.cursor()
-                
-                # Trata caso o login seja feito digitando o CPF limpo ou com máscara
                 usuario_limpo = limpar_cpf(usuario_input)
                 
                 cursor.execute("SELECT senha, tipo, empresa_vinculada FROM usuarios WHERE usuario = ? OR cpf = ? OR cpf = ?", 
@@ -230,8 +235,6 @@ if not st.session_state['logado']:
                     
                     conn = sqlite3.connect('cassilab_gestao.db')
                     cursor = conn.cursor()
-                    
-                    # Busca o funcionário aceitando tanto formatado quanto limpo na base
                     cursor.execute("SELECT empresa, nome FROM funcionarios WHERE (cpf = ? OR cpf = ?) AND empresa = ?", 
                                    (cad_cpf, cpf_cad_limpo, cad_empresa))
                     func_res = cursor.fetchone()
@@ -418,7 +421,6 @@ elif menu == "Gestão de Empresas" and tipo_usuario == "Admin":
         st.success("Alterações salvas com sucesso!")
         st.rerun()
 
-    # Seção limpa para excluir empresa sem deixar linhas vazias
     st.markdown("---")
     st.markdown("### 🗑️ Excluir Empresa do Sistema")
     conn = sqlite3.connect('cassilab_gestao.db')
