@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 # Configuração da Página
-st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="logo.png", layout="wide")
 
 # --- BANCO DE DADOS ---
 DB_NAME = "cassilab_gestao.db"
