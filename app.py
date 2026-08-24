@@ -166,22 +166,27 @@ def init_db():
         )
     """)
     
-    cursor.execute("PRAGMA table_info(cad_cargos);")
-    if "empresa" not in [col[1] for col in cursor.fetchall()]:
-        try: cursor.execute("ALTER TABLE cad_cargos ADD COLUMN empresa TEXT;")
+    # Tabela de Cadastros Gerais de Treinamentos (com carga horária)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cad_treinamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            treinamento TEXT UNIQUE,
+            carga_horaria TEXT
+        )
+    """)
+    
+    cursor.execute("PRAGMA table_info(cad_treinamentos);")
+    cols_cad_tr = [col[1] for col in cursor.fetchall()]
+    if "carga_horaria" not in cols_cad_tr:
+        try: cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;")
         except: pass
 
-    cursor.execute("PRAGMA table_info(cad_epis);")
-    cols_cad_epis = [col[1] for col in cursor.fetchall()]
-    if "empresa" not in cols_cad_epis:
-        try: cursor.execute("ALTER TABLE cad_epis ADD COLUMN empresa TEXT;")
-        except: pass
-    if "ca" not in cols_cad_epis:
-        try: cursor.execute("ALTER TABLE cad_epis ADD COLUMN ca TEXT;")
-        except: pass
-
-    cursor.execute("CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, treinamento TEXT UNIQUE)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE)")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cad_servicos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            servico TEXT UNIQUE
+        )
+    """)
     
     conn.commit()
     conn.close()
@@ -665,7 +670,7 @@ elif menu == "Cadastro de Empresas":
             st.dataframe(formatar_colunas_tabela(df_emp.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 2. CADASTROS GERAIS (COM VINCULAÇÃO CORRETA DE EMPRESAS)
+# 2. CADASTROS GERAIS (COM CARGA HORÁRIA EM TREINAMENTOS)
 # ==========================================
 elif menu == "Cadastros Gerais":
     st.title("⚙️ Gerenciamento de Cadastros Gerais")
@@ -758,16 +763,18 @@ elif menu == "Cadastros Gerais":
                     st.rerun()
 
         with aba_g3:
-            st.subheader("Gerenciar Tipos de Treinamentos")
+            st.subheader("Gerenciar Tipos de Treinamentos e Carga Horária")
             with st.form("form_cad_treinamento_unico"):
-                novo_trein = st.text_input("Novo Treinamento")
+                c_tr_1, c_tr_2 = st.columns(2)
+                novo_trein = c_tr_1.text_input("Novo Treinamento")
+                nova_carga = c_tr_2.text_input("Carga Horária (ex: 8h, 16h)")
                 btn_add_salvar_trein = st.form_submit_button("Adicionar e Salvar Treinamento")
                 
                 if btn_add_salvar_trein:
                     if novo_trein.strip():
                         conn = sqlite3.connect(DB_NAME)
                         try:
-                            conn.execute("INSERT INTO cad_treinamentos (treinamento) VALUES (?)", (formatar_titulo(novo_trein),))
+                            conn.execute("INSERT INTO cad_treinamentos (treinamento, carga_horaria) VALUES (?, ?)", (formatar_titulo(novo_trein), nova_carga.strip()))
                             conn.commit()
                             st.success("Treinamento adicionado e salvo com sucesso!")
                             st.rerun()
@@ -779,7 +786,7 @@ elif menu == "Cadastros Gerais":
 
             st.markdown("---")
             conn = sqlite3.connect(DB_NAME)
-            df_trein_geral = pd.read_sql("SELECT id, treinamento FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+            df_trein_geral = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
             conn.close()
             if not df_trein_geral.empty:
                 df_trein_ex = formatar_colunas_tabela(df_trein_geral.drop(columns=["id"]))
@@ -790,8 +797,9 @@ elif menu == "Cadastros Gerais":
                     cursor.execute("DELETE FROM cad_treinamentos")
                     for _, row in edit_trein.iterrows():
                         t_val = row.get("Treinamento", row.get("treinamento"))
+                        ch_val = row.get("Carga Horária", row.get("carga_horaria", ""))
                         if pd.notna(t_val) and str(t_val).strip():
-                            cursor.execute("INSERT OR IGNORE INTO cad_treinamentos (treinamento) VALUES (?)", (formatar_titulo(t_val),))
+                            cursor.execute("INSERT OR IGNORE INTO cad_treinamentos (treinamento, carga_horaria) VALUES (?, ?)", (formatar_titulo(t_val), str(ch_val).strip()))
                     conn.commit()
                     conn.close()
                     st.success("Treinamentos atualizados com sucesso!")
@@ -855,7 +863,6 @@ elif menu == "Gestão de Funcionários":
                 c1, c2 = st.columns(2)
                 empresa = c1.selectbox("Empresa Cliente", options=empresas_cadastradas if empresas_cadastradas else ["Nenhuma"], key="func_emp_sel_form")
                 
-                # Vinculação correta: carrega os cargos cadastrados especificamente para a empresa selecionada
                 cargos_empresa_lista = []
                 if empresa and empresa != "Nenhuma":
                     conn_c = sqlite3.connect(DB_NAME)
@@ -932,7 +939,7 @@ elif menu == "Gestão de Funcionários":
             st.dataframe(formatar_colunas_tabela(df.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 4. TREINAMENTOS
+# 4. TREINAMENTOS (COM CARGA HORÁRIA AUTOMÁTICA)
 # ==========================================
 elif menu == "Treinamentos":
     st.title("📚 Controle de Treinamentos")
@@ -943,10 +950,13 @@ elif menu == "Treinamentos":
             empresa_sel = st.selectbox("Selecione a Empresa", empresas, key="emp_trein")
             conn = sqlite3.connect(DB_NAME)
             df_funcs = pd.read_sql("SELECT * FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(empresa_sel,))
-            df_cad_trein = pd.read_sql("SELECT treinamento FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+            df_cad_trein = pd.read_sql("SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
             conn.close()
             
-            if not df_funcs.empty:
+            lista_trein_geral = df_cad_trein["treinamento"].tolist() if not df_cad_trein.empty else []
+            mapa_carga_trein = dict(zip(df_cad_trein["treinamento"], df_cad_trein["carga_horaria"])) if not df_cad_trein.empty else {}
+
+            if not df_funcs.empty and lista_trein_geral:
                 with st.form("form_trein"):
                     func_sel = st.selectbox("Funcionário", df_funcs["funcionario"].tolist())
                     colab = df_funcs[df_funcs["funcionario"] == func_sel].iloc[0]
@@ -954,8 +964,11 @@ elif menu == "Treinamentos":
                     matr_v = c1.text_input("Matrícula", value=str(colab['matricula']))
                     cargo_v = c1.text_input("Cargo", value=str(colab['cargo']))
                     setor_v = c1.text_input("Setor", value=str(colab['setor']))
-                    trein_sel = c2.selectbox("Treinamento", df_cad_trein["treinamento"].tolist() if not df_cad_trein.empty else ["Nenhum"])
-                    carga_v = c2.text_input("Carga Horária", value="8h")
+                    
+                    trein_sel = c2.selectbox("Treinamento", lista_trein_geral)
+                    carga_sugerida = mapa_carga_trein.get(trein_sel, "8h")
+                    carga_v = c2.text_input("Carga Horária", value=str(carga_sugerida if carga_sugerida else "8h"))
+                    
                     dt_real = c1.text_input("Data Realização", value=datetime.today().strftime("%d/%m/%Y"))
                     val_mes = c2.number_input("Validade (Meses)", min_value=1, value=12)
                     dt_venc = c1.text_input("Próximo Vencimento", value=datetime.today().strftime("%d/%m/%Y"))
