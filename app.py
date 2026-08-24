@@ -1,22 +1,69 @@
+import streamlit as st
 import sqlite3
+import os
 from datetime import datetime
 import re
 import pandas as pd
-import streamlit as st
 import requests
 
 # Configuração da Página
 st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide")
 
-# --- BANCO DE DADOS ---
+# --- CONEXÃO COM O BANCO DE DADOS (SUPORTA NUVEM VIA TURSO OU LOCAL) ---
 DB_NAME = "cassilab_gestao.db"
 
+def get_connection():
+    # Verifica se o Turso está configurado nos secrets do Streamlit
+    turso_url = st.secrets.get("TURSO_DATABASE_URL") if hasattr(st, "secrets") else os.getenv("TURSO_DATABASE_URL")
+    turso_token = st.secrets.get("TURSO_AUTH_TOKEN") if hasattr(st, "secrets") else os.getenv("TURSO_AUTH_TOKEN")
+    
+    if turso_url and turso_token:
+        try:
+            import libsql_client
+            # Conecta diretamente ao banco de dados na nuvem Turso
+            client = libsql_client.create_client_sync(url=turso_url, auth_token=turso_token)
+            return client
+        except Exception as e:
+            st.error(f"Erro ao conectar com o banco na nuvem: {e}. Usando banco local temporário.")
+            
+    # Fallback para SQLite local padrão
+    return sqlite3.connect(DB_NAME)
+
+# Wrapper compatível para executar comandos independente da origem (Local vs Nuvem)
+class DBWrapper:
+    def __init__(self):
+        self.conn = get_connection()
+        self.is_turso = "libsql" in str(type(self.conn)).lower() or "client" in str(type(self.conn)).lower()
+
+    def execute(self, query, params=()):
+        if self.is_turso:
+            # Ajusta placeholders de ? para o formato do turso se necessário ou executa direto
+            return self.conn.execute(query, list(params) if params else [])
+        else:
+            cursor = self.conn.cursor()
+            return cursor.execute(query, params)
+
+    def executemany(self, query, params_list):
+        if self.is_turso:
+            for p in params_list:
+                self.conn.execute(query, list(p))
+        else:
+            cursor = self.conn.cursor()
+            cursor.executemany(query, params_list)
+
+    def commit(self):
+        if not self.is_turso:
+            self.conn.commit()
+
+    def close(self):
+        if not self.is_turso:
+            self.conn.close()
+
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    conn_w = DBWrapper()
     
     # 1. Tabela Empresas
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS empresas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             data_registro TEXT,
@@ -33,20 +80,10 @@ def init_db():
             qtd_funcionarios INTEGER
         )
     """)
-    
-    cursor.execute("PRAGMA table_info(empresas);")
-    cols_emp_db = [col[1] for col in cursor.fetchall()]
-    if "data_registro" not in cols_emp_db:
-        try:
-            cursor.execute("ALTER TABLE empresas ADD COLUMN data_registro TEXT;")
-        except:
-            pass
-            
-    data_hoje = datetime.now().strftime("%d/%m/%Y")
-    cursor.execute("UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR data_registro = '' OR data_registro = 'nan'", (data_hoje,))
+    conn_w.commit()
     
     # 2. Tabela Funcionários
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             matricula TEXT,
@@ -59,9 +96,10 @@ def init_db():
             empresa TEXT
         )
     """)
+    conn_w.commit()
     
     # 3. Tabela Usuários do Sistema
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_sistema (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT,
@@ -72,18 +110,10 @@ def init_db():
             senha TEXT
         )
     """)
-    
-    cursor.execute("PRAGMA table_info(usuarios_sistema);")
-    cols_user_db = [col[1] for col in cursor.fetchall()]
-    for col_nova, tipo_col in [("email", "TEXT"), ("celular", "TEXT")]:
-        if col_nova not in cols_user_db:
-            try:
-                cursor.execute(f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
-            except:
-                pass
+    conn_w.commit()
 
     # 4. Tabela Exames
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS exames (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -97,9 +127,10 @@ def init_db():
             status TEXT
         )
     """)
+    conn_w.commit()
     
     # 5. Tabela Treinamentos
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS treinamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -115,9 +146,10 @@ def init_db():
             status TEXT
         )
     """)
+    conn_w.commit()
     
     # 6. Tabela EPIs
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -132,9 +164,10 @@ def init_db():
             status TEXT
         )
     """)
+    conn_w.commit()
 
     # 7. Tabela Serviços Realizados
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS servicos_realizados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -145,51 +178,45 @@ def init_db():
             status TEXT
         )
     """)
+    conn_w.commit()
 
     # Tabelas de Apoio
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS cad_cargos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
-            cargo TEXT,
-            UNIQUE(empresa, cargo)
+            cargo TEXT
         )
     """)
+    conn_w.commit()
     
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS cad_epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             epi TEXT,
-            ca TEXT,
-            UNIQUE(empresa, epi)
+            ca TEXT
         )
     """)
+    conn_w.commit()
     
-    # Tabela de Cadastros Gerais de Treinamentos (com carga horária)
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS cad_treinamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             treinamento TEXT UNIQUE,
             carga_horaria TEXT
         )
     """)
-    
-    cursor.execute("PRAGMA table_info(cad_treinamentos);")
-    cols_cad_tr = [col[1] for col in cursor.fetchall()]
-    if "carga_horaria" not in cols_cad_tr:
-        try: cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;")
-        except: pass
+    conn_w.commit()
 
-    cursor.execute("""
+    conn_w.execute("""
         CREATE TABLE IF NOT EXISTS cad_servicos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             servico TEXT UNIQUE
         )
     """)
-    
-    conn.commit()
-    conn.close()
+    conn_w.commit()
+    conn_w.close()
 
 init_db()
 
@@ -670,7 +697,7 @@ elif menu == "Cadastro de Empresas":
             st.dataframe(formatar_colunas_tabela(df_emp.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 2. CADASTROS GERAIS (COM CARGA HORÁRIA EM TREINAMENTOS)
+# 2. CADASTROS GERAIS
 # ==========================================
 elif menu == "Cadastros Gerais":
     st.title("⚙️ Gerenciamento de Cadastros Gerais")
@@ -696,7 +723,7 @@ elif menu == "Cadastros Gerais":
                             st.success("Cargo adicionado e salvo com sucesso!")
                             st.rerun()
                         except:
-                            st.error("Este cargo já está cadastrado para esta empresa.")
+                            st.error("Erro ao cadastrar cargo.")
                         conn.close()
                     else:
                         st.error("Selecione a empresa e preencha o nome do cargo.")
@@ -716,7 +743,7 @@ elif menu == "Cadastros Gerais":
                         e_val = row.get("Empresa", row.get("empresa"))
                         c_val = row.get("Cargo", row.get("cargo"))
                         if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
-                            cursor.execute("INSERT OR IGNORE INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (str(e_val).strip(), formatar_titulo(c_val)))
+                            cursor.execute("INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (str(e_val).strip(), formatar_titulo(c_val)))
                     conn.commit()
                     conn.close()
                     st.success("Cargos atualizados com sucesso!")
@@ -823,7 +850,7 @@ elif menu == "Cadastros Gerais":
                             st.success("EPI adicionado e salvo com sucesso!")
                             st.rerun()
                         except:
-                            st.error("Este EPI já está cadastrado para esta empresa.")
+                            st.error("Erro ao cadastrar EPI.")
                         conn.close()
                     else:
                         st.error("Selecione a empresa e preencha o nome do EPI.")
@@ -844,7 +871,7 @@ elif menu == "Cadastros Gerais":
                         epi_val = row.get("EPI", row.get("epi"))
                         ca_val = row.get("CA", row.get("ca"))
                         if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
-                            cursor.execute("INSERT OR IGNORE INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (str(e_val).strip(), formatar_titulo(epi_val), str(ca_val).strip()))
+                            cursor.execute("INSERT INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (str(e_val).strip(), formatar_titulo(epi_val), str(ca_val).strip()))
                     conn.commit()
                     conn.close()
                     st.success("EPIs atualizados com sucesso!")
@@ -939,7 +966,7 @@ elif menu == "Gestão de Funcionários":
             st.dataframe(formatar_colunas_tabela(df.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 4. TREINAMENTOS (COM CARGA HORÁRIA AUTOMÁTICA)
+# 4. TREINAMENTOS
 # ==========================================
 elif menu == "Treinamentos":
     st.title("📚 Controle de Treinamentos")
@@ -1134,8 +1161,11 @@ elif menu == "Administração":
     if not is_admin:
         st.warning("🔒 Área exclusiva para o Administrador.")
     else:
-        with open(DB_NAME, "rb") as f:
-            st.download_button("📥 Baixar Backup (.db)", f, file_name="cassilab_gestao.db", mime="application/octet-stream")
+        if os.path.exists(DB_NAME):
+            with open(DB_NAME, "rb") as f:
+                st.download_button("📥 Baixar Backup (.db)", f, file_name="cassilab_gestao.db", mime="application/octet-stream")
+        else:
+            st.info("Utilizando armazenamento na nuvem Turso.")
 
 # ==========================================
 # 9. RELATÓRIOS CONSOLIDADOS
