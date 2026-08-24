@@ -456,82 +456,64 @@ elif menu == "Cadastro de Empresas":
 
     if not df_emp.empty:
         if is_admin:
+            # Tabela editável para permitir alteração direta dos dados da empresa
             editado_emp = st.data_editor(df_emp.drop(columns=["id"]), num_rows="dynamic", key="editor_emp")
             
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                chk_salvar_emp = st.checkbox("⚠️ Confirmo salvar as alterações nas empresas", key="chk_salvar_emp")
-                if st.button("💾 Salvar Alterações"):
-                    if chk_salvar_emp:
+            chk_salvar_emp = st.checkbox("⚠️ Confirmo salvar as alterações feitas na tabela de empresas", key="chk_salvar_emp")
+            if st.button("💾 Salvar Alterações"):
+                if chk_salvar_emp:
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM empresas")
+                    for _, row in editado_emp.iterrows():
+                        if pd.notna(row["nome_empresa"]) and str(row["nome_empresa"]).strip():
+                            try:
+                                qtd_func_val = int(row["qtd_funcionarios"]) if pd.notna(row["qtd_funcionarios"]) else 0
+                            except:
+                                qtd_func_val = 0
+
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO empresas (nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, grau_risco, qtd_funcionarios) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                str(row["nome_empresa"]).strip(),
+                                str(row["cnpj"]).strip() if pd.notna(row["cnpj"]) else "",
+                                str(row["cep"]).strip() if pd.notna(row["cep"]) else "",
+                                str(row["cidade"]).strip() if pd.notna(row["cidade"]) else "",
+                                str(row["bairro"]).strip() if pd.notna(row["bairro"]) else "",
+                                str(row["endereco"]).strip() if pd.notna(row["endereco"]) else "",
+                                str(row["telefone"]).strip() if pd.notna(row["telefone"]) else "",
+                                str(row["email"]).strip() if pd.notna(row["email"]) else "",
+                                str(row["responsavel"]).strip() if pd.notna(row["responsavel"]) else "",
+                                str(row["grau_risco"]).strip() if pd.notna(row["grau_risco"]) else "1",
+                                qtd_func_val
+                            ))
+                    conn.commit()
+                    conn.close()
+                    st.success("Empresas atualizadas com sucesso!")
+                    st.rerun()
+                else:
+                    st.warning("Marque a caixa de confirmação para salvar as alterações.")
+
+            st.markdown("---")
+            st.subheader("🗑️ Excluir Empresa Definitivamente")
+            with st.form("form_excluir_empresa"):
+                lista_nomes_empresas = df_emp["nome_empresa"].tolist()
+                empresa_para_excluir = st.selectbox("Selecione a empresa que deseja excluir:", lista_nomes_empresas)
+                chk_excluir_emp = st.checkbox("⚠️ Confirmo que desejo excluir esta empresa permanentemente do sistema")
+                btn_executar_exclusao = st.form_submit_button("🗑️ Excluir Empresa Selecionada")
+
+                if btn_executar_exclusao:
+                    if chk_excluir_emp and empresa_para_excluir:
                         conn = sqlite3.connect(DB_NAME)
                         cursor = conn.cursor()
-                        cursor.execute("DELETE FROM empresas")
-                        for _, row in editado_emp.iterrows():
-                            if pd.notna(row["nome_empresa"]) and str(row["nome_empresa"]).strip():
-                                try:
-                                    qtd_func_val = int(row["qtd_funcionarios"]) if pd.notna(row["qtd_funcionarios"]) else 0
-                                except:
-                                    qtd_func_val = 0
-
-                                cursor.execute("""
-                                    INSERT OR IGNORE INTO empresas (nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, grau_risco, qtd_funcionarios) 
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """, (
-                                    str(row["nome_empresa"]).strip(),
-                                    str(row["cnpj"]).strip() if pd.notna(row["cnpj"]) else "",
-                                    str(row["cep"]).strip() if pd.notna(row["cep"]) else "",
-                                    str(row["cidade"]).strip() if pd.notna(row["cidade"]) else "",
-                                    str(row["bairro"]).strip() if pd.notna(row["bairro"]) else "",
-                                    str(row["endereco"]).strip() if pd.notna(row["endereco"]) else "",
-                                    str(row["telefone"]).strip() if pd.notna(row["telefone"]) else "",
-                                    str(row["email"]).strip() if pd.notna(row["email"]) else "",
-                                    str(row["responsavel"]).strip() if pd.notna(row["responsavel"]) else "",
-                                    str(row["grau_risco"]).strip() if pd.notna(row["grau_risco"]) else "1",
-                                    qtd_func_val
-                                ))
+                        cursor.execute("DELETE FROM empresas WHERE nome_empresa = ?", (empresa_para_excluir,))
                         conn.commit()
                         conn.close()
-                        st.success("Empresas atualizadas com sucesso!")
+                        st.success(f"Empresa '{empresa_para_excluir}' excluída com sucesso!")
                         st.rerun()
                     else:
-                        st.warning("Marque a caixa de confirmação para salvar as alterações.")
-
-            with col_b2:
-                chk_excluir_emp = st.checkbox("⚠️ Confirmo a exclusão/remoção das empresas", key="chk_excluir_emp")
-                if st.button("🗑️ Excluir Selecionadas"):
-                    if chk_excluir_emp:
-                        conn = sqlite3.connect(DB_NAME)
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM empresas")
-                        for _, row in editado_emp.iterrows():
-                            if pd.notna(row["nome_empresa"]) and str(row["nome_empresa"]).strip():
-                                try:
-                                    qtd_func_val = int(row["qtd_funcionarios"]) if pd.notna(row["qtd_funcionarios"]) else 0
-                                except:
-                                    qtd_func_val = 0
-
-                                cursor.execute("""
-                                    INSERT OR IGNORE INTO empresas (nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, grau_risco, qtd_funcionarios) 
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """, (
-                                    str(row["nome_empresa"]).strip(),
-                                    str(row["cnpj"]).strip() if pd.notna(row["cnpj"]) else "",
-                                    str(row["cep"]).strip() if pd.notna(row["cep"]) else "",
-                                    str(row["cidade"]).strip() if pd.notna(row["cidade"]) else "",
-                                    str(row["bairro"]).strip() if pd.notna(row["bairro"]) else "",
-                                    str(row["endereco"]).strip() if pd.notna(row["endereco"]) else "",
-                                    str(row["telefone"]).strip() if pd.notna(row["telefone"]) else "",
-                                    str(row["email"]).strip() if pd.notna(row["email"]) else "",
-                                    str(row["responsavel"]).strip() if pd.notna(row["responsavel"]) else "",
-                                    str(row["grau_risco"]).strip() if pd.notna(row["grau_risco"]) else "1",
-                                    qtd_func_val
-                                ))
-                        conn.commit()
-                        conn.close()
-                        st.success("Registros sincronizados/excluídos com sucesso!")
-                        st.rerun()
-                    else:
-                        st.warning("Marque a caixa de confirmação para autorizar a exclusão.")
+                        st.error("Selecione a empresa e marque a caixa de confirmação para autorizar a exclusão.")
         else:
             st.dataframe(df_emp.drop(columns=["id"]), use_container_width=True)
             st.info("🔒 Visualização restrita (Somente Leitura).")
