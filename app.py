@@ -664,7 +664,7 @@ elif menu == "Cadastro de Empresas":
             st.dataframe(formatar_colunas_tabela(df_emp.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 2. CADASTROS GERAIS
+# 2. CADASTROS GERAIS (COM OS BOTÕES RESTAURADOS)
 # ==========================================
 elif menu == "Cadastros Gerais":
     st.title("⚙️ Gerenciamento de Cadastros")
@@ -677,66 +677,86 @@ elif menu == "Cadastros Gerais":
         with c1:
             st.subheader("Cargos por Empresa")
             if empresas_cadastradas:
-                empresa_cargo_sel = st.selectbox("Selecione a Empresa", empresas_cadastradas, key="sel_emp_cargo")
-                novo_cargo = st.text_input(f"Novo Cargo para {empresa_cargo_sel}")
-                if st.button("Adicionar Cargo"):
-                    if novo_cargo.strip():
-                        conn = sqlite3.connect(DB_NAME)
-                        try:
-                            conn.execute("INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (empresa_cargo_sel, formatar_titulo(novo_cargo)))
-                            conn.commit()
-                            st.success("Cargo adicionado!")
-                        except:
-                            st.error("Cargo já cadastrado.")
-                        conn.close()
-                        st.rerun()
+                with st.form("form_cad_cargo"):
+                    empresa_cargo_sel = st.selectbox("Selecione a Empresa", empresas_cadastradas, key="sel_emp_cargo")
+                    novo_cargo = st.text_input(f"Novo Cargo para {empresa_cargo_sel}")
+                    btn_add_cargo = st.form_submit_button("Adicionar Cargo")
+                    
+                    if btn_add_cargo:
+                        if novo_cargo.strip():
+                            conn = sqlite3.connect(DB_NAME)
+                            try:
+                                conn.execute("INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (empresa_cargo_sel, formatar_titulo(novo_cargo)))
+                                conn.commit()
+                                st.success("Cargo adicionado!")
+                                st.rerun()
+                            except:
+                                st.error("Cargo já cadastrado.")
+                            conn.close()
+                        else:
+                            st.error("Digite o nome do cargo.")
 
             st.subheader("Serviços")
-            novo_serv = st.text_input("Novo Tipo de Serviço")
-            if st.button("Adicionar Serviço"):
-                if novo_serv.strip():
-                    conn = sqlite3.connect(DB_NAME)
-                    try:
-                        conn.execute("INSERT INTO cad_servicos (servico) VALUES (?)", (formatar_titulo(novo_serv),))
-                        conn.commit()
-                        st.success("Serviço adicionado!")
-                    except:
-                        st.error("Serviço já cadastrado.")
-                    conn.close()
-                    st.rerun()
+            with st.form("form_cad_servico"):
+                novo_serv = st.text_input("Novo Tipo de Serviço")
+                btn_add_serv = st.form_submit_button("Adicionar Serviço")
+                
+                if btn_add_serv:
+                    if novo_serv.strip():
+                        conn = sqlite3.connect(DB_NAME)
+                        try:
+                            conn.execute("INSERT INTO cad_servicos (servico) VALUES (?)", (formatar_titulo(novo_serv),))
+                            conn.commit()
+                            st.success("Serviço adicionado!")
+                            st.rerun()
+                        except:
+                            st.error("Serviço já cadastrado.")
+                        conn.close()
+                    else:
+                        st.error("Digite o nome do serviço.")
 
         with c2:
             st.subheader("Treinamentos")
-            novo_trein = st.text_input("Novo Treinamento")
-            if st.button("Adicionar Treinamento"):
-                if novo_trein.strip():
-                    conn = sqlite3.connect(DB_NAME)
-                    try:
-                        conn.execute("INSERT INTO cad_treinamentos (treinamento) VALUES (?)", (formatar_titulo(novo_trein),))
-                        conn.commit()
-                        st.success("Treinamento adicionado!")
-                    except:
-                        st.error("Treinamento já cadastrado.")
-                    conn.close()
-                    st.rerun()
+            with st.form("form_cad_treinamento"):
+                novo_trein = st.text_input("Novo Treinamento")
+                btn_add_trein = st.form_submit_button("Adicionar Treinamento")
+                
+                if btn_add_trein:
+                    if novo_trein.strip():
+                        conn = sqlite3.connect(DB_NAME)
+                        try:
+                            conn.execute("INSERT INTO cad_treinamentos (treinamento) VALUES (?)", (formatar_titulo(novo_trein),))
+                            conn.commit()
+                            st.success("Treinamento adicionado!")
+                            st.rerun()
+                        except:
+                            st.error("Treinamento já cadastrado.")
+                        conn.close()
+                    else:
+                        st.error("Digite o nome do treinamento.")
 
             st.subheader("EPIs por Empresa (com CA)")
             if empresas_cadastradas:
-                empresa_epi_sel = st.selectbox("Selecione a Empresa para EPI", empresas_cadastradas, key="sel_emp_epi_geral")
-                c_epi_1, c_epi_2 = st.columns(2)
-                novo_epi_nome = c_epi_1.text_input("Nome do EPI")
-                novo_epi_ca = c_epi_2.text_input("Número do CA")
-                if st.button("Adicionar EPI e CA"):
-                    if novo_epi_nome.strip():
-                        conn = sqlite3.connect(DB_NAME)
-                        try:
-                            conn.execute("INSERT INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (empresa_epi_sel, formatar_titulo(novo_epi_nome), novo_epi_ca.strip()))
-                            conn.commit()
-                            st.success("EPI adicionado!")
-                        except:
-                            st.error("EPI já cadastrado.")
-                        conn.close()
-                        st.rerun()
+                with st.form("form_cad_epi"):
+                    empresa_epi_sel = st.selectbox("Selecione a Empresa para EPI", empresas_cadastradas, key="sel_emp_epi_geral")
+                    c_epi_1, c_epi_2 = st.columns(2)
+                    novo_epi_nome = c_epi_1.text_input("Nome do EPI")
+                    novo_epi_ca = c_epi_2.text_input("Número do CA")
+                    btn_add_epi = st.form_submit_button("Adicionar EPI e CA")
+                    
+                    if btn_add_epi:
+                        if novo_epi_nome.strip():
+                            conn = sqlite3.connect(DB_NAME)
+                            try:
+                                conn.execute("INSERT INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (empresa_epi_sel, formatar_titulo(novo_epi_nome), novo_epi_ca.strip()))
+                                conn.commit()
+                                st.success("EPI adicionado!")
+                                st.rerun()
+                            except:
+                                st.error("EPI já cadastrado.")
+                            conn.close()
+                        else:
+                            st.error("Digite o nome do EPI.")
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
