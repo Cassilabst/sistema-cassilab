@@ -517,7 +517,6 @@ elif menu == "Cadastro de Empresas":
                                     str(row["nome_empresa"]).strip(),
                                     str(row["cnpj"]).strip() if pd.notna(row["cnpj"]) else "",
                                     str(row["cep"]).strip() if pd.notna(row["cep"]) else "",
-                                    str(row["cep"]).strip() if pd.notna(row["cep"]) else "",
                                     str(row["cidade"]).strip() if pd.notna(row["cidade"]) else "",
                                     str(row["bairro"]).strip() if pd.notna(row["bairro"]) else "",
                                     str(row["endereco"]).strip() if pd.notna(row["endereco"]) else "",
