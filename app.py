@@ -854,16 +854,24 @@ elif menu == "Gestão de Funcionários":
                 c1, c2 = st.columns(2)
                 empresa = c1.selectbox("Empresa Cliente", options=empresas_cadastradas if empresas_cadastradas else ["Nenhuma"], key="func_emp_sel_form")
                 
+                # Busca segura de cargos vinculados à empresa selecionada (tratando maiúsculas/minúsculas e espaços)
                 cargos_empresa_lista = []
                 if empresa and empresa != "Nenhuma":
                     conn_c = sqlite3.connect(DB_NAME)
-                    df_c_emp = pd.read_sql("SELECT cargo FROM cad_cargos WHERE empresa = ? ORDER BY cargo ASC", conn_c, params=(empresa,))
+                    df_c_emp = pd.read_sql("SELECT cargo FROM cad_cargos WHERE TRIM(LOWER(empresa)) = TRIM(LOWER(?)) ORDER BY cargo ASC", conn_c, params=(empresa,))
                     conn_c.close()
-                    cargos_empresa_lista = df_c_emp["cargo"].tolist()
+                    if not df_c_emp.empty:
+                        cargos_empresa_lista = df_c_emp["cargo"].tolist()
 
                 matricula = c1.text_input("Matrícula")
                 nome = c1.text_input("Nome do Funcionário")
-                cargo = c2.selectbox("Cargo", options=cargos_empresa_lista) if cargos_empresa_lista else c2.text_input("Cargo")
+                
+                # Se houver cargos cadastrados para a empresa, exibe o selectbox; senão, permite texto livre
+                if cargos_empresa_lista:
+                    cargo = c2.selectbox("Cargo", options=cargos_empresa_lista)
+                else:
+                    cargo = c2.text_input("Cargo (Nenhum cargo pré-cadastrado para esta empresa)")
+
                 setor = c2.text_input("Setor")
                 cpf = c1.text_input("CPF")
                 data_admissao_input = c2.text_input("Data Admissão (DD/MM/AAAA)", value=datetime.today().strftime("%d/%m/%Y"))
