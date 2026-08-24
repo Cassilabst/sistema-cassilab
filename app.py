@@ -300,105 +300,111 @@ def limpar_status_banco(val):
         return "Ativo"
     return str(val).replace("🟢", "").replace("🔴", "").replace("🟠", "").replace("🟡", "").strip()
 
-# --- CONTROLE DE SESSÃO ---
+# --- CONTROLE DE SESSÃO COM TELA DE LOGIN CENTRALIZADA ---
 if "autenticado" not in st.session_state: st.session_state["autenticado"] = False
 if "is_admin" not in st.session_state: st.session_state["is_admin"] = False
 if "empresa_usuario" not in st.session_state: st.session_state["empresa_usuario"] = ""
 
 if not st.session_state["autenticado"]:
-    try: st.image("logo.png", width=140)
-    except: pass
+    # Centralizando a tela de login com colunas
+    col_esq, col_centro, col_dir = st.columns([1, 1.4, 1])
     
-    st.markdown("<h1 style='font-size: 24px;'>Cassilab Consultoria e Treinamentos</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color: gray; font-size: 15px;'>Sistema de Gestão Integrada em SST</h3>", unsafe_allow_html=True)
-    st.write("")
+    with col_centro:
+        st.write("")
+        st.write("")
+        try: 
+            st.image("logo.png", width=140)
+        except: 
+            pass
+        
+        st.markdown("<h1 style='font-size: 22px; margin-bottom: 0px;'>Cassilab Consultoria e Treinamentos</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color: gray; font-size: 14px; margin-top: 0px;'>Sistema de Gestão Integrada em SST</p>", unsafe_allow_html=True)
+        st.write("")
 
-    aba_login, aba_cadastro, aba_recuperar = st.tabs(["🔑 Entrar no Sistema", "📝 Cadastrar Novo Usuário", "🔄 Recuperar Senha"])
+        aba_login, aba_cadastro, aba_recuperar = st.tabs(["🔑 Entrar", "📝 Cadastrar", "🔄 Recuperar"])
 
-    with aba_login:
-        with st.form("form_login"):
-            usuario_input = st.text_input("Usuário ou CPF", value="", autocomplete="off")
-            senha_input = st.text_input("Senha", value="", type="password", autocomplete="new-password")
-            btn_login = st.form_submit_button("Acessar Sistema")
-            
-            if btn_login:
-                if usuario_input == "admin" and senha_input == "Disc@5232":
-                    st.session_state["autenticado"] = True
-                    st.session_state["is_admin"] = True
-                    st.session_state["empresa_usuario"] = "Todas"
-                    st.success("Login de Administrador efetuado com sucesso!")
-                    st.rerun()
-                else:
-                    conn = sqlite3.connect(DB_NAME)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT * FROM usuarios_sistema WHERE (nome = ? OR cpf = ?) AND senha = ?", (usuario_input, usuario_input, senha_input))
-                    user_db = cursor.fetchone()
-                    conn.close()
-                    
-                    if user_db:
+        with aba_login:
+            with st.form("form_login"):
+                usuario_input = st.text_input("Usuário ou CPF", value="", autocomplete="off")
+                senha_input = st.text_input("Senha", value="", type="password", autocomplete="new-password")
+                btn_login = st.form_submit_button("Acessar Sistema", use_container_width=True)
+                
+                if btn_login:
+                    if usuario_input == "admin" and senha_input == "Disc@5232":
                         st.session_state["autenticado"] = True
-                        st.session_state["is_admin"] = False
-                        st.session_state["empresa_usuario"] = user_db[3]
-                        st.success(f"Bem-vindo(a), {user_db[1]}! (Acesso restrito à empresa: {user_db[3]})")
+                        st.session_state["is_admin"] = True
+                        st.session_state["empresa_usuario"] = "Todas"
+                        st.success("Login efetuado com sucesso!")
                         st.rerun()
                     else:
-                        st.error("Usuário/CPF ou senha inválidos.")
+                        conn = sqlite3.connect(DB_NAME)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT * FROM usuarios_sistema WHERE (nome = ? OR cpf = ?) AND senha = ?", (usuario_input, usuario_input, senha_input))
+                        user_db = cursor.fetchone()
+                        conn.close()
+                        
+                        if user_db:
+                            st.session_state["autenticado"] = True
+                            st.session_state["is_admin"] = False
+                            st.session_state["empresa_usuario"] = user_db[3]
+                            st.success(f"Bem-vindo(a), {user_db[1]}!")
+                            st.rerun()
+                        else:
+                            st.error("Usuário/CPF ou senha inválidos.")
 
-    with aba_cadastro:
-        st.markdown("Preencha os dados abaixo. Digite parte do nome da sua empresa para vinculação:")
-        with st.form("form_novo_usuario"):
-            cad_nome = st.text_input("Nome Completo", value="", autocomplete="off")
-            cad_cpf = st.text_input("CPF (Somente números ou pontuado)", value="", autocomplete="off")
-            cad_email = st.text_input("E-mail para Contato / Recuperação", value="", autocomplete="off")
-            cad_celular = st.text_input("Celular / WhatsApp (Com DDD)", value="", autocomplete="off")
-            cad_empresa_busca = st.text_input("Nome ou Parte do Nome da Empresa", value="", autocomplete="off")
-            cad_senha = st.text_input("Crie uma Senha", value="", type="password", autocomplete="new-password")
-            btn_cad_usuario = st.form_submit_button("Cadastrar Novo Acesso")
+        with aba_cadastro:
+            with st.form("form_novo_usuario"):
+                cad_nome = st.text_input("Nome Completo", value="", autocomplete="off")
+                cad_cpf = st.text_input("CPF", value="", autocomplete="off")
+                cad_email = st.text_input("E-mail", value="", autocomplete="off")
+                cad_celular = st.text_input("Celular / WhatsApp", value="", autocomplete="off")
+                cad_empresa_busca = st.text_input("Nome da Empresa", value="", autocomplete="off")
+                cad_senha = st.text_input("Crie uma Senha", value="", type="password", autocomplete="new-password")
+                btn_cad_usuario = st.form_submit_button("Cadastrar Acesso", use_container_width=True)
 
-            if btn_cad_usuario:
-                if cad_nome and cad_cpf and cad_email and cad_celular and cad_empresa_busca and cad_senha:
-                    cpf_formatado = formatar_cpf(cad_cpf)
-                    conn = sqlite3.connect(DB_NAME)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1", (f"%{cad_empresa_busca.strip()}%",))
-                    emp_encontrada = cursor.fetchone()
-                    
-                    if emp_encontrada:
-                        empresa_final = emp_encontrada[0]
-                        try:
-                            cursor.execute("INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha) VALUES (?, ?, ?, ?, ?, ?)", 
-                                           (formatar_titulo(cad_nome), cpf_formatado, empresa_final, cad_email.strip(), cad_celular.strip(), cad_senha))
-                            conn.commit()
-                            st.success(f"Cadastro realizado com sucesso vinculado à empresa '{empresa_final}'!")
-                        except sqlite3.IntegrityError:
-                            st.error("Este CPF já possui cadastro no sistema.")
+                if btn_cad_usuario:
+                    if cad_nome and cad_cpf and cad_email and cad_celular and cad_empresa_busca and cad_senha:
+                        cpf_formatado = formatar_cpf(cad_cpf)
+                        conn = sqlite3.connect(DB_NAME)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1", (f"%{cad_empresa_busca.strip()}%",))
+                        emp_encontrada = cursor.fetchone()
+                        
+                        if emp_encontrada:
+                            empresa_final = emp_encontrada[0]
+                            try:
+                                cursor.execute("INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha) VALUES (?, ?, ?, ?, ?, ?)", 
+                                               (formatar_titulo(cad_nome), cpf_formatado, empresa_final, cad_email.strip(), cad_celular.strip(), cad_senha))
+                                conn.commit()
+                                st.success(f"Cadastro realizado com sucesso!")
+                            except sqlite3.IntegrityError:
+                                st.error("Este CPF já possui cadastro.")
+                        else:
+                            st.error("Nenhuma empresa encontrada com esse nome.")
+                        conn.close()
                     else:
-                        st.error("Nenhuma empresa encontrada com esse nome.")
-                    conn.close()
-                else:
-                    st.error("Preencha todos os campos obrigatórios.")
+                        st.error("Preencha todos os campos.")
 
-    with aba_recuperar:
-        with st.form("form_recuperar"):
-            rec_cpf = st.text_input("Digite seu CPF cadastrado", value="", autocomplete="off")
-            rec_opcao = st.radio("Deseja recuperar via:", ["E-mail cadastrado", "Celular / WhatsApp cadastrado"])
-            btn_rec_enviar = st.form_submit_button("Localizar Cadastro para Recuperação")
-            if btn_rec_enviar:
-                if rec_cpf.strip():
-                    cpf_formatado = formatar_cpf(rec_cpf)
-                    conn = sqlite3.connect(DB_NAME)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT nome, email, celular FROM usuarios_sistema WHERE cpf = ?", (cpf_formatado,))
-                    res_user = cursor.fetchone()
-                    conn.close()
-                    if res_user:
-                        st.success(f"Cadastro localizado para **{res_user[0]}**!")
+        with aba_recuperar:
+            with st.form("form_recuperar"):
+                rec_cpf = st.text_input("Digite seu CPF cadastrado", value="", autocomplete="off")
+                rec_opcao = st.radio("Recuperar via:", ["E-mail cadastrado", "Celular / WhatsApp cadastrado"])
+                btn_rec_enviar = st.form_submit_button("Localizar Cadastro", use_container_width=True)
+                if btn_rec_enviar:
+                    if rec_cpf.strip():
+                        cpf_formatado = formatar_cpf(rec_cpf)
+                        conn = sqlite3.connect(DB_NAME)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT nome, email, celular FROM usuarios_sistema WHERE cpf = ?", (cpf_formatado,))
+                        res_user = cursor.fetchone()
+                        conn.close()
+                        if res_user:
+                            st.success(f"Cadastro localizado para **{res_user[0]}**!")
+                        else:
+                            st.error("CPF não encontrado.")
                     else:
-                        st.error("CPF não encontrado.")
-                else:
-                    st.error("Digite o CPF.")
+                        st.error("Digite o CPF.")
 
-    st.markdown("---")
     st.stop()
 
 # --- SIDEBAR ---
@@ -461,7 +467,7 @@ if menu == "Dashboard / Visão Geral":
     st.markdown("---")
 
 # ==========================================
-# 1. CADASTRO DE EMPRESAS (EXPANDER FECHADO)
+# 1. CADASTRO DE EMPRESAS (COM EXCLUSÃO RESTAURADA)
 # ==========================================
 elif menu == "Cadastro de Empresas":
     st.title("🏢 Cadastro de Empresas Clientes")
@@ -584,6 +590,35 @@ elif menu == "Cadastro de Empresas":
                     st.rerun()
                 else:
                     st.warning("Marque a caixa de confirmação.")
+
+            # RESTAURADO: Seção de exclusão definitiva de empresa e dados relacionados
+            st.markdown("---")
+            st.subheader("🗑️ Excluir Empresa Definitivamente")
+            with st.form("form_excluir_empresa"):
+                lista_nomes_empresas = sorted(df_emp["nome_empresa"].tolist())
+                empresa_para_excluir = st.selectbox("Selecione a empresa que deseja excluir:", lista_nomes_empresas)
+                chk_excluir_emp = st.checkbox("⚠️ Confirmo que desejo excluir esta empresa e todos os seus dados vinculados permanentemente")
+                btn_executar_exclusao = st.form_submit_button("🗑️ Excluir Empresa e Dados Relacionados")
+
+                if btn_executar_exclusao:
+                    if chk_excluir_emp and empresa_para_excluir:
+                        conn = sqlite3.connect(DB_NAME)
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM empresas WHERE nome_empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM base_funcionarios WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM exames WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM treinamentos WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM epis WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM servicos_realizados WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM usuarios_sistema WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM cad_cargos WHERE empresa = ?", (empresa_para_excluir,))
+                        cursor.execute("DELETE FROM cad_epis WHERE empresa = ?", (empresa_para_excluir,))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Empresa '{empresa_para_excluir}' e todos os seus registros associados foram excluídos com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Selecione a empresa e marque a caixa de confirmação para autorizar a exclusão.")
         else:
             st.dataframe(df_emp.drop(columns=["id"]), use_container_width=True)
 
@@ -663,7 +698,7 @@ elif menu == "Cadastros Gerais":
                         st.rerun()
 
 # ==========================================
-# 3. GESTÃO DE FUNCIONÁRIOS (EXPANDER FECHADO)
+# 3. GESTÃO DE FUNCIONÁRIOS
 # ==========================================
 elif menu == "Gestão de Funcionários":
     st.title("👥 Cadastro de Funcionários")
@@ -733,7 +768,7 @@ elif menu == "Gestão de Funcionários":
             st.dataframe(df.drop(columns=["id"]), use_container_width=True)
 
 # ==========================================
-# 4. TREINAMENTOS (EXPANDER FECHADO)
+# 4. TREINAMENTOS
 # ==========================================
 elif menu == "Treinamentos":
     st.title("📚 Controle de Treinamentos")
@@ -784,7 +819,7 @@ elif menu == "Treinamentos":
         st.dataframe(df_tr.drop(columns=["id"]), use_container_width=True)
 
 # ==========================================
-# 5. EXAMES OCUPACIONAIS (EXPANDER FECHADO)
+# 5. EXAMES OCUPACIONAIS
 # ==========================================
 elif menu == "Exames Ocupacionais":
     st.title("🩺 Controle de Exames Ocupacionais")
@@ -826,7 +861,7 @@ elif menu == "Exames Ocupacionais":
         st.dataframe(df_ex.drop(columns=["id"]), use_container_width=True)
 
 # ==========================================
-# 6. CONTROLE DE EPIS (EXPANDER FECHADO)
+# 6. CONTROLE DE EPIS
 # ==========================================
 elif menu == "Controle de EPIs":
     st.title("🦺 Controle de Equipamentos de Proteção Individual (EPI)")
@@ -873,7 +908,7 @@ elif menu == "Controle de EPIs":
         st.dataframe(df_ep.drop(columns=["id"]), use_container_width=True)
 
 # ==========================================
-# 7. SERVIÇOS REALIZADOS (EXPANDER FECHADO)
+# 7. SERVIÇOS REALIZADOS
 # ==========================================
 elif menu == "Serviços Realizados":
     st.title("🛠️ Controle de Serviços Realizados")
