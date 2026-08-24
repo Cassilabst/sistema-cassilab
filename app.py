@@ -3,6 +3,7 @@ from datetime import datetime
 import re
 import pandas as pd
 import streamlit as st
+import requests
 
 # Configuração da Página
 st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide")
@@ -142,7 +143,7 @@ def init_db():
         )
     """)
 
-    # Tabelas de Apoio (Cargos e EPIs agora suportam empresa específica e CA separado)
+    # Tabelas de Apoio
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_cargos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +163,6 @@ def init_db():
         )
     """)
     
-    # Compatibilidade com bases antigas
     cursor.execute("PRAGMA table_info(cad_cargos);")
     if "empresa" not in [col[1] for col in cursor.fetchall()]:
         try: cursor.execute("ALTER TABLE cad_cargos ADD COLUMN empresa TEXT;")
@@ -189,7 +189,7 @@ def get_empresas():
     conn = sqlite3.connect(DB_NAME)
     empresas_set = set()
     try:
-        df1 = pd.read_sql("SELECT DISTINCT nome_empresa FROM empresas WHERE nome_empresa IS NOT NULL AND nome_empresa != ''", conn)
+        df1 = pd.read_sql("SELECT DISTINCT nome_empresa FROM empresas WHERE nome_empresa IS NOT NULL AND nome_empresa != '' ORDER BY nome_empresa ASC", conn)
         for e in df1["nome_empresa"].tolist():
             if str(e).strip():
                 empresas_set.add(str(e).strip())
@@ -214,6 +214,24 @@ def formatar_cnpj(val):
     if len(numeros) == 14:
         return f"{numeros[:2]}.{numeros[2:5]}.{numeros[5:8]}/{numeros[8:12]}-{numeros[12:]}"
     return str(val).strip()
+
+def consultar_cep(cep_str):
+    cep_limpo = re.sub(r"\D", "", str(cep_str))
+    if len(cep_limpo) == 8:
+        try:
+            url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
+            response = requests.get(url, timeout=3)
+            if response.status_code == 200:
+                dados = response.json()
+                if "erro" not in dados:
+                    return {
+                        "logradouro": dados.get("logradouro", ""),
+                        "bairro": dados.get("bairro", ""),
+                        "cidade": f"{dados.get('localidade', '')} - {dados.get('uf', '')}" if dados.get('uf') else dados.get('localidade', '')
+                    }
+        except:
+            pass
+    return None
 
 def validar_e_formatar_data_input(data_str):
     if not data_str or not str(data_str).strip():
@@ -505,16 +523,25 @@ elif menu == "Cadastro de Empresas":
 
     if is_admin:
         with st.expander("➕ Adicionar Nova Empresa", expanded=True):
+            # Session states para preenchimento automático via CEP
+            if "form_cep" not in st.session_state: st.session_state["form_cep"] = ""
+            if "form_end" not in st.session_state: st.session_state["form_end"] = ""
+            if "form_bair" not in st.session_state: st.session_state["form_bair"] = ""
+            if "form_cid" not in st.session_state: st.session_state["form_cid"] = ""
+
             with st.form("form_empresa"):
                 c1, c2, c3 = st.columns(3)
                 nome_empresa = c1.text_input("Nome da Empresa *")
                 cnpj = c2.text_input("CNPJ (Somente números ou pontuado)")
-                cep = c3.text_input("CEP")
                 
+                # Campo CEP com botão de consulta ou auto-preenchimento
+                cep_input = c3.text_input("CEP", value=st.session_state["form_cep"])
+                
+                # Ordem solicitada: Endereço - Bairro - Cidade
                 c4, c5, c6 = st.columns(3)
-                cidade = c4.text_input("Cidade")
-                bairro = c5.text_input("Bairro")
-                endereco = c6.text_input("Endereço")
+                endereco_input = c4.text_input("Endereço", value=st.session_state["form_end"])
+                bairro_input = c5.text_input("Bairro", value=st.session_state["form_bair"])
+                cidade_input = c6.text_input("Cidade / UF", value=st.session_state["form_cid"])
 
                 c7, c8, c9 = st.columns(3)
                 telefone = c7.text_input("Telefone")
@@ -525,7 +552,25 @@ elif menu == "Cadastro de Empresas":
                 grau_risco = c10.selectbox("Grau de Risco", ["1", "2", "3", "4"])
                 qtd_funcionarios = c11.number_input("Qtd de Funcionários", min_value=0, value=0, step=1)
                 
-                if st.form_submit_button("Salvar Empresa"):
+                btn_buscar_cep = st.form_submit_button("🔍 Consultar CEP")
+                btn_salvar_empresa = st.form_submit_button("💾 Salvar Empresa")
+
+                if btn_buscar_cep:
+                    if cep_input.strip():
+                        res_cep = consultar_cep(cep_input)
+                        if res_cep:
+                            st.session_state["form_cep"] = cep_input
+                            st.session_state["form_end"] = res_cep["logradouro"]
+                            st.session_state["form_bair"] = res_cep["bairro"]
+                            st.session_state["form_cid"] = res_cep["cidade"]
+                            st.success("CEP encontrado e campos preenchidos com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("CEP não encontrado ou inválido.")
+                    else:
+                        st.warning("Digite um CEP para consultar.")
+
+                if btn_salvar_empresa:
                     if nome_empresa.strip():
                         cnpj_formatado = formatar_cnpj(cnpj)
                         data_registro_atual = datetime.now().strftime("%d/%m/%Y")
@@ -536,11 +581,16 @@ elif menu == "Cadastro de Empresas":
                                 INSERT INTO empresas (data_registro, nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, grau_risco, qtd_funcionarios) 
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
-                                data_registro_atual, nome_empresa.strip(), cnpj_formatado, cep.strip(), cidade.strip(), bairro.strip(), 
-                                endereco.strip(), telefone.strip(), email.strip(), responsavel.strip(), 
+                                data_registro_atual, nome_empresa.strip(), cnpj_formatado, cep_input.strip(), cidade_input.strip(), bairro_input.strip(), 
+                                endereco_input.strip(), telefone.strip(), email.strip(), responsavel.strip(), 
                                 grau_risco, int(qtd_funcionarios)
                             ))
                             conn.commit()
+                            # Limpar session states
+                            st.session_state["form_cep"] = ""
+                            st.session_state["form_end"] = ""
+                            st.session_state["form_bair"] = ""
+                            st.session_state["form_cid"] = ""
                             st.success("Empresa cadastrada com sucesso!")
                             st.rerun()
                         except sqlite3.IntegrityError:
@@ -555,7 +605,7 @@ elif menu == "Cadastro de Empresas":
     if is_admin:
         df_emp = pd.read_sql("SELECT id, data_registro, nome_empresa, cnpj, endereco, bairro, cep, cidade, email, telefone, responsavel, qtd_funcionarios, grau_risco FROM empresas ORDER BY nome_empresa ASC", conn)
     else:
-        df_emp = pd.read_sql("SELECT id, data_registro, nome_empresa, cnpj, endereco, bairro, cep, cidade, email, telefone, responsavel, qtd_funcionarios, grau_risco FROM empresas WHERE nome_empresa = ?", conn, params=(emp_usuario,))
+        df_emp = pd.read_sql("SELECT id, data_registro, nome_empresa, cnpj, endereco, bairro, cep, cidade, email, telefone, responsavel, qtd_funcionarios, grau_risco FROM empresas WHERE nome_empresa = ? ORDER BY nome_empresa ASC", conn, params=(emp_usuario,))
     conn.close()
 
     if not df_emp.empty:
@@ -1422,7 +1472,6 @@ elif menu == "Controle de EPIs":
         else:
             empresa_sel = st.selectbox("Selecione a Empresa para Cadastro", empresas, key="emp_epi")
             
-            # Buscar EPIs específicos da empresa selecionada
             conn_e = sqlite3.connect(DB_NAME)
             df_e_emp = pd.read_sql("SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC", conn_e, params=(empresa_sel,))
             conn_e.close()
@@ -1454,7 +1503,6 @@ elif menu == "Controle de EPIs":
                             epi_sel = st.selectbox("Equipamento (EPI)", lista_epis_emp)
 
                         with c2:
-                            # CA puxado automaticamente mas editável se necessário
                             ca_sugerido = mapa_ca_epis.get(epi_sel, "")
                             ca_epi = st.text_input("Número do CA", value=ca_sugerido)
                             data_entrega = st.text_input("Data da Entrega (DD/MM/AAAA)", value=datetime.today().strftime("%d/%m/%Y"), key="dt_ent_epi")
