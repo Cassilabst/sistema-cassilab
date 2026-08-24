@@ -664,7 +664,7 @@ elif menu == "Cadastro de Empresas":
             st.dataframe(formatar_colunas_tabela(df_emp.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 2. CADASTROS GERAIS (COM OS BOTÕES RESTAURADOS)
+# 2. CADASTROS GERAIS (COM CADASTRO E SALVAMENTO/LISTAGEM)
 # ==========================================
 elif menu == "Cadastros Gerais":
     st.title("⚙️ Gerenciamento de Cadastros")
@@ -676,25 +676,24 @@ elif menu == "Cadastros Gerais":
 
         with c1:
             st.subheader("Cargos por Empresa")
-            if empresas_cadastradas:
-                with st.form("form_cad_cargo"):
-                    empresa_cargo_sel = st.selectbox("Selecione a Empresa", empresas_cadastradas, key="sel_emp_cargo")
-                    novo_cargo = st.text_input(f"Novo Cargo para {empresa_cargo_sel}")
-                    btn_add_cargo = st.form_submit_button("Adicionar Cargo")
-                    
-                    if btn_add_cargo:
-                        if novo_cargo.strip():
-                            conn = sqlite3.connect(DB_NAME)
-                            try:
-                                conn.execute("INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (empresa_cargo_sel, formatar_titulo(novo_cargo)))
-                                conn.commit()
-                                st.success("Cargo adicionado!")
-                                st.rerun()
-                            except:
-                                st.error("Cargo já cadastrado.")
-                            conn.close()
-                        else:
-                            st.error("Digite o nome do cargo.")
+            with st.form("form_cad_cargo"):
+                empresa_cargo_sel = st.selectbox("Selecione a Empresa", empresas_cadastradas if empresas_cadastradas else ["Nenhuma"], key="sel_emp_cargo")
+                novo_cargo = st.text_input(f"Novo Cargo")
+                btn_add_cargo = st.form_submit_button("Adicionar Cargo")
+                
+                if btn_add_cargo:
+                    if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
+                        conn = sqlite3.connect(DB_NAME)
+                        try:
+                            conn.execute("INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (empresa_cargo_sel, formatar_titulo(novo_cargo)))
+                            conn.commit()
+                            st.success("Cargo adicionado!")
+                            st.rerun()
+                        except:
+                            st.error("Cargo já cadastrado para esta empresa.")
+                        conn.close()
+                    else:
+                        st.error("Selecione a empresa e digite o nome do cargo.")
 
             st.subheader("Serviços")
             with st.form("form_cad_servico"):
@@ -736,27 +735,113 @@ elif menu == "Cadastros Gerais":
                         st.error("Digite o nome do treinamento.")
 
             st.subheader("EPIs por Empresa (com CA)")
-            if empresas_cadastradas:
-                with st.form("form_cad_epi"):
-                    empresa_epi_sel = st.selectbox("Selecione a Empresa para EPI", empresas_cadastradas, key="sel_emp_epi_geral")
-                    c_epi_1, c_epi_2 = st.columns(2)
-                    novo_epi_nome = c_epi_1.text_input("Nome do EPI")
-                    novo_epi_ca = c_epi_2.text_input("Número do CA")
-                    btn_add_epi = st.form_submit_button("Adicionar EPI e CA")
-                    
-                    if btn_add_epi:
-                        if novo_epi_nome.strip():
-                            conn = sqlite3.connect(DB_NAME)
-                            try:
-                                conn.execute("INSERT INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (empresa_epi_sel, formatar_titulo(novo_epi_nome), novo_epi_ca.strip()))
-                                conn.commit()
-                                st.success("EPI adicionado!")
-                                st.rerun()
-                            except:
-                                st.error("EPI já cadastrado.")
-                            conn.close()
-                        else:
-                            st.error("Digite o nome do EPI.")
+            with st.form("form_cad_epi"):
+                empresa_epi_sel = st.selectbox("Selecione a Empresa para EPI", empresas_cadastradas if empresas_cadastradas else ["Nenhuma"], key="sel_emp_epi_geral")
+                c_epi_1, c_epi_2 = st.columns(2)
+                novo_epi_nome = c_epi_1.text_input("Nome do EPI")
+                novo_epi_ca = c_epi_2.text_input("Número do CA")
+                btn_add_epi = st.form_submit_button("Adicionar EPI e CA")
+                
+                if btn_add_epi:
+                    if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
+                        conn = sqlite3.connect(DB_NAME)
+                        try:
+                            conn.execute("INSERT INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (empresa_epi_sel, formatar_titulo(novo_epi_nome), novo_epi_ca.strip()))
+                            conn.commit()
+                            st.success("EPI adicionado!")
+                            st.rerun()
+                        except:
+                            st.error("EPI já cadastrado para esta empresa.")
+                        conn.close()
+                    else:
+                        st.error("Selecione a empresa e digite o nome do EPI.")
+
+        st.markdown("---")
+        st.subheader("📋 Listagem e Gerenciamento dos Cadastros Gerais")
+        aba_g1, aba_g2, aba_g3, aba_g4 = st.tabs(["Cargos", "Serviços", "Treinamentos", "EPIs"])
+
+        with aba_g1:
+            conn = sqlite3.connect(DB_NAME)
+            df_cargos_geral = pd.read_sql("SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC", conn)
+            conn.close()
+            if not df_cargos_geral.empty:
+                df_cargos_ex = formatar_colunas_tabela(df_cargos_geral.drop(columns=["id"]))
+                edit_cargos = st.data_editor(df_cargos_ex, num_rows="dynamic", key="edit_cargos_tbl", use_container_width=True)
+                if st.button("💾 Salvar Alterações de Cargos"):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM cad_cargos")
+                    for _, row in edit_cargos.iterrows():
+                        e_val = row.get("Empresa", row.get("empresa"))
+                        c_val = row.get("Cargo", row.get("cargo"))
+                        if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
+                            cursor.execute("INSERT OR IGNORE INTO cad_cargos (empresa, cargo) VALUES (?, ?)", (str(e_val).strip(), formatar_titulo(c_val)))
+                    conn.commit()
+                    conn.close()
+                    st.success("Cargos atualizados com sucesso!")
+                    st.rerun()
+
+        with aba_g2:
+            conn = sqlite3.connect(DB_NAME)
+            df_serv_geral = pd.read_sql("SELECT id, servico FROM cad_servicos ORDER BY servico ASC", conn)
+            conn.close()
+            if not df_serv_geral.empty:
+                df_serv_ex = formatar_colunas_tabela(df_serv_geral.drop(columns=["id"]))
+                edit_serv = st.data_editor(df_serv_ex, num_rows="dynamic", key="edit_serv_tbl", use_container_width=True)
+                if st.button("💾 Salvar Alterações de Serviços"):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM cad_servicos")
+                    for _, row in edit_serv.iterrows():
+                        s_val = row.get("Serviço", row.get("servico"))
+                        if pd.notna(s_val) and str(s_val).strip():
+                            cursor.execute("INSERT OR IGNORE INTO cad_servicos (servico) VALUES (?)", (formatar_titulo(s_val),))
+                    conn.commit()
+                    conn.close()
+                    st.success("Serviços atualizados com sucesso!")
+                    st.rerun()
+
+        with aba_g3:
+            conn = sqlite3.connect(DB_NAME)
+            df_trein_geral = pd.read_sql("SELECT id, treinamento FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+            conn.close()
+            if not df_trein_geral.empty:
+                df_trein_ex = formatar_colunas_tabela(df_trein_geral.drop(columns=["id"]))
+                edit_trein = st.data_editor(df_trein_ex, num_rows="dynamic", key="edit_trein_tbl", use_container_width=True)
+                if st.button("💾 Salvar Alterações de Treinamentos"):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM cad_treinamentos")
+                    for _, row in edit_trein.iterrows():
+                        t_val = row.get("Treinamento", row.get("treinamento"))
+                        if pd.notna(t_val) and str(t_val).strip():
+                            cursor.execute("INSERT OR IGNORE INTO cad_treinamentos (treinamento) VALUES (?)", (formatar_titulo(t_val),))
+                    conn.commit()
+                    conn.close()
+                    st.success("Treinamentos atualizados com sucesso!")
+                    st.rerun()
+
+        with aba_g4:
+            conn = sqlite3.connect(DB_NAME)
+            df_epis_geral = pd.read_sql("SELECT id, empresa, epi, ca FROM cad_epis ORDER BY empresa, epi ASC", conn)
+            conn.close()
+            if not df_epis_geral.empty:
+                df_epis_ex = formatar_colunas_tabela(df_epis_geral.drop(columns=["id"]))
+                edit_epis = st.data_editor(df_epis_ex, num_rows="dynamic", key="edit_epis_tbl", use_container_width=True)
+                if st.button("💾 Salvar Alterações de EPIs"):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM cad_epis")
+                    for _, row in edit_epis.iterrows():
+                        e_val = row.get("Empresa", row.get("empresa"))
+                        epi_val = row.get("EPI", row.get("epi"))
+                        ca_val = row.get("CA", row.get("ca"))
+                        if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
+                            cursor.execute("INSERT OR IGNORE INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (str(e_val).strip(), formatar_titulo(epi_val), str(ca_val).strip()))
+                    conn.commit()
+                    conn.close()
+                    st.success("EPIs atualizados com sucesso!")
+                    st.rerun()
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
