@@ -560,6 +560,7 @@ elif menu == "Cadastro de Empresas":
                         nome_fmt = formatar_titulo(nome_empresa)
                         cnpj_formatado = formatar_cnpj(cnpj)
                         data_registro_atual = datetime.now().strftime("%d/%m/%Y")
+                        
                         conn = sqlite3.connect(DB_NAME)
                         cursor = conn.cursor()
                         try:
@@ -580,7 +581,7 @@ elif menu == "Cadastro de Empresas":
                             st.success("Empresa cadastrada com sucesso!")
                             st.rerun()
                         except sqlite3.IntegrityError:
-                            st.error("Esta empresa já está cadastrada.")
+                            st.error("Esta empresa já está cadastrada (nome duplicado).")
                         finally:
                             conn.close()
                     else:
@@ -664,7 +665,7 @@ elif menu == "Cadastro de Empresas":
             st.dataframe(formatar_colunas_tabela(df_emp.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
-# 2. CADASTROS GERAIS (COM BOTÕES UNIFICADOS DE ADICIONAR E SALVAR)
+# 2. CADASTROS GERAIS (COM VINCULAÇÃO CORRETA DE EMPRESAS)
 # ==========================================
 elif menu == "Cadastros Gerais":
     st.title("⚙️ Gerenciamento de Cadastros Gerais")
@@ -854,7 +855,7 @@ elif menu == "Gestão de Funcionários":
                 c1, c2 = st.columns(2)
                 empresa = c1.selectbox("Empresa Cliente", options=empresas_cadastradas if empresas_cadastradas else ["Nenhuma"], key="func_emp_sel_form")
                 
-                # Busca segura de cargos vinculados à empresa selecionada (tratando maiúsculas/minúsculas e espaços)
+                # Vinculação correta: carrega os cargos cadastrados especificamente para a empresa selecionada
                 cargos_empresa_lista = []
                 if empresa and empresa != "Nenhuma":
                     conn_c = sqlite3.connect(DB_NAME)
@@ -866,7 +867,6 @@ elif menu == "Gestão de Funcionários":
                 matricula = c1.text_input("Matrícula")
                 nome = c1.text_input("Nome do Funcionário")
                 
-                # Se houver cargos cadastrados para a empresa, exibe o selectbox; senão, permite texto livre
                 if cargos_empresa_lista:
                     cargo = c2.selectbox("Cargo", options=cargos_empresa_lista)
                 else:
@@ -889,6 +889,8 @@ elif menu == "Gestão de Funcionários":
                         conn.close()
                         st.success("Funcionário cadastrado com sucesso!")
                         st.rerun()
+                    else:
+                        st.error("Preencha a empresa e o nome do funcionário.")
 
     st.subheader("Funcionários Cadastrados")
     filtro_empresa_func = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas_cadastradas, key="filtro_func_emp") if is_admin else emp_usuario
@@ -1095,7 +1097,7 @@ elif menu == "Serviços Realizados":
                     if st.form_submit_button("Salvar Serviço"):
                         conn = sqlite3.connect(DB_NAME)
                         conn.execute("INSERT INTO servicos_realizados (empresa, servico, data_realizacao, responsavel, observacoes, status) VALUES (?,?,?,?,?,?)",
-                                     (empresa_sel, servico_sel, validar_e_formatar_data_input(data_realizacao_srv), formatar_titulo(responsavel_srv), observacoes_srv, limpar_status_banco(status_srv)))
+                                     (empresa_sel_srv, servico_sel, validar_e_formatar_data_input(data_realizacao_srv), formatar_titulo(responsavel_srv), observacoes_srv, limpar_status_banco(status_srv)))
                         conn.commit()
                         conn.close()
                         st.success("Serviço registrado!")
