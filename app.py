@@ -202,6 +202,47 @@ def formatar_titulo(texto):
             palavras_formatadas.append(p.capitalize())
     return " ".join(palavras_formatadas)
 
+def formatar_colunas_tabela(df):
+    if df is None or df.empty:
+        return df
+    rename_dict = {
+        "data_registro": "Data Registro",
+        "nome_empresa": "Nome Empresa",
+        "cnpj": "CNPJ",
+        "cep": "CEP",
+        "cidade": "Cidade",
+        "bairro": "Bairro",
+        "endereco": "Endereço",
+        "telefone": "Telefone",
+        "email": "E-mail",
+        "responsavel": "Responsável",
+        "qtd_funcionarios": "Qtd Funcionários",
+        "grau_risco": "Grau Risco",
+        "matricula": "Matrícula",
+        "funcionario": "Funcionário",
+        "cargo": "Cargo",
+        "setor": "Setor",
+        "cpf": "CPF",
+        "data_admissao": "Data Admissão",
+        "status": "Status",
+        "empresa": "Empresa",
+        "treinamento": "Treinamento",
+        "carga_horaria": "Carga Horária",
+        "data_realizacao": "Data Realização",
+        "validade_meses": "Validade (Meses)",
+        "proximo_vencimento": "Próximo Vencimento",
+        "ultimo_exame": "Último Exame",
+        "tipo_exame": "Tipo Exame",
+        "proximo_exame": "Próximo Exame",
+        "epi": "EPI",
+        "ca": "CA",
+        "data_entrega": "Data Entrega",
+        "quantidade": "Quantidade",
+        "servico": "Serviço",
+        "observacoes": "Observações"
+    }
+    return df.rename(columns=rename_dict)
+
 def get_empresas():
     conn = sqlite3.connect(DB_NAME)
     empresas_set = set()
@@ -306,7 +347,6 @@ if "is_admin" not in st.session_state: st.session_state["is_admin"] = False
 if "empresa_usuario" not in st.session_state: st.session_state["empresa_usuario"] = ""
 
 if not st.session_state["autenticado"]:
-    # Centralizando a tela de login com colunas
     col_esq, col_centro, col_dir = st.columns([1, 1.4, 1])
     
     with col_centro:
@@ -467,7 +507,7 @@ if menu == "Dashboard / Visão Geral":
     st.markdown("---")
 
 # ==========================================
-# 1. CADASTRO DE EMPRESAS (COM EXCLUSÃO RESTAURADA)
+# 1. CADASTRO DE EMPRESAS
 # ==========================================
 elif menu == "Cadastro de Empresas":
     st.title("🏢 Cadastro de Empresas Clientes")
@@ -556,7 +596,8 @@ elif menu == "Cadastro de Empresas":
         if "cnpj" in df_emp.columns: df_emp["cnpj"] = df_emp["cnpj"].apply(formatar_cnpj)
 
         if is_admin:
-            editado_emp = st.data_editor(df_emp.drop(columns=["id"]), num_rows="dynamic", key="editor_emp", use_container_width=True)
+            df_emp_exibicao = formatar_colunas_tabela(df_emp.drop(columns=["id"]))
+            editado_emp = st.data_editor(df_emp_exibicao, num_rows="dynamic", key="editor_emp", use_container_width=True)
             chk_salvar_emp = st.checkbox("⚠️ Confirmo salvar as alterações feitas na tabela de empresas", key="chk_salvar_emp")
             if st.button("💾 Salvar Alterações"):
                 if chk_salvar_emp:
@@ -564,24 +605,25 @@ elif menu == "Cadastro de Empresas":
                     cursor = conn.cursor()
                     cursor.execute("DELETE FROM empresas")
                     for _, row in editado_emp.iterrows():
-                        if pd.notna(row["nome_empresa"]) and str(row["nome_empresa"]).strip():
-                            try: qtd_func_val = int(row["qtd_funcionarios"])
+                        nome_emp_val = row.get("Nome Empresa", row.get("nome_empresa", ""))
+                        if pd.notna(nome_emp_val) and str(nome_emp_val).strip():
+                            try: qtd_func_val = int(row.get("Qtd Funcionários", row.get("qtd_funcionarios", 0)))
                             except: qtd_func_val = 0
                             cursor.execute("""
                                 INSERT OR IGNORE INTO empresas (data_registro, nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, grau_risco, qtd_funcionarios) 
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
-                                validar_e_formatar_data_input(row.get("data_registro")),
-                                formatar_titulo(row["nome_empresa"]),
-                                formatar_cnpj(row["cnpj"]),
-                                str(row.get("cep", "")).strip(),
-                                formatar_titulo(row.get("cidade", "")),
-                                formatar_titulo(row.get("bairro", "")),
-                                formatar_titulo(row.get("endereco", "")),
-                                str(row.get("telefone", "")).strip(),
-                                str(row.get("email", "")).strip(),
-                                formatar_titulo(row.get("responsavel", "")),
-                                str(row.get("grau_risco", "1")).strip(),
+                                validar_e_formatar_data_input(row.get("Data Registro", row.get("data_registro"))),
+                                formatar_titulo(nome_emp_val),
+                                formatar_cnpj(row.get("CNPJ", row.get("cnpj"))),
+                                str(row.get("CEP", row.get("cep", ""))).strip(),
+                                formatar_titulo(row.get("Cidade", row.get("cidade", ""))),
+                                formatar_titulo(row.get("Bairro", row.get("bairro", ""))),
+                                formatar_titulo(row.get("Endereço", row.get("endereco", ""))),
+                                str(row.get("Telefone", row.get("telefone", ""))).strip(),
+                                str(row.get("E-mail", row.get("email", ""))).strip(),
+                                formatar_titulo(row.get("Responsável", row.get("responsavel", ""))),
+                                str(row.get("Grau Risco", row.get("grau_risco", "1"))).strip(),
                                 qtd_func_val
                             ))
                     conn.commit()
@@ -591,7 +633,6 @@ elif menu == "Cadastro de Empresas":
                 else:
                     st.warning("Marque a caixa de confirmação.")
 
-            # RESTAURADO: Seção de exclusão definitiva de empresa e dados relacionados
             st.markdown("---")
             st.subheader("🗑️ Excluir Empresa Definitivamente")
             with st.form("form_excluir_empresa"):
@@ -620,7 +661,7 @@ elif menu == "Cadastro de Empresas":
                     else:
                         st.error("Selecione a empresa e marque a caixa de confirmação para autorizar a exclusão.")
         else:
-            st.dataframe(df_emp.drop(columns=["id"]), use_container_width=True)
+            st.dataframe(formatar_colunas_tabela(df_emp.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
 # 2. CADASTROS GERAIS
@@ -751,21 +792,31 @@ elif menu == "Gestão de Funcionários":
         df["status"] = df["status"].apply(lambda x: formatar_status_visual(x, "func"))
         
         if is_admin:
-            editado = st.data_editor(df.drop(columns=["id"]), num_rows="dynamic", key="editor_func", use_container_width=True)
+            df_exibicao = formatar_colunas_tabela(df.drop(columns=["id"]))
+            editado = st.data_editor(df_exibicao, num_rows="dynamic", key="editor_func", use_container_width=True)
             if st.button("💾 Salvar Alterações Funcionários"):
                 conn = sqlite3.connect(DB_NAME)
                 cursor = conn.cursor()
                 if filtro_empresa_func == "Todas as Empresas": cursor.execute("DELETE FROM base_funcionarios")
                 else: cursor.execute("DELETE FROM base_funcionarios WHERE empresa = ?", (filtro_empresa_func,))
                 for _, row in editado.iterrows():
+                    emp_val = row.get("Empresa", row.get("empresa"))
+                    func_val = row.get("Funcionário", row.get("funcionario"))
+                    cargo_val = row.get("Cargo", row.get("cargo"))
+                    setor_val = row.get("Setor", row.get("setor"))
+                    cpf_val = row.get("CPF", row.get("cpf"))
+                    dt_val = row.get("Data Admissão", row.get("data_admissao"))
+                    status_val = row.get("Status", row.get("status"))
+                    mat_val = row.get("Matrícula", row.get("matricula"))
+
                     cursor.execute("INSERT INTO base_funcionarios (matricula, funcionario, cargo, setor, cpf, data_admissao, status, empresa) VALUES (?,?,?,?,?,?,?,?)",
-                                   (row["matricula"], formatar_titulo(row["funcionario"]), formatar_titulo(row["cargo"]), formatar_titulo(row["setor"]), formatar_cpf(row["cpf"]), validar_e_formatar_data_input(row["data_admissao"]), limpar_status_banco(row["status"]), row["empresa"]))
+                                   (mat_val, formatar_titulo(func_val), formatar_titulo(cargo_val), formatar_titulo(setor_val), formatar_cpf(cpf_val), validar_e_formatar_data_input(dt_val), limpar_status_banco(status_val), emp_val))
                 conn.commit()
                 conn.close()
                 st.success("Salvo com sucesso!")
                 st.rerun()
         else:
-            st.dataframe(df.drop(columns=["id"]), use_container_width=True)
+            st.dataframe(formatar_colunas_tabela(df.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
 # 4. TREINAMENTOS
@@ -816,7 +867,7 @@ elif menu == "Treinamentos":
         df_tr["data_realizacao"] = df_tr["data_realizacao"].apply(formatar_data_br)
         df_tr["proximo_vencimento"] = df_tr["proximo_vencimento"].apply(formatar_data_br)
         df_tr["status"] = df_tr["status"].apply(lambda x: formatar_status_visual(x, "trein"))
-        st.dataframe(df_tr.drop(columns=["id"]), use_container_width=True)
+        st.dataframe(formatar_colunas_tabela(df_tr.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
 # 5. EXAMES OCUPACIONAIS
@@ -858,7 +909,7 @@ elif menu == "Exames Ocupacionais":
         df_ex["ultimo_exame"] = df_ex["ultimo_exame"].apply(formatar_data_br)
         df_ex["proximo_exame"] = df_ex["proximo_exame"].apply(formatar_data_br)
         df_ex["status"] = df_ex["status"].apply(lambda x: formatar_status_visual(x, "ex"))
-        st.dataframe(df_ex.drop(columns=["id"]), use_container_width=True)
+        st.dataframe(formatar_colunas_tabela(df_ex.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
 # 6. CONTROLE DE EPIS
@@ -905,7 +956,7 @@ elif menu == "Controle de EPIs":
     if not df_ep.empty:
         df_ep["data_entrega"] = df_ep["data_entrega"].apply(formatar_data_br)
         df_ep["status"] = df_ep["status"].apply(lambda x: formatar_status_visual(x, "epi"))
-        st.dataframe(df_ep.drop(columns=["id"]), use_container_width=True)
+        st.dataframe(formatar_colunas_tabela(df_ep.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
 # 7. SERVIÇOS REALIZADOS
@@ -947,7 +998,7 @@ elif menu == "Serviços Realizados":
     if not df_serv.empty:
         df_serv["data_realizacao"] = df_serv["data_realizacao"].apply(formatar_data_br)
         df_serv["status"] = df_serv["status"].apply(lambda x: formatar_status_visual(x, "serv"))
-        st.dataframe(df_serv.drop(columns=["id"]), use_container_width=True)
+        st.dataframe(formatar_colunas_tabela(df_serv.drop(columns=["id"])), use_container_width=True)
 
 # ==========================================
 # 8. ADMINISTRAÇÃO
@@ -979,21 +1030,21 @@ elif menu == "Relatórios Consolidados":
     if inc_func:
         st.subheader("Funcionários")
         df_f = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status FROM base_funcionarios" + ("" if (not is_admin or empresa_filtro == "Todas as Empresas") else " WHERE empresa = ?"), conn, params=None if (not is_admin or empresa_filtro == "Todas as Empresas") else (empresa_filtro,))
-        if not df_f.empty: st.dataframe(df_f, use_container_width=True)
+        if not df_f.empty: st.dataframe(formatar_colunas_tabela(df_f), use_container_width=True)
     if inc_ex:
         st.subheader("Exames")
         df_e = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, tipo_exame, ultimo_exame, proximo_exame, status FROM exames" + ("" if (not is_admin or empresa_filtro == "Todas as Empresas") else " WHERE empresa = ?"), conn, params=None if (not is_admin or empresa_filtro == "Todas as Empresas") else (empresa_filtro,))
-        if not df_e.empty: st.dataframe(df_e, use_container_width=True)
+        if not df_e.empty: st.dataframe(formatar_colunas_tabela(df_e), use_container_width=True)
     if inc_tr:
         st.subheader("Treinamentos")
         df_t = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, treinamento, carga_horaria, data_realizacao, proximo_vencimento, status FROM treinamentos" + ("" if (not is_admin or empresa_filtro == "Todas as Empresas") else " WHERE empresa = ?"), conn, params=None if (not is_admin or empresa_filtro == "Todas as Empresas") else (empresa_filtro,))
-        if not df_t.empty: st.dataframe(df_t, use_container_width=True)
+        if not df_t.empty: st.dataframe(formatar_colunas_tabela(df_t), use_container_width=True)
     if inc_ep:
         st.subheader("EPIs")
         df_p = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status FROM epis" + ("" if (not is_admin or empresa_filtro == "Todas as Empresas") else " WHERE empresa = ?"), conn, params=None if (not is_admin or empresa_filtro == "Todas as Empresas") else (empresa_filtro,))
-        if not df_p.empty: st.dataframe(df_p, use_container_width=True)
+        if not df_p.empty: st.dataframe(formatar_colunas_tabela(df_p), use_container_width=True)
     if inc_srv:
         st.subheader("Serviços")
         df_s = pd.read_sql("SELECT empresa, servico, data_realizacao, responsavel, observacoes, status FROM servicos_realizados" + ("" if (not is_admin or empresa_filtro == "Todas as Empresas") else " WHERE empresa = ?"), conn, params=None if (not is_admin or empresa_filtro == "Todas as Empresas") else (empresa_filtro,))
-        if not df_s.empty: st.dataframe(df_s, use_container_width=True)
+        if not df_s.empty: st.dataframe(formatar_colunas_tabela(df_s), use_container_width=True)
     conn.close()
