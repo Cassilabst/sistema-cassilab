@@ -13,6 +13,65 @@ st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="🛡️", 
 # --- BANCO DE DADOS LOCAL ---
 DB_NAME = "cassilab_gestao.db"
 
+def formatar_titulo(texto):
+    if not texto or pd.isna(texto):
+        return ""
+    excecoes = {"e", "da", "de", "do", "das", "dos", "em", "para", "com", "S.A."}
+    siglas_maiusculas = {
+        "ltda", "nr", "me", "mei", "epp", "epi", "cnae", "pgr", "pcmso", 
+        "pgrs", "pca", "ppr", "npt", "ccb", "aet", "aep", "arp", "ltcat", 
+        "apr", "ppp", "cipa", "epc", "aso", "sst", "sesmt", "ca", "nfes"
+    }
+    
+    palavras = str(texto).strip().split()
+    palavras_formatadas = []
+    for i, p in enumerate(palavras):
+        p_limpa = re.sub(r'[^a-zA-Z0-9]', '', p).lower()
+        if p_limpa in siglas_maiusculas:
+            palavras_formatadas.append(p.upper())
+        else:
+            p_lower = p.lower()
+            if i > 0 and p_lower in excecoes:
+                palavras_formatadas.append(p_lower)
+            else:
+                if "-" in p:
+                    partes = [sub.upper() if sub.lower() in siglas_maiusculas else sub.capitalize() for sub in p.split("-")]
+                    palavras_formatadas.append("-".join(partes))
+                else:
+                    palavras_formatadas.append(p.capitalize())
+    return " ".join(palavras_formatadas)
+
+def sincronizar_status_exames():
+    """Atualiza automaticamente o status dos exames com base na data de hoje."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        df = pd.read_sql("SELECT id, proximo_exame FROM exames", conn)
+        if not df.empty:
+            cursor = conn.cursor()
+            hoje = datetime.today().date()
+            for _, row in df.iterrows():
+                prox = row["proximo_exame"]
+                novo_st = "Válido"
+                if prox and not pd.isna(prox):
+                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                        try:
+                            dt = datetime.strptime(str(prox).strip(), fmt).date()
+                            diff = (dt - hoje).days
+                            if diff < 0:
+                                novo_st = "Vencido"
+                            elif diff <= 15:
+                                novo_st = "A Vencer"
+                            else:
+                                novo_st = "Válido"
+                            break
+                        except ValueError:
+                            continue
+                cursor.execute("UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"]))
+            conn.commit()
+        conn.close()
+    except:
+        pass
+
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -256,31 +315,105 @@ def init_db():
     conn.commit()
     conn.close()
 
+    # --- MIGRAÇÃO AUTOMÁTICA: ATUALIZA TODAS AS SIGLAS NO BANCO JÁ LANÇADO ---
+    try:
+        conn_mig = sqlite3.connect(DB_NAME)
+        cur_mig = conn_mig.cursor()
+        
+        # Empresas
+        cur_mig.execute("SELECT id, nome_empresa, cidade, bairro, endereco, responsavel FROM empresas")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE empresas SET nome_empresa=?, cidade=?, bairro=?, endereco=?, responsavel=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), formatar_titulo(r[3]), formatar_titulo(r[4]), formatar_titulo(r[5]), r[0]))
+        
+        # Funcionários
+        cur_mig.execute("SELECT id, funcionario, cargo, setor, empresa FROM base_funcionarios")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE base_funcionarios SET funcionario=?, cargo=?, setor=?, empresa=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), formatar_titulo(r[3]), formatar_titulo(r[4]), r[0]))
+        
+        # Exames
+        cur_mig.execute("SELECT id, empresa, funcionario, cargo, setor, tipo_exame FROM exames")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE exames SET empresa=?, funcionario=?, cargo=?, setor=?, tipo_exame=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), formatar_titulo(r[3]), formatar_titulo(r[4]), formatar_titulo(r[5]), r[0]))
+        
+        # Treinamentos
+        cur_mig.execute("SELECT id, empresa, funcionario, cargo, setor, treinamento FROM treinamentos")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE treinamentos SET empresa=?, funcionario=?, cargo=?, setor=?, treinamento=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), formatar_titulo(r[3]), formatar_titulo(r[4]), formatar_titulo(r[5]), r[0]))
+        
+        # EPIs
+        cur_mig.execute("SELECT id, empresa, funcionario, cargo, setor, epi FROM epis")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE epis SET empresa=?, funcionario=?, cargo=?, setor=?, epi=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), formatar_titulo(r[3]), formatar_titulo(r[4]), formatar_titulo(r[5]), r[0]))
+        
+        # Serviços Realizados
+        cur_mig.execute("SELECT id, empresa, servico, responsavel, observacoes FROM servicos_realizados")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE servicos_realizados SET empresa=?, servico=?, responsavel=?, observacoes=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), formatar_titulo(r[3]), formatar_titulo(r[4]), r[0]))
+        
+        # Documentos
+        cur_mig.execute("SELECT id, empresa, documento FROM documentos")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE documentos SET empresa=?, documento=? WHERE id=?", 
+                            (formatar_titulo(r[1]), formatar_titulo(r[2]), r[0]))
+        
+        # Cadastros Gerais
+        cur_mig.execute("SELECT id, empresa, cargo FROM cad_cargos")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?", (formatar_titulo(r[1]), formatar_titulo(r[2]), r[0]))
+            
+        cur_mig.execute("SELECT id, empresa, setor FROM cad_setores")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE cad_setores SET empresa=?, setor=? WHERE id=?", (formatar_titulo(r[1]), formatar_titulo(r[2]), r[0]))
+            
+        cur_mig.execute("SELECT id, empresa, epi FROM cad_epis")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE cad_epis SET empresa=?, epi=? WHERE id=?", (formatar_titulo(r[1]), formatar_titulo(r[2]), r[0]))
+            
+        cur_mig.execute("SELECT id, treinamento FROM cad_treinamentos")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE cad_treinamentos SET treinamento=? WHERE id=?", (formatar_titulo(r[1]), r[0]))
+            
+        cur_mig.execute("SELECT id, servico FROM cad_servicos")
+        for r in cur_mig.fetchall():
+            cur_mig.execute("UPDATE cad_servicos SET servico=? WHERE id=?", (formatar_titulo(r[1]), r[0]))
+            
+        conn_mig.commit()
+        conn_mig.close()
+    except:
+        pass
+
 init_db()
 
-def formatar_titulo(texto):
-    if not texto or pd.isna(texto):
-        return ""
-    excecoes = {"e", "da", "de", "do", "das", "dos", "em", "para", "com", "ltda", "S.A."}
-    siglas_maiusculas = {"nr", "arp", "epi", "ca", "sst", "nfes", "cnae"}
-    
-    palavras = str(texto).strip().split()
-    palavras_formatadas = []
-    for i, p in enumerate(palavras):
-        p_limpa = re.sub(r'[^a-zA-Z0-9]', '', p).lower()
-        if p_limpa in siglas_maiusculas:
-            palavras_formatadas.append(p.upper())
-        else:
-            p_lower = p.lower()
-            if i > 0 and p_lower in excecoes:
-                palavras_formatadas.append(p_lower)
-            else:
-                if "-" in p:
-                    partes = [sub.upper() if sub.lower() in siglas_maiusculas else sub.capitalize() for sub in p.split("-")]
-                    palavras_formatadas.append("-".join(partes))
-                else:
-                    palavras_formatadas.append(p.capitalize())
-    return " ".join(palavras_formatadas)
+# Executa a sincronização automática dos status dos exames com base na data de hoje
+sincronizar_status_exames()
+
+def enforce_single_selection(df_editado, session_key):
+    if df_editado is None or "Selecionar" not in df_editado.columns:
+        return df_editado
+    atuais = df_editado[df_editado["Selecionar"] == True].index.tolist()
+    anteriores = st.session_state.get(session_key, [])
+    novos = [idx for idx in atuais if idx not in anteriores]
+    if novos:
+        ultimo = novos[-1]
+        df_editado["Selecionar"] = False
+        df_editado.loc[ultimo, "Selecionar"] = True
+        st.session_state[session_key] = [ultimo]
+        st.rerun()
+    elif len(atuais) > 1:
+        ultimo = atuais[-1]
+        df_editado["Selecionar"] = False
+        df_editado.loc[ultimo, "Selecionar"] = True
+        st.session_state[session_key] = [ultimo]
+        st.rerun()
+    else:
+        st.session_state[session_key] = atuais
+    return df_editado
 
 def formatar_colunas_tabela(df):
     if df is None or df.empty:
@@ -612,7 +745,7 @@ def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
                 try:
                     dt = datetime.strptime(str(dt_val).strip(), fmt)
                     diff = (dt - hoje).days
-                    if diff <= 15: # Vencido ou vence em até 15 dias
+                    if diff <= 15:
                         indices_validos.append(idx)
                     break
                 except ValueError:
@@ -794,7 +927,6 @@ if menu == "Dashboard / Visão Geral":
     c5.metric("📄 Documentos", len(df_docs_all))
     st.markdown("---")
 
-    # Informações de Vencimentos e Alertas Exclusivas para Administrador
     if is_admin:
         st.markdown("### ⚠️ Painel de Alertas (Vencidos e a vencer em até 15 dias) - Acesso Restrito Admin")
         
@@ -1180,6 +1312,7 @@ elif menu == "Cadastros Gerais":
                         "_id_banco": None
                     }
                 )
+                edit_cargos = enforce_single_selection(edit_cargos, "single_sel_cargos")
 
                 linhas_sel_cargo = edit_cargos[edit_cargos["Selecionar"] == True]
 
@@ -1210,10 +1343,8 @@ elif menu == "Cadastros Gerais":
                         if "edit_cargos_tbl" in st.session_state: del st.session_state["edit_cargos_tbl"]
                         st.success(f"Cargo ID {id_exc_c} excluído com sucesso!")
                         st.rerun()
-                    elif len(linhas_sel_cargo) > 1:
-                        st.warning("⚠️ Selecione apenas **um** cargo para excluir por vez.")
                     else:
-                        st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                        st.warning("⚠️ Selecione **um** cargo marcando o quadradinho para excluir.")
 
         with aba_g_setores:
             st.subheader("Gerenciar Setores por Empresa")
@@ -1270,6 +1401,7 @@ elif menu == "Cadastros Gerais":
                         "_id_banco": None
                     }
                 )
+                edit_setores = enforce_single_selection(edit_setores, "single_sel_setores")
 
                 linhas_sel_setor = edit_setores[edit_setores["Selecionar"] == True]
 
@@ -1300,10 +1432,8 @@ elif menu == "Cadastros Gerais":
                         if "edit_setores_tbl" in st.session_state: del st.session_state["edit_setores_tbl"]
                         st.success(f"Setor ID {id_exc_s} excluído com sucesso!")
                         st.rerun()
-                    elif len(linhas_sel_setor) > 1:
-                        st.warning("⚠️ Selecione apenas **um** setor para excluir por vez.")
                     else:
-                        st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                        st.warning("⚠️ Selecione **um** setor marcando o quadradinho para excluir.")
 
         with aba_g2:
             st.subheader("Gerenciar Tipos de Serviços")
@@ -1347,6 +1477,7 @@ elif menu == "Cadastros Gerais":
                         "_id_banco": None
                     }
                 )
+                edit_serv = enforce_single_selection(edit_serv, "single_sel_serv")
 
                 linhas_sel_serv = edit_serv[edit_serv["Selecionar"] == True]
 
@@ -1376,10 +1507,8 @@ elif menu == "Cadastros Gerais":
                         if "edit_serv_tbl" in st.session_state: del st.session_state["edit_serv_tbl"]
                         st.success(f"Serviço ID {id_exc_sv} excluído com sucesso!")
                         st.rerun()
-                    elif len(linhas_sel_serv) > 1:
-                        st.warning("⚠️ Selecione apenas **um** serviço para excluir por vez.")
                     else:
-                        st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                        st.warning("⚠️ Selecione **um** serviço marcando o quadradinho para excluir.")
 
         with aba_g3:
             st.subheader("Gerenciar Tipos de Treinamentos e Carga Horária")
@@ -1425,6 +1554,7 @@ elif menu == "Cadastros Gerais":
                         "_id_banco": None
                     }
                 )
+                edit_trein = enforce_single_selection(edit_trein, "single_sel_cad_trein")
 
                 linhas_sel_tr_geral = edit_trein[edit_trein["Selecionar"] == True]
 
@@ -1455,10 +1585,8 @@ elif menu == "Cadastros Gerais":
                         if "edit_trein_tbl" in st.session_state: del st.session_state["edit_trein_tbl"]
                         st.success(f"Treinamento ID {id_exc_trg} excluído com sucesso!")
                         st.rerun()
-                    elif len(linhas_sel_tr_geral) > 1:
-                        st.warning("⚠️ Selecione apenas **um** treinamento para excluir por vez.")
                     else:
-                        st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                        st.warning("⚠️ Selecione **um** treinamento marcando o quadradinho para excluir.")
 
         with aba_g4:
             st.subheader("Gerenciar EPIs por Empresa (com CA)")
@@ -1511,6 +1639,7 @@ elif menu == "Cadastros Gerais":
                         "_id_banco": None
                     }
                 )
+                edit_epis = enforce_single_selection(edit_epis, "single_sel_cad_epis")
 
                 linhas_sel_epi_geral = edit_epis[edit_epis["Selecionar"] == True]
 
@@ -1542,10 +1671,8 @@ elif menu == "Cadastros Gerais":
                         if "edit_epis_tbl" in st.session_state: del st.session_state["edit_epis_tbl"]
                         st.success(f"EPI ID {id_exc_epg} excluído com sucesso!")
                         st.rerun()
-                    elif len(linhas_sel_epi_geral) > 1:
-                        st.warning("⚠️ Selecione apenas **um** EPI para excluir por vez.")
                     else:
-                        st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                        st.warning("⚠️ Selecione **um** EPI marcando o quadradinho para excluir.")
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
@@ -1662,6 +1789,7 @@ elif menu == "Gestão de Funcionários":
                     "_id_banco": None
                 }
             )
+            editado_func = enforce_single_selection(editado_func, "single_sel_funcs")
 
             linhas_sel_func = editado_func[editado_func["Selecionar"] == True]
 
@@ -1670,10 +1798,8 @@ elif menu == "Gestão de Funcionários":
                 if len(linhas_sel_func) == 1:
                     st.session_state["id_funcionario_editando"] = int(linhas_sel_func.iloc[0]["_id_banco"])
                     st.rerun()
-                elif len(linhas_sel_func) > 1:
-                    st.warning("⚠️ Selecione apenas **um** funcionário para editar por vez.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja editar.")
+                    st.warning("⚠️ Selecione **um** funcionário marcando o quadradinho para editar.")
 
             if col_fb2.button("🗑️ Excluir Funcionário Selecionado", key="btn_excluir_func", use_container_width=True):
                 if len(linhas_sel_func) == 1:
@@ -1687,10 +1813,8 @@ elif menu == "Gestão de Funcionários":
                     if "editor_selecao_funcionarios" in st.session_state: del st.session_state["editor_selecao_funcionarios"]
                     st.success(f"Funcionário ID {id_exc_f} excluído com sucesso!")
                     st.rerun()
-                elif len(linhas_sel_func) > 1:
-                    st.warning("⚠️ Selecione apenas **um** funcionário para excluir.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                    st.warning("⚠️ Selecione **um** funcionário marcando o quadradinho para excluir.")
 
             if "id_funcionario_editando" in st.session_state:
                 id_alvo_f = st.session_state["id_funcionario_editando"]
@@ -1866,6 +1990,7 @@ elif menu == "Treinamentos":
                     "_id_banco": None
                 }
             )
+            editado_trein = enforce_single_selection(editado_trein, "single_sel_treinamentos")
 
             linhas_sel_tr = editado_trein[editado_trein["Selecionar"] == True]
 
@@ -1874,10 +1999,8 @@ elif menu == "Treinamentos":
                 if len(linhas_sel_tr) == 1:
                     st.session_state["id_treinamento_editando"] = int(linhas_sel_tr.iloc[0]["_id_banco"])
                     st.rerun()
-                elif len(linhas_sel_tr) > 1:
-                    st.warning("⚠️ Selecione apenas **um** treinamento para editar por vez.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja editar.")
+                    st.warning("⚠️ Selecione **um** treinamento marcando o quadradinho para editar.")
 
             if col_tb2.button("🗑️ Excluir Treinamento Selecionado", key="btn_excluir_trein", use_container_width=True):
                 if len(linhas_sel_tr) == 1:
@@ -1891,10 +2014,8 @@ elif menu == "Treinamentos":
                     if "editor_selecao_treinamentos" in st.session_state: del st.session_state["editor_selecao_treinamentos"]
                     st.success(f"Treinamento ID {id_exc_tr} excluído com sucesso!")
                     st.rerun()
-                elif len(linhas_sel_tr) > 1:
-                    st.warning("⚠️ Selecione apenas **um** treinamento para excluir.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                    st.warning("⚠️ Selecione **um** treinamento marcando o quadradinho para excluir.")
 
             if "id_treinamento_editando" in st.session_state:
                 id_alvo_tr = st.session_state["id_treinamento_editando"]
@@ -1913,7 +2034,6 @@ elif menu == "Treinamentos":
                         c_e1, c_e2 = st.columns(2)
                         c_e1.markdown(f"**Empresa:** {t_emp}")
                         
-                        # Buscar funcionários da empresa para permitir editar o colaborador
                         conn = sqlite3.connect(DB_NAME)
                         df_funcs_emp = pd.read_sql("SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(t_emp,))
                         conn.close()
@@ -1950,7 +2070,6 @@ elif menu == "Treinamentos":
 
                         btn_col1, btn_col2 = st.columns(2)
                         if btn_col1.form_submit_button("💾 Salvar Alterações do Treinamento", use_container_width=True):
-                            # Atualizar matrícula, cargo e setor caso tenha mudado o funcionário
                             novo_mat = t_mat
                             novo_c = t_cargo
                             novo_s = t_setor
@@ -2037,6 +2156,8 @@ elif menu == "Exames Ocupacionais":
                                      (empresa_sel, colab['matricula'], nome_sel, colab['cargo'], colab['setor'], validar_e_formatar_data_input(ultimo), tipo_ex, validar_e_formatar_data_input(proximo), limpar_status_banco(status_ex)))
                         conn.commit()
                         conn.close()
+                        # Atualiza os status imediatamente após inserir
+                        sincronizar_status_exames()
                         if "editor_selecao_exames" in st.session_state: del st.session_state["editor_selecao_exames"]
                         st.success("Exame salvo!")
                         st.rerun()
@@ -2079,6 +2200,7 @@ elif menu == "Exames Ocupacionais":
                     "_id_banco": None
                 }
             )
+            editado_ex = enforce_single_selection(editado_ex, "single_sel_exames")
 
             linhas_sel_ex = editado_ex[editado_ex["Selecionar"] == True]
 
@@ -2087,10 +2209,8 @@ elif menu == "Exames Ocupacionais":
                 if len(linhas_sel_ex) == 1:
                     st.session_state["id_exame_editando"] = int(linhas_sel_ex.iloc[0]["_id_banco"])
                     st.rerun()
-                elif len(linhas_sel_ex) > 1:
-                    st.warning("⚠️ Selecione apenas **um** exame para editar por vez.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja editar.")
+                    st.warning("⚠️ Selecione **um** exame marcando o quadradinho para editar.")
 
             if col_ex_b2.button("🗑️ Excluir Exame Selecionado", key="btn_excluir_exame", use_container_width=True):
                 if len(linhas_sel_ex) == 1:
@@ -2104,10 +2224,8 @@ elif menu == "Exames Ocupacionais":
                     if "editor_selecao_exames" in st.session_state: del st.session_state["editor_selecao_exames"]
                     st.success(f"Exame ID {id_exc_ex} excluído com sucesso!")
                     st.rerun()
-                elif len(linhas_sel_ex) > 1:
-                    st.warning("⚠️ Selecione apenas **um** exame para excluir.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                    st.warning("⚠️ Selecione **um** exame marcando o quadradinho para excluir.")
 
             if "id_exame_editando" in st.session_state:
                 id_alvo_ex = st.session_state["id_exame_editando"]
@@ -2126,7 +2244,6 @@ elif menu == "Exames Ocupacionais":
                         c_e1, c_e2 = st.columns(2)
                         c_e1.markdown(f"**Empresa:** {ex_emp}")
                         
-                        # Buscar funcionários da empresa para permitir alterar o colaborador
                         conn = sqlite3.connect(DB_NAME)
                         df_funcs_emp = pd.read_sql("SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(ex_emp,))
                         conn.close()
@@ -2156,7 +2273,6 @@ elif menu == "Exames Ocupacionais":
 
                         btn_col1, btn_col2 = st.columns(2)
                         if btn_col1.form_submit_button("💾 Salvar Alterações do Exame", use_container_width=True):
-                            # Atualizar matrícula, cargo e setor se o funcionário foi alterado
                             novo_mat = ex_mat
                             novo_c = ex_cargo
                             novo_s = ex_setor
@@ -2185,6 +2301,7 @@ elif menu == "Exames Ocupacionais":
                             ))
                             conn.commit()
                             conn.close()
+                            sincronizar_status_exames()
                             del st.session_state["id_exame_editando"]
                             if "editor_selecao_exames" in st.session_state: del st.session_state["editor_selecao_exames"]
                             st.success("Exame atualizado com sucesso!")
@@ -2285,6 +2402,7 @@ elif menu == "Controle de EPIs":
                     "_id_banco": None
                 }
             )
+            editado_ep = enforce_single_selection(editado_ep, "single_sel_epis")
 
             linhas_sel_ep = editado_ep[editado_ep["Selecionar"] == True]
 
@@ -2293,10 +2411,8 @@ elif menu == "Controle de EPIs":
                 if len(linhas_sel_ep) == 1:
                     st.session_state["id_epi_editando"] = int(linhas_sel_ep.iloc[0]["_id_banco"])
                     st.rerun()
-                elif len(linhas_sel_ep) > 1:
-                    st.warning("⚠️ Selecione apenas **um** EPI para editar por vez.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja editar.")
+                    st.warning("⚠️ Selecione **um** EPI marcando o quadradinho para editar.")
 
             if col_ep_b2.button("🗑️ Excluir EPI Selecionado", key="btn_excluir_epi", use_container_width=True):
                 if len(linhas_sel_ep) == 1:
@@ -2310,10 +2426,8 @@ elif menu == "Controle de EPIs":
                     if "editor_selecao_epis" in st.session_state: del st.session_state["editor_selecao_epis"]
                     st.success(f"EPI ID {id_exc_ep} excluído com sucesso!")
                     st.rerun()
-                elif len(linhas_sel_ep) > 1:
-                    st.warning("⚠️ Selecione apenas **um** EPI para excluir.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                    st.warning("⚠️ Selecione **um** EPI marcando o quadradinho para excluir.")
 
             if "id_epi_editando" in st.session_state:
                 id_alvo_ep = st.session_state["id_epi_editando"]
@@ -2332,7 +2446,6 @@ elif menu == "Controle de EPIs":
                         c_e1, c_e2 = st.columns(2)
                         c_e1.markdown(f"**Empresa:** {ep_emp}")
                         
-                        # Buscar funcionários da empresa para permitir alterar o colaborador
                         conn = sqlite3.connect(DB_NAME)
                         df_funcs_emp = pd.read_sql("SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(ep_emp,))
                         conn.close()
@@ -2538,6 +2651,7 @@ elif menu == "Serviços Realizados":
                     "_id_banco": None
                 }
             )
+            editado_tabela = enforce_single_selection(editado_tabela, "single_sel_servicos")
 
             linhas_selecionadas = editado_tabela[editado_tabela["Selecionar"] == True]
 
@@ -2547,10 +2661,8 @@ elif menu == "Serviços Realizados":
                 if len(linhas_selecionadas) == 1:
                     st.session_state["id_servico_editando"] = int(linhas_selecionadas.iloc[0]["_id_banco"])
                     st.rerun()
-                elif len(linhas_selecionadas) > 1:
-                    st.warning("⚠️ Selecione apenas **uma** linha para editar por vez.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja editar.")
+                    st.warning("⚠️ Selecione **uma** linha marcando o quadradinho para editar.")
 
             if col_b2.button("🗑️ Excluir Linha Selecionada", key="btn_ir_excluir", use_container_width=True):
                 if len(linhas_selecionadas) == 1:
@@ -2564,10 +2676,8 @@ elif menu == "Serviços Realizados":
                     if "editor_selecao_servicos" in st.session_state: del st.session_state["editor_selecao_servicos"]
                     st.success(f"Serviço ID {id_exc} excluído com sucesso!")
                     st.rerun()
-                elif len(linhas_selecionadas) > 1:
-                    st.warning("⚠️ Selecione apenas **uma** linha para excluir.")
                 else:
-                    st.warning("⚠️ Marque o quadradinho 'Selecionar' na linha que deseja excluir.")
+                    st.warning("⚠️ Selecione **uma** linha marcando o quadradinho para excluir.")
 
             if "id_servico_editando" in st.session_state:
                 id_alvo = st.session_state["id_servico_editando"]
