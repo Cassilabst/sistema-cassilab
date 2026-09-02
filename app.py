@@ -2147,7 +2147,7 @@ elif menu == "Exames Ocupacionais":
                     colab = df_funcs[df_funcs["funcionario"] == nome_sel].iloc[0]
                     c1, c2 = st.columns(2)
                     ultimo = c1.text_input("Data Último Exame", value=datetime.today().strftime("%d/%m/%Y"))
-                    tipo_ex = c1.selectbox("Tipo", ["Admissional", "Periódico", "Retorno ao Trabalho", "Demissional"])
+                    tipo_ex = c1.selectbox("Tipo", ["Admissional", "Periódico", "Retorno ao Trabalho", "Mudança de Riscos", "Demissional"])
                     proximo = c2.text_input("Data Próximo Exame", value=datetime.today().strftime("%d/%m/%Y"))
                     status_ex = c2.selectbox("Status", ["🟢 Válido", "🟠 A Vencer", "🔴 Vencido"])
                     if st.form_submit_button("Salvar Exame"):
@@ -2256,7 +2256,7 @@ elif menu == "Exames Ocupacionais":
                         
                         novo_func_sel = c_e1.selectbox("Funcionário", lista_funcs, index=idx_f)
                         
-                        opcoes_tipos_ex = ["Admissional", "Periódico", "Retorno ao Trabalho", "Demissional"]
+                        opcoes_tipos_ex = ["Admissional", "Periódico", "Retorno ao Trabalho", "Mudança de Riscos", "Demissional"]
                         try: idx_tipo_ex = opcoes_tipos_ex.index(ex_tipo)
                         except: idx_tipo_ex = 0
                         
