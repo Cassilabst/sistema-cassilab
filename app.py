@@ -6,12 +6,46 @@ import re
 import pandas as pd
 import requests
 import csv
+import shutil
+import streamlit.components.v1 as components
 
 # Configuração da Página
 st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide")
 
 # --- BANCO DE DADOS LOCAL ---
 DB_NAME = "cassilab_gestao.db"
+
+def conectar_db():
+    """Cria uma conexão com o banco de dados definindo um timeout para evitar travamentos."""
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    return conn
+
+def fazer_backup_automatico():
+    """Cria uma cópia de segurança do banco de dados automaticamente e limpa os antigos."""
+    if os.path.exists(DB_NAME):
+        pasta_backup = "backups_automaticos"
+        if not os.path.exists(pasta_backup):
+            os.makedirs(pasta_backup)
+        
+        data_hora = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        nome_arquivo_backup = os.path.join(pasta_backup, f"cassilab_backup_{data_hora}.db")
+        
+        try:
+            # 1. Faz a cópia do backup atual
+            shutil.copy(DB_NAME, nome_arquivo_backup)
+            
+            # 2. Rotina para apagar backups com mais de 7 dias
+            dias_para_guardar = 7
+            agora = datetime.now()
+            
+            for arquivo in os.listdir(pasta_backup):
+                caminho_arquivo = os.path.join(pasta_backup, arquivo)
+                if os.path.isfile(caminho_arquivo) and arquivo.endswith(".db"):
+                    data_arquivo = datetime.fromtimestamp(os.path.getmtime(caminho_arquivo))
+                    if agora - data_arquivo > timedelta(days=dias_para_guardar):
+                        os.remove(caminho_arquivo)
+        except:
+            pass
 
 def formatar_titulo(texto):
     if not texto or pd.isna(texto):
@@ -54,7 +88,7 @@ def adicionar_numeracao(df):
 def registrar_log(usuario, empresa, acao):
     """Registra uma ação ou acesso no log do sistema."""
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = conectar_db()
         cursor = conn.cursor()
         dt_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         cursor.execute("INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES (?, ?, ?, ?)", 
@@ -64,31 +98,45 @@ def registrar_log(usuario, empresa, acao):
     except:
         pass
 
+def verificar_cargo_isento_exame(cargo_str):
+    """Verifica se o cargo corresponde a sócio, proprietário ou diretor para isentar de exames."""
+    if not cargo_str or pd.isna(cargo_str):
+        return False
+    c_low = str(cargo_str).lower()
+    termos_isentos = ["sócio", "socio", "proprietário", "proprietario", "diretor", "titular", "sócia", "socia", "proprietária", "proprietaria"]
+    return any(termo in c_low for termo in termos_isentos)
+
 def sincronizar_status_exames():
-    """Atualiza automaticamente o status dos exames com base na data de hoje."""
+    """Atualiza automaticamente o status dos exames com base na data de hoje e se é sócio/proprietário."""
     try:
-        conn = sqlite3.connect(DB_NAME)
-        df = pd.read_sql("SELECT id, proximo_exame FROM exames", conn)
+        conn = conectar_db()
+        df = pd.read_sql("SELECT id, cargo, proximo_exame FROM exames", conn)
         if not df.empty:
             cursor = conn.cursor()
             hoje = datetime.today().date()
             for _, row in df.iterrows():
                 prox = row["proximo_exame"]
-                novo_st = "Válido"
-                if prox and not pd.isna(prox):
-                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                        try:
-                            dt = datetime.strptime(str(prox).strip(), fmt).date()
-                            diff = (dt - hoje).days
-                            if diff < 0:
-                                novo_st = "Vencido"
-                            elif diff <= 15:
-                                novo_st = "A Vencer"
-                            else:
-                                novo_st = "Válido"
-                            break
-                        except ValueError:
-                            continue
+                cargo = row["cargo"]
+                
+                # Se for sócio, proprietário ou diretor, o exame é sempre Válido e isento de vencimento
+                if verificar_cargo_isento_exame(cargo):
+                    novo_st = "Válido"
+                else:
+                    novo_st = "Válido"
+                    if prox and not pd.isna(prox):
+                        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                            try:
+                                dt = datetime.strptime(str(prox).strip(), fmt).date()
+                                diff = (dt - hoje).days
+                                if diff < 0:
+                                    novo_st = "Vencido"
+                                elif diff <= 15:
+                                    novo_st = "A Vencer"
+                                else:
+                                    novo_st = "Válido"
+                                break
+                            except ValueError:
+                                continue
                 cursor.execute("UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"]))
             conn.commit()
         conn.close()
@@ -96,7 +144,7 @@ def sincronizar_status_exames():
         pass
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     
     # 1. Tabela Grau de Risco NR-04 (Tabela Oficial)
@@ -363,9 +411,15 @@ def init_db():
     conn.close()
 
 init_db()
+fazer_backup_automatico()
 sincronizar_status_exames()
 
 # --- FUNÇÕES DE CALLBACK PARA LIMPAR SELEÇÕES AO TROCAR DE FILTRO ---
+def reset_emp_selection():
+    if "editor_emp" in st.session_state: del st.session_state["editor_emp"]
+    st.session_state["sel_id_emp"] = None
+    st.session_state["modal_detalhes_emp_id"] = None
+
 def reset_func_selection():
     if "editor_selecao_funcionarios" in st.session_state: del st.session_state["editor_selecao_funcionarios"]
     st.session_state["sel_id_func"] = None
@@ -398,23 +452,72 @@ def dialog_excluir(tabela, id_registro, editor_key):
     st.write("Tem certeza de que deseja excluir este registro permanentemente?")
     col_d1, col_d2 = st.columns(2)
     if col_d1.button("Sim, Excluir", use_container_width=True):
-        conn = sqlite3.connect(DB_NAME)
-        conn.execute(f"DELETE FROM {tabela} WHERE id = ?", (id_registro,))
+        conn = conectar_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(f"SELECT * FROM {tabela} WHERE id = ?", (id_registro,))
+            colunas = [col[0] for col in cursor.description]
+            dados_linha = cursor.fetchone()
+            if dados_linha:
+                dict_dados = dict(zip(colunas, dados_linha))
+                st.session_state["ultimo_excluido"] = {
+                    "tabela": tabela,
+                    "dados": dict_dados
+                }
+        except:
+            pass
+
+        cursor.execute(f"DELETE FROM {tabela} WHERE id = ?", (id_registro,))
         conn.commit()
         conn.close()
+        
         if editor_key in st.session_state:
             del st.session_state[editor_key]
         st.session_state["modal_excluir_ativo"] = False
-        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso! (Você pode desfazer a exclusão na barra lateral)."
         registrar_log(st.session_state.get("nome_usuario", "Desconhecido"), st.session_state.get("empresa_usuario", "Todas"), f"Exclusão de registro na tabela {tabela}")
         st.rerun()
     if col_d2.button("Cancelar", use_container_width=True):
         st.session_state["modal_excluir_ativo"] = False
         st.rerun()
 
+@st.dialog("🏢 Detalhes Completos da Empresa")
+def dialog_detalhes_empresa(id_alvo):
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT data_registro, nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios FROM empresas WHERE id = ?", (id_alvo,))
+    reg = cursor.fetchone()
+    conn.close()
+
+    if reg:
+        d_reg, d_nome, d_cnpj, d_cep, d_cid, d_bair, d_end, d_tel, d_email, d_resp, d_cnae, d_risco, d_qtd = reg
+        st.markdown(f"### 🏢 {d_nome or 'Sem Nome'}")
+        st.markdown("---")
+        
+        c_m1, c_m2 = st.columns(2)
+        c_m1.markdown(f"**📅 Data de Registro:** {formatar_data_br(d_reg)}")
+        c_m1.markdown(f"**📄 CNPJ:** {formatar_cnpj(d_cnpj)}")
+        c_m1.markdown(f"**📞 Telefone:** {d_tel or '-'}")
+        c_m1.markdown(f"**✉️ E-mail:** {d_email or '-'}")
+        c_m1.markdown(f"**👤 Responsável:** {d_resp or '-'}")
+        
+        c_m2.markdown(f"**📍 Endereço:** {d_end or '-'}")
+        c_m2.markdown(f"**🏘️ Bairro:** {d_bair or '-'}")
+        c_m2.markdown(f"**📮 CEP:** {d_cep or '-'}")
+        c_m2.markdown(f"**🌆 Cidade/UF:** {d_cid or '-'}")
+        c_m2.markdown(f"**📋 CNAE:** {d_cnae or '-'}")
+        c_m2.markdown(f"**⚠️ Grau de Risco:** {d_risco or '-'}")
+        c_m2.markdown(f"**👥 Qtd de Funcionários:** {d_qtd if d_qtd is not None else 0}")
+        
+        st.markdown("")
+        if st.button("✖️ Fechar Janela", use_container_width=True):
+            st.session_state["modal_detalhes_emp_id"] = None
+            st.rerun()
+
 @st.dialog("✏️ Editar Funcionário")
 def dialog_editar_funcionario(id_alvo):
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status FROM base_funcionarios WHERE id = ?", (id_alvo,))
     reg_func = cursor.fetchone()
@@ -451,7 +554,7 @@ def dialog_editar_funcionario(id_alvo):
             novo_status_f = st.selectbox("Status", ["🟢 Ativo", "🟠 Afastado", "🔴 Desligado"], index=idx_st_f)
 
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                conn = sqlite3.connect(DB_NAME)
+                conn = conectar_db()
                 conn.execute("""
                     UPDATE base_funcionarios 
                     SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?
@@ -467,7 +570,13 @@ def dialog_editar_funcionario(id_alvo):
                     id_alvo
                 ))
                 conn.commit()
+                
+                # Atualiza também o cargo nos exames vinculados a este funcionário para refletir a regra de sócio/proprietário
+                conn.execute("UPDATE exames SET cargo = ? WHERE empresa = ? AND funcionario = ?", (formatar_titulo(novo_cargo), f_emp, formatar_titulo(novo_nome)))
+                conn.commit()
                 conn.close()
+                sincronizar_status_exames()
+
                 st.session_state["modal_edit_func_id"] = None
                 st.session_state["sel_id_func"] = None
                 if "editor_selecao_funcionarios" in st.session_state: del st.session_state["editor_selecao_funcionarios"]
@@ -477,7 +586,7 @@ def dialog_editar_funcionario(id_alvo):
 
 @st.dialog("✏️ Editar Treinamento")
 def dialog_editar_treinamento(id_alvo):
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT empresa, funcionario, treinamento, carga_horaria, pessoas_treinadas, data_realizacao, validade, status, matricula, cargo, setor FROM treinamentos WHERE id = ?", (id_alvo,))
     reg_tr = cursor.fetchone()
@@ -488,7 +597,7 @@ def dialog_editar_treinamento(id_alvo):
         with st.form(f"form_edicao_trein_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {t_emp}")
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_funcs_emp = pd.read_sql("SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(t_emp,))
             conn.close()
             
@@ -500,7 +609,7 @@ def dialog_editar_treinamento(id_alvo):
             
             novo_func_sel = st.selectbox("Funcionário", lista_funcs, index=idx_f)
 
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_cad_tr_ed = pd.read_sql("SELECT treinamento FROM cad_treinamentos ORDER BY treinamento ASC", conn)
             conn.close()
             lista_tr_ed = df_cad_tr_ed["treinamento"].tolist() if not df_cad_tr_ed.empty else []
@@ -533,7 +642,7 @@ def dialog_editar_treinamento(id_alvo):
                         novo_c = match_f.iloc[0]["cargo"]
                         novo_s = match_f.iloc[0]["setor"]
 
-                conn = sqlite3.connect(DB_NAME)
+                conn = conectar_db()
                 conn.execute("""
                     UPDATE treinamentos 
                     SET funcionario = ?, matricula = ?, cargo = ?, setor = ?, treinamento = ?, carga_horaria = ?, pessoas_treinadas = ?, data_realizacao = ?, validade = ?, status = ?
@@ -562,7 +671,7 @@ def dialog_editar_treinamento(id_alvo):
 
 @st.dialog("✏️ Editar Exame Ocupacional")
 def dialog_editar_exame(id_alvo):
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT empresa, funcionario, tipo_exame, ultimo_exame, proximo_exame, status, matricula, cargo, setor FROM exames WHERE id = ?", (id_alvo,))
     reg_ex = cursor.fetchone()
@@ -573,7 +682,7 @@ def dialog_editar_exame(id_alvo):
         with st.form(f"form_edicao_exame_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {ex_emp}")
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_funcs_emp = pd.read_sql("SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(ex_emp,))
             conn.close()
             
@@ -611,7 +720,7 @@ def dialog_editar_exame(id_alvo):
                         novo_c = match_f.iloc[0]["cargo"]
                         novo_s = match_f.iloc[0]["setor"]
 
-                conn = sqlite3.connect(DB_NAME)
+                conn = conectar_db()
                 conn.execute("""
                     UPDATE exames 
                     SET funcionario = ?, matricula = ?, cargo = ?, setor = ?, tipo_exame = ?, ultimo_exame = ?, proximo_exame = ?, status = ?
@@ -639,7 +748,7 @@ def dialog_editar_exame(id_alvo):
 
 @st.dialog("✏️ Editar Registro de EPI")
 def dialog_editar_epi(id_alvo):
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT empresa, funcionario, epi, ca, data_entrega, quantidade, status, matricula, cargo, setor FROM epis WHERE id = ?", (id_alvo,))
     reg_ep = cursor.fetchone()
@@ -650,7 +759,7 @@ def dialog_editar_epi(id_alvo):
         with st.form(f"form_edicao_epi_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {ep_emp}")
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_funcs_emp = pd.read_sql("SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC", conn, params=(ep_emp,))
             conn.close()
             
@@ -687,7 +796,7 @@ def dialog_editar_epi(id_alvo):
                         novo_c = match_f.iloc[0]["cargo"]
                         novo_s = match_f.iloc[0]["setor"]
 
-                conn = sqlite3.connect(DB_NAME)
+                conn = conectar_db()
                 conn.execute("""
                     UPDATE epis 
                     SET funcionario = ?, matricula = ?, cargo = ?, setor = ?, epi = ?, ca = ?, data_entrega = ?, quantidade = ?, status = ?
@@ -715,7 +824,7 @@ def dialog_editar_epi(id_alvo):
 
 @st.dialog("✏️ Editar Serviço Realizado")
 def dialog_editar_servico(id_alvo):
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT empresa, servico, data_realizacao, responsavel, observacoes, valor, status, nfes FROM servicos_realizados WHERE id = ?", (id_alvo,))
     reg_alvo = cursor.fetchone()
@@ -731,7 +840,7 @@ def dialog_editar_servico(id_alvo):
             nova_empresa = st.selectbox("Empresa Cliente", empresas_cad, index=idx_emp)
             nova_data = st.text_input("Data da Realização (DD/MM/AAAA)", value=str(e_data))
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_cad_serv_ed = pd.read_sql("SELECT servico FROM cad_servicos ORDER BY servico ASC", conn)
             conn.close()
             lista_serv_ed = df_cad_serv_ed["servico"].tolist() if not df_cad_serv_ed.empty else []
@@ -758,7 +867,7 @@ def dialog_editar_servico(id_alvo):
             novas_obs = st.text_input("Observações", value=str(e_obs) if e_obs else "")
 
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                conn = sqlite3.connect(DB_NAME)
+                conn = conectar_db()
                 conn.execute("""
                     UPDATE servicos_realizados 
                     SET empresa = ?, servico = ?, data_realizacao = ?, responsavel = ?, observacoes = ?, valor = ?, status = ?, nfes = ?
@@ -842,7 +951,7 @@ def formatar_colunas_tabela(df):
     return df.rename(columns=rename_dict)
 
 def get_empresas():
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     empresas_set = set()
     try:
         df1 = pd.read_sql("SELECT DISTINCT nome_empresa FROM empresas WHERE nome_empresa IS NOT NULL AND nome_empresa != '' ORDER BY nome_empresa ASC", conn)
@@ -857,7 +966,7 @@ def get_empresas():
 def get_cargos_por_empresa(empresa_nome):
     if not empresa_nome or empresa_nome == "Nenhuma":
         return []
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     try:
         df_c = pd.read_sql("SELECT DISTINCT cargo FROM cad_cargos WHERE empresa = ? ORDER BY cargo ASC", conn, params=(empresa_nome,))
         conn.close()
@@ -871,7 +980,7 @@ def get_cargos_por_empresa(empresa_nome):
 def get_setores_por_empresa(empresa_nome):
     if not empresa_nome or empresa_nome == "Nenhuma":
         return []
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     try:
         df_s = pd.read_sql("SELECT DISTINCT setor FROM cad_setores WHERE empresa = ? ORDER BY setor ASC", conn, params=(empresa_nome,))
         conn.close()
@@ -910,7 +1019,7 @@ def consultar_grau_risco_por_cnae(cnae_str):
     cnae_fmt = normalizar_cnae(cnae_str)
     if not cnae_fmt:
         return "1"
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT grau_risco FROM grau_risco_nr04 WHERE cnae = ?", (cnae_fmt,))
     res = cursor.fetchone()
@@ -1101,6 +1210,10 @@ def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
     indices_validos = []
     
     for idx, row in df.iterrows():
+        # Se for exame e o cargo for de sócio/proprietário/diretor, ignora dos alertas de vencimento
+        if "proximo_exame" in df.columns and verificar_cargo_isento_exame(row.get("cargo", "")):
+            continue
+
         st_val = str(row.get(coluna_status, "")).lower()
         dt_val = row.get(coluna_data, "")
         
@@ -1127,6 +1240,7 @@ if "empresa_usuario" not in st.session_state: st.session_state["empresa_usuario"
 if "nome_usuario" not in st.session_state: st.session_state["nome_usuario"] = ""
 if "nivel_permissao" not in st.session_state: st.session_state["nivel_permissao"] = "Somente Visualizar"
 if "msg_sucesso" not in st.session_state: st.session_state["msg_sucesso"] = ""
+if "ultimo_excluido" not in st.session_state: st.session_state["ultimo_excluido"] = None
 
 if not st.session_state["autenticado"]:
     col_esq, col_centro, col_dir = st.columns([1, 1.4, 1])
@@ -1160,7 +1274,7 @@ if not st.session_state["autenticado"]:
                         st.success("Login efetuado com sucesso!")
                         st.rerun()
                     else:
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         cursor.execute("SELECT id, nome, cpf, empresa, email, celular, senha, status, nivel_permissao FROM usuarios_sistema WHERE (nome = ? OR cpf = ?) AND senha = ?", (usuario_input, usuario_input, senha_input))
                         user_db = cursor.fetchone()
@@ -1197,7 +1311,7 @@ if not st.session_state["autenticado"]:
                 if btn_cad_usuario:
                     if cad_nome and cad_cpf and cad_email and cad_celular and cad_empresa_busca and cad_senha:
                         cpf_formatado = formatar_cpf(cad_cpf)
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         cursor.execute("SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1", (f"%{cad_empresa_busca.strip()}%",))
                         emp_encontrada = cursor.fetchone()
@@ -1225,7 +1339,7 @@ if not st.session_state["autenticado"]:
                 if btn_rec_enviar:
                     if rec_cpf.strip():
                         cpf_formatado = formatar_cpf(rec_cpf)
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         cursor.execute("SELECT nome, email, celular FROM usuarios_sistema WHERE cpf = ?", (cpf_formatado,))
                         res_user = cursor.fetchone()
@@ -1246,7 +1360,6 @@ except: st.sidebar.markdown("### Cassilab SST")
 if not st.session_state["is_admin"]:
     st.sidebar.info(f"👤 **Perfil:** Colaborador\n🏢 **Empresa:** {st.session_state['empresa_usuario']}\n🔑 **Acesso:** {st.session_state['nivel_permissao']}")
 
-# Menu dinâmico: Clientes não veem Serviços Realizados, Cadastros Gerais nem Administração
 if st.session_state["is_admin"]:
     menu = st.sidebar.selectbox("Menu Principal", [
         "Dashboard / Visão Geral",
@@ -1272,6 +1385,39 @@ else:
     ])
 
 st.sidebar.markdown("---")
+
+if st.session_state.get("ultimo_excluido") is not None:
+    if st.sidebar.button("↩️ Desfazer Última Exclusão", use_container_width=True):
+        item_ex = st.session_state["ultimo_excluido"]
+        tab = item_ex["tabela"]
+        dados = item_ex["dados"]
+        
+        try:
+            conn = conectar_db()
+            cursor = conn.cursor()
+            
+            if "id" in dados:
+                dados_inserir = {k: v for k, v in dados.items() if k != "id"}
+            else:
+                dados_inserir = dados
+                
+            colunas_str = ", ".join(dados_inserir.keys())
+            placeholders = ", ".join(["?"] * len(dados_inserir))
+            valores = list(dados_inserir.values())
+            
+            cursor.execute(f"INSERT INTO {tab} ({colunas_str}) VALUES ({placeholders})", valores)
+            conn.commit()
+            conn.close()
+            
+            st.session_state["ultimo_excluido"] = None
+            st.session_state["msg_sucesso"] = "✅ Registro restaurado com sucesso!"
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"Erro ao restaurar: {e}")
+else:
+    st.sidebar.markdown("<p style='font-size: 11px; color: gray; text-align: center;'>Nenhum item para desfazer</p>", unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
 if st.sidebar.button("💾 Salvar tudo e Sair"):
     registrar_log(st.session_state.get("nome_usuario", "Desconhecido"), st.session_state.get("empresa_usuario", "Todas"), "Encerrou Sessão / Sair")
     st.session_state["autenticado"] = False
@@ -1286,19 +1432,17 @@ is_admin = st.session_state["is_admin"]
 emp_usuario = st.session_state["empresa_usuario"]
 nivel_permissao = st.session_state["nivel_permissao"]
 
-# Permissões detalhadas para clientes
 pode_lancar = is_admin or nivel_permissao in ["Lançar", "Editar", "Fazer Tudo"]
 pode_editar = is_admin or nivel_permissao in ["Editar", "Fazer Tudo"]
 pode_excluir = is_admin or nivel_permissao == "Fazer Tudo"
 
-# --- EXIBIÇÃO DO AVISO DE SUCESSO EM VERDE (POP-UP NO TOPO) ---
 if st.session_state.get("msg_sucesso"):
     st.markdown(f"""
         <div style="background-color: #d4edda; color: #155724; padding: 15px 25px; border-radius: 10px; border: 2px solid #28a745; text-align: center; font-weight: bold; font-size: 18px; margin-bottom: 20px; box-shadow: 0 6px 12px rgba(0,0,0,0.15);">
             {st.session_state["msg_sucesso"]}
         </div>
     """, unsafe_allow_html=True)
-    st.session_state["msg_sucesso"] = "" # Limpa para sumir após a leitura
+    st.session_state["msg_sucesso"] = ""
 
 # ==========================================
 # 0. DASHBOARD
@@ -1310,7 +1454,7 @@ if menu == "Dashboard / Visão Geral":
         st.write("")
         if st.button("🔄 Atualizar Esta Tela"): st.rerun()
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     try:
         total_empresas = pd.read_sql("SELECT COUNT(DISTINCT nome_empresa) as qtd FROM empresas WHERE nome_empresa IS NOT NULL AND nome_empresa != ''", conn).iloc[0]["qtd"] if is_admin else (1 if emp_usuario else 0)
         df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios", conn)
@@ -1422,7 +1566,7 @@ elif menu == "Cadastro de Empresas":
         if st.button("🔄 Atualizar Aba"): st.rerun()
 
     if is_admin:
-        with st.expander("➕ Adicionar Nova Empresa", expanded=True):
+        with st.expander("➕ Adicionar Nova Empresa", expanded=False):
             if "form_emp_nome" not in st.session_state: st.session_state["form_emp_nome"] = ""
             if "form_emp_cnpj" not in st.session_state: st.session_state["form_emp_cnpj"] = ""
             if "form_cep" not in st.session_state: st.session_state["form_cep"] = ""
@@ -1522,7 +1666,7 @@ elif menu == "Cadastro de Empresas":
                         cnpj_formatado = formatar_cnpj(cnpj)
                         data_registro_atual = datetime.now().strftime("%d/%m/%Y")
                         
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         try:
                             cursor.execute("""
@@ -1568,7 +1712,7 @@ elif menu == "Cadastro de Empresas":
                         st.error("O campo 'Nome da Empresa' é obrigatório.")
 
     st.subheader("Empresas Cadastradas")
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     df_emp = pd.read_sql("SELECT id, data_registro, nome_empresa, cnpj, endereco, bairro, cep, cidade, email, telefone, responsavel, cnae, grau_risco, qtd_funcionarios FROM empresas ORDER BY nome_empresa ASC", conn)
     conn.close()
 
@@ -1580,89 +1724,86 @@ elif menu == "Cadastro de Empresas":
         if "cnpj" in df_emp.columns: df_emp["cnpj"] = df_emp["cnpj"].apply(formatar_cnpj)
 
         df_emp["_id_banco"] = df_emp["id"]
-        cols_emp_ord = ["_id_banco"] + [c for c in df_emp.columns if c not in ["_id_banco", "id"]]
-        df_emp = df_emp[cols_emp_ord]
+        
+        if "sel_id_emp" not in st.session_state: st.session_state["sel_id_emp"] = None
+        df_emp["Selecionar"] = df_emp["_id_banco"] == st.session_state["sel_id_emp"]
+        
+        cols_emp_ord = ["Selecionar", "_id_banco", "nome_empresa", "cnpj", "cidade", "telefone", "email", "responsavel"]
+        df_emp_sel = df_emp[[c for c in cols_emp_ord if c in df_emp.columns]]
 
         if is_admin:
-            df_emp_exibicao = formatar_colunas_tabela(df_emp)
+            df_emp_exibicao = formatar_colunas_tabela(df_emp_sel)
             df_emp_exibicao = adicionar_numeracao(df_emp_exibicao)
+            
+            st.info("💡 **Dica:** Marque o quadradinho **'Selecionar'** na linha da empresa desejada para visualizar todos os dados completos em pop-up.")
             
             editado_emp = st.data_editor(
                 df_emp_exibicao, 
-                num_rows="dynamic", 
+                hide_index=True,
+                num_rows="fixed", 
                 key="editor_emp", 
                 use_container_width=True,
                 column_config={
+                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
                     "_id_banco": None,
                     "Nº": st.column_config.NumberColumn("Nº", disabled=True)
                 }
             )
-            chk_salvar_emp = st.checkbox("⚠️ Confirmo salvar as alterações feitas na tabela de empresas", key="chk_salvar_emp")
-            if st.button("💾 Salvar Alterações"):
-                if chk_salvar_emp:
-                    conn = sqlite3.connect(DB_NAME)
-                    cursor = conn.cursor()
-                    erro_duplicidade = False
-                    for _, row in editado_emp.iterrows():
-                        emp_id = row.get("_id_banco", row.get("id"))
-                        nome_emp_val = row.get("Nome Empresa", row.get("nome_empresa", ""))
-                        if pd.notna(nome_emp_val) and str(nome_emp_val).strip():
-                            try: qtd_func_val = int(row.get("Qtd Funcionários", row.get("qtd_funcionarios", 0)))
-                            except: qtd_func_val = 0
-                            
-                            try:
-                                if pd.notna(emp_id) and str(emp_id).strip() not in ("", "nan", "None"):
-                                    cursor.execute("""
-                                        UPDATE empresas SET data_registro=?, nome_empresa=?, cnpj=?, cep=?, cidade=?, bairro=?, endereco=?, telefone=?, email=?, responsavel=?, cnae=?, grau_risco=?, qtd_funcionarios=?
-                                        WHERE id=?
-                                    """, (
-                                        validar_e_formatar_data_input(row.get("Data Registro", row.get("data_registro"))),
-                                        formatar_titulo(nome_emp_val),
-                                        formatar_cnpj(row.get("CNPJ", row.get("cnpj"))),
-                                        str(row.get("CEP", row.get("cep", ""))).strip(),
-                                        formatar_titulo(row.get("Cidade", row.get("cidade", ""))),
-                                        formatar_titulo(row.get("Bairro", row.get("bairro", ""))),
-                                        formatar_titulo(row.get("Endereço", row.get("endereco", ""))),
-                                        str(row.get("Telefone", row.get("telefone", ""))).strip(),
-                                        str(row.get("E-mail", row.get("email", ""))).strip(),
-                                        formatar_titulo(row.get("Responsável", row.get("responsavel", ""))),
-                                        str(row.get("CNAE", row.get("cnae", ""))).strip(),
-                                        str(row.get("Grau Risco", row.get("grau_risco", "1"))).strip(),
-                                        qtd_func_val,
-                                        int(emp_id)
-                                    ))
-                                else:
-                                    cursor.execute("""
-                                        INSERT INTO empresas (data_registro, nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    """, (
-                                        validar_e_formatar_data_input(row.get("Data Registro", row.get("data_registro"))),
-                                        formatar_titulo(nome_emp_val),
-                                        formatar_cnpj(row.get("CNPJ", row.get("cnpj"))),
-                                        str(row.get("CEP", row.get("cep", ""))).strip(),
-                                        formatar_titulo(row.get("Cidade", row.get("cidade", ""))),
-                                        formatar_titulo(row.get("Bairro", row.get("bairro", ""))),
-                                        formatar_titulo(row.get("Endereço", row.get("endereco", ""))),
-                                        str(row.get("Telefone", row.get("telefone", ""))).strip(),
-                                        str(row.get("E-mail", row.get("email", ""))).strip(),
-                                        formatar_titulo(row.get("Responsável", row.get("responsavel", ""))),
-                                        str(row.get("CNAE", row.get("cnae", ""))).strip(),
-                                        str(row.get("Grau Risco", row.get("grau_risco", "1"))).strip(),
-                                        qtd_func_val
-                                    ))
-                            except sqlite3.IntegrityError:
-                                erro_duplicidade = True
-                    conn.commit()
-                    conn.close()
-                    if "editor_emp" in st.session_state: del st.session_state["editor_emp"]
-                    if erro_duplicidade:
-                        st.warning("Algumas alterações não foram salvas pois gerariam duplicidade de Nome ou CNPJ.")
-                    else:
-                        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                        registrar_log(st.session_state.get("nome_usuario", "Administrador"), "Todas", "Atualização na tabela de empresas")
-                        st.rerun()
+
+            curr_e = editado_emp[editado_emp["Selecionar"] == True]["_id_banco"].tolist()
+            new_e = [uid for uid in curr_e if uid != st.session_state["sel_id_emp"]]
+            if new_e:
+                st.session_state["sel_id_emp"] = new_e[-1]
+                st.rerun()
+            elif not curr_e and st.session_state["sel_id_emp"] is not None:
+                st.session_state["sel_id_emp"] = None
+                st.rerun()
+
+            linhas_sel_emp = editado_emp[editado_emp["Selecionar"] == True]
+
+            if st.button("💾 Salvar Alterações na Tabela de Empresas", use_container_width=True):
+                conn = conectar_db()
+                cursor = conn.cursor()
+                for _, row in editado_emp.iterrows():
+                    e_id = row.get("_id_banco", row.get("id"))
+                    n_nome = row.get("Nome Empresa", row.get("nome_empresa"))
+                    n_cnpj = row.get("CNPJ", row.get("cnpj"))
+                    n_cid = row.get("Cidade", row.get("cidade"))
+                    n_tel = row.get("Telefone", row.get("telefone"))
+                    n_email = row.get("E-mail", row.get("email"))
+                    n_resp = row.get("Responsável", row.get("responsavel"))
+                    
+                    if pd.notna(e_id) and str(e_id).strip() not in ("", "nan", "None"):
+                        cursor.execute("""
+                            UPDATE empresas 
+                            SET nome_empresa = ?, cnpj = ?, cidade = ?, telefone = ?, email = ?, responsavel = ?
+                            WHERE id = ?
+                        """, (
+                            formatar_titulo(n_nome),
+                            formatar_cnpj(n_cnpj),
+                            formatar_titulo(n_cid),
+                            str(n_tel or "").strip(),
+                            str(n_email or "").strip(),
+                            formatar_titulo(n_resp),
+                            int(e_id)
+                        ))
+                conn.commit()
+                conn.close()
+                if "editor_emp" in st.session_state: del st.session_state["editor_emp"]
+                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                registrar_log(st.session_state.get("nome_usuario", "Administrador"), "Todas", "Atualização na tabela de empresas")
+                st.rerun()
+
+            if st.button("👁️ Ver Dados Completos da Empresa Selecionada", use_container_width=True):
+                if len(linhas_sel_emp) == 1:
+                    st.session_state["modal_detalhes_emp_id"] = int(linhas_sel_emp.iloc[0]["_id_banco"])
+                    st.rerun()
                 else:
-                    st.warning("Marque a caixa de confirmação.")
+                    st.warning("⚠️ Selecione uma empresa marcando o quadradinho.")
+
+            if st.session_state.get("modal_detalhes_emp_id"):
+                dialog_detalhes_empresa(st.session_state["modal_detalhes_emp_id"])
+                st.session_state["modal_detalhes_emp_id"] = None
 
             st.markdown("---")
             st.subheader("🗑️ Excluir Empresa Definitivamente")
@@ -1674,7 +1815,7 @@ elif menu == "Cadastro de Empresas":
 
                 if btn_executar_exclusao:
                     if chk_excluir_emp and empresa_para_excluir:
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         cursor.execute("DELETE FROM empresas WHERE nome_empresa = ?", (empresa_para_excluir,))
                         cursor.execute("DELETE FROM base_funcionarios WHERE empresa = ?", (empresa_para_excluir,))
@@ -1725,7 +1866,7 @@ elif menu == "Cadastros Gerais":
                 
                 if btn_add_salvar_cargo:
                     if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         cargo_fmt = formatar_titulo(novo_cargo)
                         
@@ -1748,7 +1889,7 @@ elif menu == "Cadastros Gerais":
             st.markdown("---")
             filtro_cargo_emp = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas_cadastradas, key="filtro_cargo_emp_view")
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_cargos_geral = pd.read_sql("SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC", conn)
             conn.close()
             
@@ -1777,7 +1918,6 @@ elif menu == "Cadastros Gerais":
                     }
                 )
 
-                # Lógica de seleção exclusiva (marca um, desmarca o anterior)
                 curr_c_geral = edit_cargos[edit_cargos["Selecionar"] == True]["_id_banco"].tolist()
                 new_c_geral = [uid for uid in curr_c_geral if uid != st.session_state["sel_id_cargo_geral"]]
                 if new_c_geral:
@@ -1791,7 +1931,7 @@ elif menu == "Cadastros Gerais":
 
                 col_cg_1, col_cg_2 = st.columns(2)
                 if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True):
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     cursor = conn.cursor()
                     for _, row in edit_cargos.iterrows():
                         c_id = row.get("_id_banco", row.get("id"))
@@ -1828,7 +1968,7 @@ elif menu == "Cadastros Gerais":
                 
                 if btn_add_salvar_setor:
                     if empresa_setor_sel != "Nenhuma" and novo_setor.strip():
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         setor_fmt = formatar_titulo(novo_setor)
                         
@@ -1851,7 +1991,7 @@ elif menu == "Cadastros Gerais":
             st.markdown("---")
             filtro_setor_emp = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas_cadastradas, key="filtro_setor_emp_view")
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_setores_geral = pd.read_sql("SELECT id, empresa, setor FROM cad_setores ORDER BY empresa, setor ASC", conn)
             conn.close()
             
@@ -1893,7 +2033,7 @@ elif menu == "Cadastros Gerais":
 
                 col_st_1, col_st_2 = st.columns(2)
                 if col_st_1.button("💾 Salvar Alterações na Tabela de Setores", use_container_width=True):
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     cursor = conn.cursor()
                     for _, row in edit_setores.iterrows():
                         s_id = row.get("_id_banco", row.get("id"))
@@ -1929,7 +2069,7 @@ elif menu == "Cadastros Gerais":
                 
                 if btn_add_salvar_serv:
                     if novo_serv.strip():
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         try:
                             serv_fmt = formatar_titulo(novo_serv)
                             conn.execute("INSERT INTO cad_servicos (servico) VALUES (?)", (serv_fmt,))
@@ -1945,7 +2085,7 @@ elif menu == "Cadastros Gerais":
                         st.error("Preencha o nome do serviço.")
 
             st.markdown("---")
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_serv_geral = pd.read_sql("SELECT id, servico FROM cad_servicos ORDER BY servico ASC", conn)
             conn.close()
             if not df_serv_geral.empty:
@@ -1983,7 +2123,7 @@ elif menu == "Cadastros Gerais":
 
                 col_sv_1, col_sv_2 = st.columns(2)
                 if col_sv_1.button("💾 Salvar Alterações na Tabela de Serviços", use_container_width=True):
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     cursor = conn.cursor()
                     for _, row in edit_serv.iterrows():
                         s_id = row.get("_id_banco", row.get("id"))
@@ -2020,7 +2160,7 @@ elif menu == "Cadastros Gerais":
                 
                 if btn_add_salvar_trein:
                     if novo_trein.strip():
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         try:
                             trein_fmt = formatar_titulo(novo_trein)
                             conn.execute("INSERT INTO cad_treinamentos (treinamento, carga_horaria) VALUES (?, ?)", (trein_fmt, nova_carga.strip()))
@@ -2036,7 +2176,7 @@ elif menu == "Cadastros Gerais":
                         st.error("Preencha o nome do treinamento.")
 
             st.markdown("---")
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_trein_geral = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
             conn.close()
             if not df_trein_geral.empty:
@@ -2074,7 +2214,7 @@ elif menu == "Cadastros Gerais":
 
                 col_tr_1, col_tr_2 = st.columns(2)
                 if col_tr_1.button("💾 Salvar Alterações na Tabela de Treinamentos", use_container_width=True):
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     cursor = conn.cursor()
                     for _, row in edit_trein.iterrows():
                         t_id = row.get("_id_banco", row.get("id"))
@@ -2113,7 +2253,7 @@ elif menu == "Cadastros Gerais":
                 
                 if btn_add_salvar_epi:
                     if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         try:
                             epi_fmt = formatar_titulo(novo_epi_nome)
                             conn.execute("INSERT INTO cad_epis (empresa, epi, ca) VALUES (?, ?, ?)", (empresa_epi_sel, epi_fmt, novo_epi_ca.strip()))
@@ -2131,7 +2271,7 @@ elif menu == "Cadastros Gerais":
             st.markdown("---")
             filtro_epi_geral_emp = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas_cadastradas, key="filtro_epi_geral_emp_view")
             
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_epis_geral = pd.read_sql("SELECT id, empresa, epi, ca FROM cad_epis ORDER BY empresa, epi ASC", conn)
             conn.close()
             
@@ -2173,7 +2313,7 @@ elif menu == "Cadastros Gerais":
 
                 col_ep_1, col_ep_2 = st.columns(2)
                 if col_ep_1.button("💾 Salvar Alterações na Tabela de EPIs", use_container_width=True):
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     cursor = conn.cursor()
                     for _, row in edit_epis.iterrows():
                         epi_id = row.get("_id_banco", row.get("id"))
@@ -2253,7 +2393,7 @@ elif menu == "Gestão de Funcionários":
             
             if st.button("Salvar Funcionário", key="btn_salvar_func_novo"):
                 if empresa != "Nenhuma" and nome.strip() and cargo.strip():
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     cursor = conn.cursor()
                     nome_f_fmt = formatar_titulo(nome)
                     cursor.execute("""
@@ -2286,7 +2426,7 @@ elif menu == "Gestão de Funcionários":
     st.subheader("Funcionários Cadastrados")
     filtro_empresa_func = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas_cadastradas, key="filtro_func_emp", on_change=reset_func_selection) if is_admin else emp_usuario
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     df = pd.read_sql("SELECT * FROM base_funcionarios ORDER BY funcionario ASC", conn)
     conn.close()
 
@@ -2326,7 +2466,6 @@ elif menu == "Gestão de Funcionários":
                 }
             )
 
-            # Lógica de seleção exclusiva
             curr_f = editado_func[editado_func["Selecionar"] == True]["_id_banco"].tolist()
             new_f = [uid for uid in curr_f if uid != st.session_state["sel_id_func"]]
             if new_f:
@@ -2382,7 +2521,7 @@ elif menu == "Treinamentos":
     if pode_lancar:
         with st.expander("➕ Inserção de Treinamento", expanded=False):
             empresa_sel = st.selectbox("Selecione a Empresa", empresas, key="emp_trein") if is_admin else emp_usuario
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios ORDER BY funcionario ASC", conn)
             df_cad_trein = pd.read_sql("SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
             conn.close()
@@ -2411,7 +2550,7 @@ elif menu == "Treinamentos":
                     status_tr = c1.selectbox("Status", ["🟢 em dia", "🔴 vencido"])
                     
                     if st.form_submit_button("Salvar Treinamento"):
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         cursor = conn.cursor()
                         cursor.execute("""
                             INSERT INTO treinamentos (empresa, matricula, funcionario, cargo, setor, treinamento, carga_horaria, pessoas_treinadas, data_realizacao, validade, status) 
@@ -2430,7 +2569,7 @@ elif menu == "Treinamentos":
 
     st.subheader("Treinamentos Registrados")
     filtro_tr = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_tr_emp", on_change=reset_tr_selection) if is_admin else emp_usuario
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     df_tr = pd.read_sql("SELECT * FROM treinamentos ORDER BY funcionario ASC", conn)
     conn.close()
 
@@ -2524,7 +2663,7 @@ elif menu == "Exames Ocupacionais":
     if pode_lancar:
         with st.expander("➕ Adicionar Novo Exame", expanded=False):
             empresa_sel = st.selectbox("Selecione a Empresa", empresas, key="ex_emp") if is_admin else emp_usuario
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios ORDER BY funcionario ASC", conn)
             conn.close()
             
@@ -2543,7 +2682,7 @@ elif menu == "Exames Ocupacionais":
                     proximo = c2.text_input("Data Próximo Exame", value=datetime.today().strftime("%d/%m/%Y"))
                     status_ex = c2.selectbox("Status", ["🟢 Válido", "🟠 A Vencer", "🔴 Vencido"])
                     if st.form_submit_button("Salvar Exame"):
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         conn.execute("INSERT INTO exames (empresa, matricula, funcionario, cargo, setor, ultimo_exame, tipo_exame, proximo_exame, status) VALUES (?,?,?,?,?,?,?,?,?)",
                                      (empresa_sel, colab['matricula'], nome_sel, colab['cargo'], colab['setor'], validar_e_formatar_data_input(ultimo), tipo_ex, validar_e_formatar_data_input(proximo), limpar_status_banco(status_ex)))
                         conn.commit()
@@ -2556,8 +2695,12 @@ elif menu == "Exames Ocupacionais":
                         st.rerun()
 
     st.subheader("Exames Registrados")
-    filtro_ex = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_ex_emp", on_change=reset_ex_selection) if is_admin else emp_usuario
-    conn = sqlite3.connect(DB_NAME)
+    
+    # Filtros dispostos na tela (Empresa e o novo Filtro por Mês de Vencimento Passado, Presente e Futuro)
+    col_fx1, col_fx2 = st.columns(2)
+    filtro_ex = col_fx1.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_ex_emp", on_change=reset_ex_selection) if is_admin else emp_usuario
+
+    conn = conectar_db()
     df_ex = pd.read_sql("SELECT * FROM exames ORDER BY funcionario ASC", conn)
     conn.close()
 
@@ -2565,6 +2708,25 @@ elif menu == "Exames Ocupacionais":
         df_ex = df_ex[df_ex["empresa"].astype(str).str.strip().str.lower() == str(filtro_ex).strip().lower()]
     elif not is_admin and not df_ex.empty:
         df_ex = df_ex[df_ex["empresa"].astype(str).str.strip().str.lower() == str(emp_usuario).strip().lower()]
+
+    if not df_ex.empty:
+        # Criação dinâmica e ordenada cronologicamente de todas as opções de meses (passados, presentes e futuros)
+        df_ex["_dt_prox_temp"] = pd.to_datetime(df_ex["proximo_exame"], dayfirst=True, errors="coerce")
+        meses_vencimento_disponiveis = ["Todos os Meses"]
+        if df_ex["_dt_prox_temp"].notna().any():
+            m_unicos_ex = df_ex["_dt_prox_temp"].dropna().dt.strftime("%m/%Y").unique()
+            # Ordenação cronológica correta (passados, mês atual e futuros)
+            m_unicos_ex = sorted(m_unicos_ex, key=lambda x: datetime.strptime(x, "%m/%Y"))
+            meses_vencimento_disponiveis.extend(m_unicos_ex)
+
+        filtro_mes_vencimento = col_fx2.selectbox("📅 Filtrar por Mês de Vencimento (Passado, Presente ou Futuro)", meses_vencimento_disponiveis, key="filtro_ex_mes_venc", on_change=reset_ex_selection)
+
+        if filtro_mes_vencimento != "Todos os Meses":
+            df_ex["_mes_ano_prox"] = df_ex["_dt_prox_temp"].dt.strftime("%m/%Y")
+            df_ex = df_ex[df_ex["_mes_ano_prox"] == filtro_mes_vencimento]
+            df_ex = df_ex.drop(columns=["_mes_ano_prox"])
+
+        df_ex = df_ex.drop(columns=["_dt_prox_temp"])
 
     if not df_ex.empty:
         df_ex["ultimo_exame"] = df_ex["ultimo_exame"].apply(formatar_data_br)
@@ -2635,7 +2797,7 @@ elif menu == "Exames Ocupacionais":
             df_ex_exib = adicionar_numeracao(df_ex_exib)
             st.dataframe(formatar_colunas_tabela(df_ex_exib), use_container_width=True, hide_index=True)
     else:
-        st.info("ℹ️ Nenhum exame encontrado.")
+        st.info("ℹ️ Nenhum exame encontrado para este filtro.")
 
 # ==========================================
 # 6. CONTROLE DE EPIS
@@ -2652,7 +2814,7 @@ elif menu == "Controle de EPIs":
     if pode_lancar:
         with st.expander("➕ Registrar Entrega de EPI", expanded=False):
             empresa_sel = st.selectbox("Selecione a Empresa", empresas, key="emp_epi") if is_admin else emp_usuario
-            conn_e = sqlite3.connect(DB_NAME)
+            conn_e = conectar_db()
             df_e_all = pd.read_sql("SELECT epi, ca, empresa FROM cad_epis ORDER BY epi ASC", conn_e)
             df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios ORDER BY funcionario ASC", conn_e)
             conn_e.close()
@@ -2674,7 +2836,7 @@ elif menu == "Controle de EPIs":
                     qtd = c2.number_input("Quantidade", min_value=1, value=1)
                     status_epi = c1.selectbox("Status", ["🟢 Entregue", "🟠 Devolvido", "🟡 Substituído"])
                     if st.form_submit_button("Salvar EPI"):
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         conn.execute("INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status) VALUES (?,?,?,?,?,?,?,?,?,?)",
                                      (empresa_sel, colab['matricula'], nome_sel, colab['cargo'], colab['setor'], epi_sel, ca_epi, validar_e_formatar_data_input(data_entrega), int(qtd), limpar_status_banco(status_epi)))
                         conn.commit()
@@ -2687,7 +2849,7 @@ elif menu == "Controle de EPIs":
 
     st.subheader("EPIs Registrados")
     filtro_ep = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_ep_emp", on_change=reset_epi_selection) if is_admin else emp_usuario
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     df_ep = pd.read_sql("SELECT * FROM epis ORDER BY funcionario ASC", conn)
     conn.close()
 
@@ -2782,7 +2944,7 @@ elif menu == "Serviços Realizados":
         empresas = get_empresas()
         
         with st.expander("➕ Registrar Novo Serviço Realizado", expanded=False):
-            conn = sqlite3.connect(DB_NAME)
+            conn = conectar_db()
             df_cad_serv = pd.read_sql("SELECT servico FROM cad_servicos ORDER BY servico ASC", conn)
             conn.close()
             lista_serv_cad = df_cad_serv["servico"].tolist() if not df_cad_serv.empty else []
@@ -2806,7 +2968,7 @@ elif menu == "Serviços Realizados":
                     observacoes_srv = c2.text_input("Observações")
                     
                     if st.form_submit_button("Salvar Serviço"):
-                        conn = sqlite3.connect(DB_NAME)
+                        conn = conectar_db()
                         serv_fmt = formatar_titulo(servico_sel)
                         conn.execute("""
                             INSERT INTO servicos_realizados 
@@ -2835,7 +2997,7 @@ elif menu == "Serviços Realizados":
         col_f1, col_f2 = st.columns(2)
         filtro_srv = col_f1.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_srv_emp_trad", on_change=reset_serv_selection)
 
-        conn = sqlite3.connect(DB_NAME)
+        conn = conectar_db()
         df_serv = pd.read_sql("SELECT id, empresa, servico, data_realizacao, responsavel, observacoes, status, valor, nfes FROM servicos_realizados", conn)
         conn.close()
 
@@ -2952,7 +3114,7 @@ elif menu == "Administração":
         st.subheader("👥 Controle de Acessos e Níveis de Permissão")
         st.markdown("Defina o nível de permissão de cada usuário diretamente na tabela abaixo (**Somente Visualizar**, **Lançar**, **Editar** ou **Fazer Tudo**) e clique em salvar.")
         
-        conn = sqlite3.connect(DB_NAME)
+        conn = conectar_db()
         df_users = pd.read_sql("SELECT id, nome, cpf, empresa, email, celular, status, nivel_permissao FROM usuarios_sistema", conn)
         conn.close()
 
@@ -2997,7 +3159,7 @@ elif menu == "Administração":
 
             col_salvar_niveis, col_esp = st.columns([1, 1])
             if col_salvar_niveis.button("💾 Salvar Alterações de Níveis de Acesso", use_container_width=True):
-                conn = sqlite3.connect(DB_NAME)
+                conn = conectar_db()
                 cursor = conn.cursor()
                 for _, row in edit_users.iterrows():
                     u_id = row.get("_id_banco")
@@ -3017,7 +3179,7 @@ elif menu == "Administração":
             if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     conn.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE id = ?", (uid,))
                     conn.commit()
                     conn.close()
@@ -3032,7 +3194,7 @@ elif menu == "Administração":
             if cu2.button("🚫 Bloquear Acesso Selecionado", use_container_width=True):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
-                    conn = sqlite3.connect(DB_NAME)
+                    conn = conectar_db()
                     conn.execute("UPDATE usuarios_sistema SET status = 'Bloqueado' WHERE id = ?", (uid,))
                     conn.commit()
                     conn.close()
@@ -3060,7 +3222,7 @@ elif menu == "Administração":
 
         st.markdown("---")
         st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
-        conn = sqlite3.connect(DB_NAME)
+        conn = conectar_db()
         df_logs = pd.read_sql("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", conn)
         conn.close()
 
@@ -3080,7 +3242,6 @@ elif menu == "Administração":
         st.subheader("💾 Backup do Banco de Dados")
         with open(DB_NAME, "rb") as f:
             st.download_button("📥 Baixar Backup (.db)", f, file_name="cassilab_gestao.db", mime="application/octet-stream")
-
 # ==========================================
 # 9. RELATÓRIOS CONSOLIDADOS
 # ==========================================
@@ -3091,6 +3252,67 @@ elif menu == "Relatórios Consolidados":
         st.write("")
         if st.button("🔄 Atualizar Aba"): st.rerun()
 
+    empresas = get_empresas()
+    empresa_filtro = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas) if is_admin else emp_usuario
+    
+    # Nome dinâmico para o arquivo
+    nome_empresa_arquivo = empresa_filtro if empresa_filtro != "Todas as Empresas" else "Geral"
+    titulo_personalizado = f"Relatorio Consolidado - {nome_empresa_arquivo}"
+
+    # CSS avançado para forçar alta nitidez, preto puro nas tabelas interativas e ocultar botões/menus na impressão
+    st.markdown("""
+        <style>
+        /* Força texto preto e nítido nas tabelas editáveis do Streamlit */
+        [data-testid="stDataFrame"] div, [data-testid="stDataEditor"] div, th, td {
+            color: #000000 !important;
+        }
+        
+        @media print {
+            /* Oculta elementos da interface que não devem sair no PDF */
+            header, footer, [data-testid="stSidebar"], .stButton, .stSelectbox, .stCheckbox, div.row-widget {
+                display: none !important;
+            }
+            
+            body, .stApp {
+                background-color: white !important;
+                color: black !important;
+            }
+
+            /* Garante que as tabelas saiam nítidas e com linhas nítidas no PDF */
+            [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+                border: 1px solid #000000 !important;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Botão estilizado em HTML que altera o título da página principal e imprime ao clicar
+    components.html(
+        f"""
+        <div style="margin-bottom: 15px;">
+            <button onclick="
+                parent.document.title = '{titulo_personalizado}';
+                parent.window.print();
+            " style="
+                background-color: #28a745; 
+                color: white; 
+                border: none; 
+                padding: 10px 20px; 
+                text-align: center; 
+                display: inline-block; 
+                font-size: 16px; 
+                border-radius: 6px; 
+                cursor: pointer; 
+                font-weight: bold;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            ">
+                🖨️ Imprimir / Salvar Relatório em Alta Nitidez
+            </button>
+        </div>
+        """,
+        height=55
+    )
+
     c1, c2, c3, c4, c5 = st.columns(5)
     inc_func = c1.checkbox("👥 Funcionários", value=True)
     inc_ex = c2.checkbox("🩺 Exames", value=True)
@@ -3098,10 +3320,19 @@ elif menu == "Relatórios Consolidados":
     inc_ep = c4.checkbox("🦺 EPIs", value=True)
     inc_srv = c5.checkbox("🛠️ Serviços", value=True) if is_admin else False
     
-    empresas = get_empresas()
-    empresa_filtro = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas) if is_admin else emp_usuario
-    conn = sqlite3.connect(DB_NAME)
+    conn = conectar_db()
     
+    def exibir_tabela_ajustavel(df_input, chave_editor):
+        """Exibe o DataFrame como tabela interativa permitindo redimensionar colunas."""
+        if df_input is not None and not df_input.empty:
+            st.data_editor(
+                df_input,
+                hide_index=True,
+                disabled=True,
+                use_container_width=True,
+                key=chave_editor
+            )
+
     if inc_func:
         st.subheader("Funcionários")
         df_f = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status FROM base_funcionarios", conn)
@@ -3112,7 +3343,7 @@ elif menu == "Relatórios Consolidados":
         if not df_f.empty: 
             df_f_ex = formatar_colunas_tabela(df_f)
             df_f_ex = adicionar_numeracao(df_f_ex)
-            st.dataframe(df_f_ex, use_container_width=True, hide_index=True)
+            exibir_tabela_ajustavel(df_f_ex, "tabela_rel_func")
 
     if inc_ex:
         st.subheader("Exames")
@@ -3124,7 +3355,7 @@ elif menu == "Relatórios Consolidados":
         if not df_e.empty: 
             df_e_ex = formatar_colunas_tabela(df_e)
             df_e_ex = adicionar_numeracao(df_e_ex)
-            st.dataframe(df_e_ex, use_container_width=True, hide_index=True)
+            exibir_tabela_ajustavel(df_e_ex, "tabela_rel_ex")
 
     if inc_tr:
         st.subheader("Treinamentos")
@@ -3136,7 +3367,7 @@ elif menu == "Relatórios Consolidados":
         if not df_t.empty: 
             df_t_ex = formatar_colunas_tabela(df_t)
             df_t_ex = adicionar_numeracao(df_t_ex)
-            st.dataframe(df_t_ex, use_container_width=True, hide_index=True)
+            exibir_tabela_ajustavel(df_t_ex, "tabela_rel_tr")
 
     if inc_ep:
         st.subheader("EPIs")
@@ -3148,7 +3379,7 @@ elif menu == "Relatórios Consolidados":
         if not df_p.empty: 
             df_p_ex = formatar_colunas_tabela(df_p)
             df_p_ex = adicionar_numeracao(df_p_ex)
-            st.dataframe(df_p_ex, use_container_width=True, hide_index=True)
+            exibir_tabela_ajustavel(df_p_ex, "tabela_rel_ep")
 
     if inc_srv and is_admin:
         st.subheader("Serviços")
@@ -3160,9 +3391,8 @@ elif menu == "Relatórios Consolidados":
             df_s["data_realizacao"] = df_s["data_realizacao"].apply(formatar_data_br)
             df_s_ex = formatar_colunas_tabela(df_s)
             df_s_ex = adicionar_numeracao(df_s_ex)
-            st.dataframe(df_s_ex, use_container_width=True, hide_index=True)
+            exibir_tabela_ajustavel(df_s_ex, "tabela_rel_srv")
     conn.close()
-
 # --- CHAMADA GLOBAL DO MODAL DE EXCLUSÃO (PERSISTENTE) ---
 if st.session_state.get("modal_excluir_ativo"):
     dialog_excluir(
