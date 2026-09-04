@@ -8,6 +8,9 @@ import requests
 import csv
 import shutil
 import streamlit.components.v1 as components
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Configuração da Página
 st.set_page_config(page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide")
@@ -31,10 +34,7 @@ def fazer_backup_automatico():
         nome_arquivo_backup = os.path.join(pasta_backup, f"cassilab_backup_{data_hora}.db")
         
         try:
-            # 1. Faz a cópia do backup atual
             shutil.copy(DB_NAME, nome_arquivo_backup)
-            
-            # 2. Rotina para apagar backups com mais de 7 dias
             dias_para_guardar = 7
             agora = datetime.now()
             
@@ -118,7 +118,6 @@ def sincronizar_status_exames():
                 prox = row["proximo_exame"]
                 cargo = row["cargo"]
                 
-                # Se for sócio, proprietário ou diretor, o exame é sempre Válido e isento de vencimento
                 if verificar_cargo_isento_exame(cargo):
                     novo_st = "Válido"
                 else:
@@ -130,7 +129,7 @@ def sincronizar_status_exames():
                                 diff = (dt - hoje).days
                                 if diff < 0:
                                     novo_st = "Vencido"
-                                elif diff <= 15:
+                                elif diff <= 30:
                                     novo_st = "A Vencer"
                                 else:
                                     novo_st = "Válido"
@@ -147,7 +146,6 @@ def init_db():
     conn = conectar_db()
     cursor = conn.cursor()
     
-    # 1. Tabela Grau de Risco NR-04 (Tabela Oficial)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
             cnae TEXT PRIMARY KEY,
@@ -172,7 +170,6 @@ def init_db():
         except:
             pass
 
-    # 2. Tabela Empresas
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -197,19 +194,6 @@ def init_db():
     except:
         pass
     
-    cursor.execute("PRAGMA table_info(empresas);")
-    cols_emp_db = [col[1] for col in cursor.fetchall()]
-    if "data_registro" not in cols_emp_db:
-        try: cursor.execute("ALTER TABLE empresas ADD COLUMN data_registro TEXT;")
-        except: pass
-    if "cnae" not in cols_emp_db:
-        try: cursor.execute("ALTER TABLE empresas ADD COLUMN cnae TEXT;")
-        except: pass
-            
-    data_hoje = datetime.now().strftime("%d/%m/%Y")
-    cursor.execute("UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR data_registro = '' OR data_registro = 'nan'", (data_hoje,))
-    
-    # 3. Tabela Funcionários
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,7 +208,6 @@ def init_db():
         )
     """)
     
-    # 4. Tabela Usuários do Sistema
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_sistema (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,21 +221,7 @@ def init_db():
             nivel_permissao TEXT DEFAULT 'Somente Visualizar'
         )
     """)
-    
-    cursor.execute("PRAGMA table_info(usuarios_sistema);")
-    cols_user_db = [col[1] for col in cursor.fetchall()]
-    for col_nova, tipo_col in [("email", "TEXT"), ("celular", "TEXT"), ("status", "TEXT"), ("nivel_permissao", "TEXT")]:
-        if col_nova not in cols_user_db:
-            try: cursor.execute(f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
-            except: pass
-    
-    try:
-        cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
-        cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
-    except:
-        pass
 
-    # 5. Tabela Exames
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS exames (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,7 +237,6 @@ def init_db():
         )
     """)
     
-    # 6. Tabela Treinamentos
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS treinamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -286,16 +254,6 @@ def init_db():
         )
     """)
     
-    cursor.execute("PRAGMA table_info(treinamentos);")
-    cols_tr_db = [col[1] for col in cursor.fetchall()]
-    if "pessoas_treinadas" not in cols_tr_db:
-        try: cursor.execute("ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;")
-        except: pass
-    if "validade" not in cols_tr_db:
-        try: cursor.execute("ALTER TABLE treinamentos ADD COLUMN validade TEXT;")
-        except: pass
-
-    # 7. Tabela EPIs
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,7 +270,6 @@ def init_db():
         )
     """)
 
-    # 8. Tabela Serviços Realizados
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS servicos_realizados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -327,16 +284,6 @@ def init_db():
         )
     """)
 
-    cursor.execute("PRAGMA table_info(servicos_realizados);")
-    cols_srv_db = [col[1] for col in cursor.fetchall()]
-    if "valor" not in cols_srv_db:
-        try: cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;")
-        except: pass
-    if "nfes" not in cols_srv_db:
-        try: cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN nfes TEXT;")
-        except: pass
-
-    # 9. Tabela Documentos
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -348,7 +295,6 @@ def init_db():
         )
     """)
 
-    # 10. Tabela Logs de Sistema / Auditoria
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs_sistema (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,7 +305,6 @@ def init_db():
         )
     """)
 
-    # Tabelas de Apoio
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_cargos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -394,16 +339,21 @@ def init_db():
         )
     """)
     
-    cursor.execute("PRAGMA table_info(cad_treinamentos);")
-    cols_cad_tr = [col[1] for col in cursor.fetchall()]
-    if "carga_horaria" not in cols_cad_tr:
-        try: cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;")
-        except: pass
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_servicos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             servico TEXT UNIQUE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_alertas_enviados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empresa TEXT,
+            tipo_item TEXT,
+            id_item INTEGER,
+            data_vencimento TEXT,
+            data_envio TEXT
         )
     """)
     
@@ -570,8 +520,6 @@ def dialog_editar_funcionario(id_alvo):
                     id_alvo
                 ))
                 conn.commit()
-                
-                # Atualiza também o cargo nos exames vinculados a este funcionário para refletir a regra de sócio/proprietário
                 conn.execute("UPDATE exames SET cargo = ? WHERE empresa = ? AND funcionario = ?", (formatar_titulo(novo_cargo), f_emp, formatar_titulo(novo_nome)))
                 conn.commit()
                 conn.close()
@@ -1210,7 +1158,6 @@ def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
     indices_validos = []
     
     for idx, row in df.iterrows():
-        # Se for exame e o cargo for de sócio/proprietário/diretor, ignora dos alertas de vencimento
         if "proximo_exame" in df.columns and verificar_cargo_isento_exame(row.get("cargo", "")):
             continue
 
@@ -1226,7 +1173,7 @@ def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
                 try:
                     dt = datetime.strptime(str(dt_val).strip(), fmt)
                     diff = (dt - hoje).days
-                    if diff <= 15:
+                    if diff <= 30:
                         indices_validos.append(idx)
                     break
                 except ValueError:
@@ -1485,12 +1432,139 @@ if menu == "Dashboard / Visão Geral":
     st.markdown("---")
 
     if is_admin:
-        st.markdown("### ⚠️ Painel de Alertas (Vencidos e a vencer em até 15 dias) - Acesso Restrito Admin")
+        st.markdown("### ⚠️ Painel de Alertas (Vencidos e a vencer em até 30 dias) - Acesso Restrito Admin")
         
+        # Botão oficial de disparo em massa com trava de envio único para exames, treinamentos e documentos
+        if st.button("📧 Disparar Alertas para os Clientes", key="btn_disparar_alertas_producao"):
+            remetente = st.session_state.get("email_remetente", "")
+            senha = st.session_state.get("senha_remetente", "")
+            
+            if not remetente or not senha:
+                st.error("Configure o e-mail e a senha na aba Administração antes de disparar.")
+            else:
+                conn = conectar_db()
+                df_empresas_cad = pd.read_sql("SELECT nome_empresa, email FROM empresas WHERE email IS NOT NULL AND email != ''", conn)
+                conn.close()
+                
+                if df_empresas_cad.empty:
+                    st.warning("Nenhuma empresa cadastrada possui e-mail de contato preenchido.")
+                else:
+                    enviados_contador = 0
+                    hoje_str = datetime.now().strftime("%d/%m/%Y")
+                    
+                    for _, emp_row in df_empresas_cad.iterrows():
+                        nome_emp = emp_row["nome_empresa"]
+                        email_dest = emp_row["email"].strip()
+                        
+                        df_ex_emp = df_ex_all[df_ex_all["empresa"].astype(str).str.strip().str.lower() == str(nome_emp).strip().lower()]
+                        df_tr_emp = df_tr_all[df_tr_all["empresa"].astype(str).str.strip().str.lower() == str(nome_emp).strip().lower()]
+                        df_docs_emp = df_docs_all[df_docs_all["empresa"].astype(str).str.strip().str.lower() == str(nome_emp).strip().lower()]
+                        
+                        df_ex_alert = filtrar_vencidos_e_proximos(df_ex_emp, "proximo_exame", "status")
+                        df_tr_alert = filtrar_vencidos_e_proximos(df_tr_emp, "validade", "status")
+                        df_docs_alert = filtrar_vencidos_e_proximos(df_docs_emp, "validade", "status")
+                        
+                        novos_itens_para_enviar = []
+                        
+                        conn = conectar_db()
+                        cursor = conn.cursor()
+                        
+                        # Verifica exames
+                        for _, r in df_ex_alert.iterrows():
+                            item_id = r["id"]
+                            dt_venc = r["proximo_exame"]
+                            cursor.execute("""
+                                SELECT id FROM historico_alertas_enviados 
+                                WHERE empresa = ? AND tipo_item = 'exame' AND id_item = ? AND data_vencimento = ?
+                            """, (nome_emp, item_id, dt_venc))
+                            if not cursor.fetchone():
+                                novos_itens_para_enviar.append(("exame", r))
+                                
+                        # Verifica treinamentos
+                        for _, r in df_tr_alert.iterrows():
+                            item_id = r["id"]
+                            dt_venc = r["validade"]
+                            cursor.execute("""
+                                SELECT id FROM historico_alertas_enviados 
+                                WHERE empresa = ? AND tipo_item = 'treinamento' AND id_item = ? AND data_vencimento = ?
+                            """, (nome_emp, item_id, dt_venc))
+                            if not cursor.fetchone():
+                                novos_itens_para_enviar.append(("treinamento", r))
+
+                        # Verifica documentos
+                        for _, r in df_docs_alert.iterrows():
+                            item_id = r["id"]
+                            dt_venc = r["validade"]
+                            cursor.execute("""
+                                SELECT id FROM historico_alertas_enviados 
+                                WHERE empresa = ? AND tipo_item = 'documento' AND id_item = ? AND data_vencimento = ?
+                            """, (nome_emp, item_id, dt_venc))
+                            if not cursor.fetchone():
+                                novos_itens_para_enviar.append(("documento", r))
+                                
+                        conn.close()
+                        
+                        if novos_itens_para_enviar:
+                            texto_alerta = f"Prezada empresa {nome_emp},\n\nO sistema Cassilab SST identificou novas pendências ou vencimentos para a sua equipe:\n\n"
+                            
+                            exames_novos = [item[1] for item in novos_itens_para_enviar if item[0] == 'exame']
+                            treins_novos = [item[1] for item in novos_itens_para_enviar if item[0] == 'treinamento']
+                            docs_novos = [item[1] for item in novos_itens_para_enviar if item[0] == 'documento']
+                            
+                            if exames_novos:
+                                texto_alerta += "--- EXAMES OCUPACIONAIS ---\n"
+                                for r in exames_novos:
+                                    texto_alerta += f"- Funcionário: {r['funcionario']} | Exame: {r['tipo_exame']} | Vencimento: {r['proximo_exame']}\n"
+                                texto_alerta += "\n"
+                                
+                            if treins_novos:
+                                texto_alerta += "--- TREINAMENTOS ---\n"
+                                for r in treins_novos:
+                                    texto_alerta += f"- Funcionário: {r['funcionario']} | Treinamento: {r['treinamento']} | Validade: {r['validade']}\n"
+                                texto_alerta += "\n"
+
+                            if docs_novos:
+                                texto_alerta += "--- DOCUMENTOS ---\n"
+                                for r in docs_novos:
+                                    texto_alerta += f"- Documento: {r['documento']} | Validade: {r['validade']}\n"
+                                texto_alerta += "\n"
+                                
+                            texto_alerta += "Atenciosamente,\nCassilab Consultoria e Treinamentos em SST\n\n---\nEste é um e-mail automático enviado pelo sistema de gestão SST. Por favor, não responda a esta mensagem."
+                            
+                            try:
+                                msg = MIMEMultipart()
+                                msg['From'] = remetente
+                                msg['To'] = email_dest
+                                msg['Subject'] = f"⚠️ Alerta de Vencimentos SST - {nome_emp}"
+                                msg.attach(MIMEText(texto_alerta, 'plain'))
+                                
+                                servidor = smtplib.SMTP('smtp.gmail.com', 587)
+                                servidor.starttls()
+                                servidor.login(remetente, senha)
+                                servidor.sendmail(remetente, email_dest, msg.as_string())
+                                servidor.quit()
+                                
+                                conn = conectar_db()
+                                cursor = conn.cursor()
+                                for tipo_t, r in novos_itens_para_enviar:
+                                    dt_val_reg = r["proximo_exame"] if tipo_t == 'exame' else r["validade"]
+                                    cursor.execute("""
+                                        INSERT INTO historico_alertas_enviados (empresa, tipo_item, id_item, data_vencimento, data_envio)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (nome_emp, tipo_t, r["id"], dt_val_reg, hoje_str))
+                                conn.commit()
+                                conn.close()
+                                
+                                enviados_contador += 1
+                            except Exception as err_env:
+                                pass
+                                
+                    st.success(f"✅ Disparo concluído! E-mails enviados apenas para {enviados_contador} empresa(s) que possuíam **novos** vencimentos não notificados.")
+
         col_v1, col_v2, col_v3 = st.columns(3)
         
         with col_v1:
-            st.markdown("#### 🩺 Exames (Vencidos / 15 dias)")
+            st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
             df_ex_alertas = filtrar_vencidos_e_proximos(df_ex_all, "proximo_exame", "status")
             if not df_ex_alertas.empty:
                 res_ex = df_ex_alertas[["empresa", "funcionario", "tipo_exame", "proximo_exame"]].drop_duplicates()
@@ -1500,7 +1574,7 @@ if menu == "Dashboard / Visão Geral":
                 st.success("Nenhum exame vencido ou próximo.")
                 
         with col_v2:
-            st.markdown("#### 📚 Treinamentos (Vencidos / 15 dias)")
+            st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
             df_tr_alertas = filtrar_vencidos_e_proximos(df_tr_all, "validade", "status")
             if not df_tr_alertas.empty:
                 res_tr = df_tr_alertas[["empresa", "funcionario", "treinamento"]].drop_duplicates()
@@ -1510,7 +1584,7 @@ if menu == "Dashboard / Visão Geral":
                 st.success("Nenhum treinamento vencido ou próximo.")
                 
         with col_v3:
-            st.markdown("#### 📄 Documentos (Vencidos / 15 dias)")
+            st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
             df_docs_alertas = filtrar_vencidos_e_proximos(df_docs_all, "validade", "status")
             if not df_docs_alertas.empty:
                 res_doc = df_docs_alertas[["empresa", "documento"]].drop_duplicates()
@@ -2696,7 +2770,6 @@ elif menu == "Exames Ocupacionais":
 
     st.subheader("Exames Registrados")
     
-    # Filtros dispostos na tela (Empresa e o novo Filtro por Mês de Vencimento Passado, Presente e Futuro)
     col_fx1, col_fx2 = st.columns(2)
     filtro_ex = col_fx1.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_ex_emp", on_change=reset_ex_selection) if is_admin else emp_usuario
 
@@ -2710,12 +2783,10 @@ elif menu == "Exames Ocupacionais":
         df_ex = df_ex[df_ex["empresa"].astype(str).str.strip().str.lower() == str(emp_usuario).strip().lower()]
 
     if not df_ex.empty:
-        # Criação dinâmica e ordenada cronologicamente de todas as opções de meses (passados, presentes e futuros)
         df_ex["_dt_prox_temp"] = pd.to_datetime(df_ex["proximo_exame"], dayfirst=True, errors="coerce")
         meses_vencimento_disponiveis = ["Todos os Meses"]
         if df_ex["_dt_prox_temp"].notna().any():
             m_unicos_ex = df_ex["_dt_prox_temp"].dropna().dt.strftime("%m/%Y").unique()
-            # Ordenação cronológica correta (passados, mês atual e futuros)
             m_unicos_ex = sorted(m_unicos_ex, key=lambda x: datetime.strptime(x, "%m/%Y"))
             meses_vencimento_disponiveis.extend(m_unicos_ex)
 
@@ -3111,6 +3182,19 @@ elif menu == "Administração":
     if not is_admin:
         st.warning("🔒 Área exclusiva para o Administrador.")
     else:
+        # Configurações de E-mail para Disparo
+        st.subheader("⚙️ Configurações de E-mail para Disparos de Alerta")
+        with st.form("form_config_email"):
+            remetente_email = st.text_input("E-mail de Disparo (Remetente)", value=st.session_state.get("email_remetente", ""))
+            senha_email = st.text_input("Senha do E-mail (Gmail App)", type="password", value=st.session_state.get("senha_remetente", ""))
+            btn_salvar_config = st.form_submit_button("Salvar Configurações de E-mail")
+            
+            if btn_salvar_config:
+                st.session_state["email_remetente"] = remetente_email.strip()
+                st.session_state["senha_remetente"] = senha_email.strip()
+                st.success("✅ Configurações de e-mail salvas com sucesso!")
+
+        st.markdown("---")
         st.subheader("👥 Controle de Acessos e Níveis de Permissão")
         st.markdown("Defina o nível de permissão de cada usuário diretamente na tabela abaixo (**Somente Visualizar**, **Lançar**, **Editar** ou **Fazer Tudo**) e clique em salvar.")
         
@@ -3242,6 +3326,7 @@ elif menu == "Administração":
         st.subheader("💾 Backup do Banco de Dados")
         with open(DB_NAME, "rb") as f:
             st.download_button("📥 Baixar Backup (.db)", f, file_name="cassilab_gestao.db", mime="application/octet-stream")
+
 # ==========================================
 # 9. RELATÓRIOS CONSOLIDADOS
 # ==========================================
@@ -3255,20 +3340,16 @@ elif menu == "Relatórios Consolidados":
     empresas = get_empresas()
     empresa_filtro = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas) if is_admin else emp_usuario
     
-    # Nome dinâmico para o arquivo
     nome_empresa_arquivo = empresa_filtro if empresa_filtro != "Todas as Empresas" else "Geral"
     titulo_personalizado = f"Relatorio Consolidado - {nome_empresa_arquivo}"
 
-    # CSS avançado para forçar alta nitidez, preto puro nas tabelas interativas e ocultar botões/menus na impressão
     st.markdown("""
         <style>
-        /* Força texto preto e nítido nas tabelas editáveis do Streamlit */
         [data-testid="stDataFrame"] div, [data-testid="stDataEditor"] div, th, td {
             color: #000000 !important;
         }
         
         @media print {
-            /* Oculta elementos da interface que não devem sair no PDF */
             header, footer, [data-testid="stSidebar"], .stButton, .stSelectbox, .stCheckbox, div.row-widget {
                 display: none !important;
             }
@@ -3278,7 +3359,6 @@ elif menu == "Relatórios Consolidados":
                 color: black !important;
             }
 
-            /* Garante que as tabelas saiam nítidas e com linhas nítidas no PDF */
             [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
                 border: 1px solid #000000 !important;
             }
@@ -3286,7 +3366,6 @@ elif menu == "Relatórios Consolidados":
         </style>
     """, unsafe_allow_html=True)
 
-    # Botão estilizado em HTML que altera o título da página principal e imprime ao clicar
     components.html(
         f"""
         <div style="margin-bottom: 15px;">
@@ -3323,7 +3402,6 @@ elif menu == "Relatórios Consolidados":
     conn = conectar_db()
     
     def exibir_tabela_ajustavel(df_input, chave_editor):
-        """Exibe o DataFrame como tabela interativa permitindo redimensionar colunas."""
         if df_input is not None and not df_input.empty:
             st.data_editor(
                 df_input,
@@ -3393,6 +3471,7 @@ elif menu == "Relatórios Consolidados":
             df_s_ex = adicionar_numeracao(df_s_ex)
             exibir_tabela_ajustavel(df_s_ex, "tabela_rel_srv")
     conn.close()
+
 # --- CHAMADA GLOBAL DO MODAL DE EXCLUSÃO (PERSISTENTE) ---
 if st.session_state.get("modal_excluir_ativo"):
     dialog_excluir(
