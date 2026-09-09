@@ -217,6 +217,24 @@ def calcular_proxima_renovacao(data_str, vigencia_str):
     except:
         return data_str
 
+def calcular_status_por_data(data_str):
+    if not data_str or pd.isna(data_str):
+        return "Válido"
+    hoje = datetime.today().date()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(str(data_str).strip(), fmt).date()
+            diff = (dt - hoje).days
+            if diff < 0:
+                return "Vencido"
+            elif diff <= 30:
+                return "A Vencer"
+            else:
+                return "Válido"
+        except ValueError:
+            continue
+    return "Válido"
+
 def sincronizar_status_exames():
     try:
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -949,13 +967,15 @@ def dialog_editar_documento(id_alvo):
             nova_vigencia = st.text_input("Vigência", value=str(d_vig) if d_vig else "1 ano")
             prox_calc_ed = calcular_proxima_renovacao(nova_emissao, nova_vigencia)
             nova_proxima_renovacao = st.text_input("Data da Próxima Renovação/Atualização", value=str(d_prox) if d_prox else prox_calc_ed)
-            st_limpo = limpar_status_banco(d_st)
-            opcoes_st = ["Válido", "A Vencer", "Vencido"]
-            try: idx_st = opcoes_st.index(st_limpo)
-            except: idx_st = 0
-            novo_status = st.selectbox("Status", ["🟢 Válido", "🟠 A Vencer", "🔴 Vencido"], index=idx_st)
+            
+            # Recalcula o status automaticamente com base na data final
+            status_calculado_ed = calcular_status_por_data(nova_proxima_renovacao if nova_proxima_renovacao else prox_calc_ed)
+            st.info(f"Status calculado automaticamente: **{status_calculado_ed}**")
+            
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
                 proxima_final_ed = calcular_proxima_renovacao(nova_emissao, nova_vigencia) if not nova_proxima_renovacao else validar_e_formatar_data_input(nova_proxima_renovacao)
+                status_final_ed = calcular_status_por_data(proxima_final_ed)
+                
                 conn = sqlite3.connect(DB_NAME, timeout=10.0)
                 conn.execute("""
                     UPDATE documentos 
@@ -966,7 +986,7 @@ def dialog_editar_documento(id_alvo):
                     validar_e_formatar_data_input(nova_emissao),
                     str(nova_vigencia).strip(),
                     proxima_final_ed,
-                    limpar_status_banco(novo_status),
+                    status_final_ed,
                     id_alvo
                 ))
                 conn.commit()
@@ -3032,14 +3052,19 @@ elif menu == "Controle de Documentos":
                 vigencia_doc = c1.text_input("Vigência (ex: 1 ano, 2 anos, 6 meses)", value="1 ano")
                 proximo_calc = calcular_proxima_renovacao(dt_emissao, vigencia_doc)
                 proxima_renovacao_input = c2.text_input("Data da Próxima Renovação/Atualização", value=proximo_calc)
-                status_doc = c1.selectbox("Status", ["🟢 Válido", "🟠 A Vencer", "🔴 Vencido"])
+                
+                status_calc_form = calcular_status_por_data(proxima_renovacao_input if proxima_renovacao_input else proximo_calc)
+                st.info(f"Status calculado automaticamente: **{status_calc_form}**")
+
                 if st.form_submit_button("Salvar Documento"):
                     if nome_doc and str(nome_doc).strip():
                         proxima_renovacao_final = calcular_proxima_renovacao(dt_emissao, vigencia_doc) if not proxima_renovacao_input else validar_e_formatar_data_input(proxima_renovacao_input)
+                        status_final_form = calcular_status_por_data(proxima_renovacao_final)
+                        
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         doc_fmt = formatar_titulo(nome_doc)
                         conn.execute("INSERT INTO documentos (empresa, documento, data_emissao, vigencia, proxima_renovacao, status) VALUES (?,?,?,?,?,?)",
-                                     (empresa_sel, doc_fmt, validar_e_formatar_data_input(dt_emissao), vigencia_doc.strip(), proxima_renovacao_final, limpar_status_banco(status_doc)))
+                                     (empresa_sel, doc_fmt, validar_e_formatar_data_input(dt_emissao), vigencia_doc.strip(), proxima_renovacao_final, status_final_form))
                         conn.commit()
                         conn.close()
                         sincronizar_status_documentos()
