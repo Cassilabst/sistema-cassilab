@@ -2291,7 +2291,7 @@ elif menu == "Cadastros Gerais":
                 c_tr_1, c_tr_2 = st.columns(2)
                 novo_trein = c_tr_1.text_input("Novo Treinamento")
                 nova_carga = c_tr_2.text_input("Carga Horária (ex: 16 horas, 8 horas)")
-                btn_add_salvar_trein = st.form_submit_button("Adicionar e Salvar Treinamento")
+                btn_add_salvar_trein = c_tr_1.form_submit_button("Adicionar e Salvar Treinamento")
                 if btn_add_salvar_trein:
                     if novo_trein.strip():
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -2376,7 +2376,7 @@ elif menu == "Cadastros Gerais":
                 c_epi_1, c_epi_2 = st.columns(2)
                 novo_epi_nome = c_epi_1.text_input("Nome do EPI")
                 novo_epi_ca = c_epi_2.text_input("Número do CA")
-                btn_add_salvar_epi = st.form_submit_button("Adicionar e Salvar EPI e CA")
+                btn_add_salvar_epi = c_epi_1.form_submit_button("Adicionar e Salvar EPI e CA")
                 if btn_add_salvar_epi:
                     if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -3481,15 +3481,18 @@ elif menu == "Relatórios Consolidados":
         st.write("")
         if st.button("🔄 Atualizar Aba"): st.rerun()
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     inc_func = c1.checkbox("👥 Funcionários", value=True)
     inc_ex = c2.checkbox("🩺 Exames", value=True)
     inc_tr = c3.checkbox("📚 Treinamentos", value=True)
     inc_ep = c4.checkbox("🦺 EPIs", value=True)
-    inc_srv = c5.checkbox("🛠️ Serviços", value=True) if is_admin else False
+    inc_doc = c5.checkbox("📄 Documentos", value=True)
+    inc_srv = c6.checkbox("🛠️ Serviços", value=True) if is_admin else False
+    
     empresas = get_empresas()
     empresa_filtro = st.selectbox("Filtrar por Empresa", ["Todas as Empresas"] + empresas, key="filtro_rel_emp") if is_admin else emp_usuario
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    
     if inc_func:
         st.subheader("Funcionários")
         df_f = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status FROM base_funcionarios", conn)
@@ -3501,6 +3504,7 @@ elif menu == "Relatórios Consolidados":
             df_f_ex = formatar_colunas_tabela(df_f)
             df_f_ex = adicionar_numeracao(df_f_ex)
             st.dataframe(df_f_ex, use_container_width=True, hide_index=True)
+            
     if inc_ex:
         st.subheader("Exames")
         df_e = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, tipo_exame, ultimo_exame, periodicidade, proximo_exame, status FROM exames", conn)
@@ -3512,6 +3516,7 @@ elif menu == "Relatórios Consolidados":
             df_e_ex = formatar_colunas_tabela(df_e)
             df_e_ex = adicionar_numeracao(df_e_ex)
             st.dataframe(df_e_ex, use_container_width=True, hide_index=True)
+            
     if inc_tr:
         st.subheader("Treinamentos")
         df_t = pd.read_sql("SELECT empresa, funcionario, treinamento, carga_horaria, pessoas_treinadas, data_realizacao, validade, proximo_treinamento, status FROM treinamentos", conn)
@@ -3523,6 +3528,7 @@ elif menu == "Relatórios Consolidados":
             df_t_ex = formatar_colunas_tabela(df_t)
             df_t_ex = adicionar_numeracao(df_t_ex)
             st.dataframe(df_t_ex, use_container_width=True, hide_index=True)
+            
     if inc_ep:
         st.subheader("EPIs")
         df_p = pd.read_sql("SELECT empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status FROM epis", conn)
@@ -3534,6 +3540,22 @@ elif menu == "Relatórios Consolidados":
             df_p_ex = formatar_colunas_tabela(df_p)
             df_p_ex = adicionar_numeracao(df_p_ex)
             st.dataframe(df_p_ex, use_container_width=True, hide_index=True)
+            
+    if inc_doc:
+        st.subheader("Documentos")
+        df_d = pd.read_sql("SELECT empresa, documento, data_emissao, vigencia, proxima_renovacao, status FROM documentos", conn)
+        if is_admin and empresa_filtro != "Todas as Empresas" and not df_d.empty:
+            df_d = df_d[df_d["empresa"].astype(str).str.strip().str.lower() == str(empresa_filtro).strip().lower()]
+        elif not is_admin and not df_d.empty:
+            df_d = df_d[df_d["empresa"].astype(str).str.strip().str.lower() == str(emp_usuario).strip().lower()]
+        if not df_d.empty:
+            df_d["data_emissao"] = df_d["data_emissao"].apply(formatar_data_br)
+            df_d["proxima_renovacao"] = df_d["proxima_renovacao"].apply(formatar_data_br)
+            df_d["status"] = df_d["status"].apply(lambda x: formatar_status_visual(x, "doc"))
+            df_d_ex = formatar_colunas_tabela(df_d)
+            df_d_ex = adicionar_numeracao(df_d_ex)
+            st.dataframe(df_d_ex, use_container_width=True, hide_index=True)
+            
     if inc_srv and is_admin:
         st.subheader("Serviços")
         df_s = pd.read_sql("SELECT empresa, servico, data_realizacao, responsavel, observacoes, valor, status, nfes FROM servicos_realizados", conn)
@@ -3545,6 +3567,7 @@ elif menu == "Relatórios Consolidados":
             df_s_ex = formatar_colunas_tabela(df_s)
             df_s_ex = adicionar_numeracao(df_s_ex)
             st.dataframe(df_s_ex, use_container_width=True, hide_index=True)
+            
     conn.close()
 
 # --- CHAMADA GLOBAL DO MODAL DE EXCLUSÃO (PERSISTENTE) ---
