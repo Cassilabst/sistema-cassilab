@@ -411,11 +411,13 @@ def init_db():
             empresa TEXT
         )
     """)
+    
+    # --- TABELA DE USUÁRIOS (SEM UNIQUE NO CPF PARA PERMITIR MÚLTIPLAS EMPRESAS) ---
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_sistema (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT,
-            cpf TEXT UNIQUE,
+            cpf TEXT,
             empresa TEXT,
             email TEXT,
             celular TEXT,
@@ -1399,11 +1401,13 @@ if not st.session_state["autenticado"]:
         st.markdown("<p style='color: gray; font-size: 14px; margin-top: 0px;'>Sistema de Gestão Integrada em SST</p>", unsafe_allow_html=True)
         st.write("")
         aba_login, aba_cadastro, aba_recuperar = st.tabs(["🔑 Entrar", "📝 Cadastrar", "🔄 Recuperar"])
+        
         with aba_login:
             with st.form("form_login"):
-                usuario_input = st.text_input("Usuário ou CPF", value="", autocomplete="username")
+                usuario_input = st.text_input("Usuário ou CPF (com ou sem pontuação)", value="", autocomplete="username")
                 senha_input = st.text_input("Senha", value="", type="password", autocomplete="current-password")
                 btn_login = st.form_submit_button("Acessar Sistema", use_container_width=True)
+                
                 if btn_login:
                     if usuario_input == "admin" and senha_input == "Disc@5232":
                         st.session_state["autenticado"] = True
@@ -1415,18 +1419,31 @@ if not st.session_state["autenticado"]:
                         st.success("Login efetuado com sucesso!")
                         st.rerun()
                     else:
+                        # Normaliza e formata o CPF digitado para aceitar com ou sem pontos/traços
+                        cpf_limpo = re.sub(r"\D", "", usuario_input)
+                        cpf_fmt = formatar_cpf(cpf_limpo) if len(cpf_limpo) == 11 else usuario_input
+                        
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
-                        cursor.execute("SELECT id, nome, cpf, empresa, email, celular, senha, status, nivel_permissao FROM usuarios_sistema WHERE (nome = ? OR cpf = ?) AND senha = ?", (usuario_input, usuario_input, senha_input))
-                        user_db = cursor.fetchone()
+                        cursor.execute("""
+                            SELECT id, nome, cpf, empresa, email, celular, senha, status, nivel_permissao 
+                            FROM usuarios_sistema 
+                            WHERE (nome = ? OR cpf = ? OR cpf = ?) AND senha = ?
+                        """, (usuario_input, cpf_limpo, cpf_fmt, senha_input))
+                        users_db = cursor.fetchall()
                         conn.close()
-                        if user_db:
-                            status_cad = user_db[7] if len(user_db) > 7 and user_db[7] else 'Ativo'
-                            if status_cad == 'Pendente':
+                        
+                        if users_db:
+                            # Filtramos usuários válidos (não bloqueados)
+                            users_ativos = [u for u in users_db if u[7] != 'Bloqueado' and u[7] != 'Pendente']
+                            users_pendentes = [u for u in users_db if u[7] == 'Pendente']
+                            
+                            if users_pendentes and not users_ativos:
                                 st.warning("⏳ Seu cadastro ainda está aguardando aprovação do administrador.")
-                            elif status_cad == 'Bloqueado':
+                            elif not users_ativos and not users_pendentes:
                                 st.error("🚫 Este acesso foi bloqueado pelo administrador.")
-                            else:
+                            elif len(users_ativos) == 1:
+                                user_db = users_ativos[0]
                                 st.session_state["autenticado"] = True
                                 st.session_state["is_admin"] = False
                                 st.session_state["empresa_usuario"] = user_db[3]
@@ -1435,12 +1452,36 @@ if not st.session_state["autenticado"]:
                                 registrar_log(user_db[1], user_db[3], "Login no Sistema")
                                 st.success(f"Bem-vindo(a), {user_db[1]}!")
                                 st.rerun()
+                            elif len(users_ativos) > 1:
+                                # Múltiplas empresas para o mesmo CPF! Salvamos na sessão para o usuário escolher
+                                st.session_state["usuarios_multiplos"] = users_ativos
+                                st.rerun()
                         else:
                             st.error("Usuário/CPF ou senha inválidos.")
+
+            # Se houver múltiplos perfis/empresas para o mesmo CPF logado, exibe um seletor fora do form de login
+            if "usuarios_multiplos" in st.session_state and st.session_state["usuarios_multiplos"]:
+                st.warning("⚠️ Encontramos mais de uma empresa vinculada ao seu CPF. Selecione qual empresa deseja acessar:")
+                with st.form("form_selecionar_empresa_multipla"):
+                    opcoes_empresas_map = {f"{u[3]} (Permissão: {u[8] if len(u) > 8 and u[8] else 'Somente Visualizar'})": u for u in st.session_state["usuarios_multiplos"]}
+                    escolha_emp_mult = st.selectbox("Empresa Destino", list(opcoes_empresas_map.keys()))
+                    btn_confirmar_emp = st.form_submit_button("Acessar Empresa Selecionada", use_container_width=True)
+                    if btn_confirmar_emp:
+                        user_db = opcoes_empresas_map[escolha_emp_mult]
+                        st.session_state["autenticado"] = True
+                        st.session_state["is_admin"] = False
+                        st.session_state["empresa_usuario"] = user_db[3]
+                        st.session_state["nome_usuario"] = user_db[1]
+                        st.session_state["nivel_permissao"] = user_db[8] if len(user_db) > 8 and user_db[8] else "Somente Visualizar"
+                        del st.session_state["usuarios_multiplos"]
+                        registrar_log(user_db[1], user_db[3], "Login no Sistema (Múltiplas Empresas)")
+                        st.success(f"Bem-vindo(a) à empresa {user_db[3]}!")
+                        st.rerun()
+
         with aba_cadastro:
             with st.form("form_novo_usuario"):
                 cad_nome = st.text_input("Nome Completo", value="", autocomplete="off")
-                cad_cpf = st.text_input("CPF", value="", autocomplete="off")
+                cad_cpf = st.text_input("CPF (com ou sem pontuação)", value="", autocomplete="off")
                 cad_email = st.text_input("E-mail", value="", autocomplete="off")
                 cad_celular = st.text_input("Celular / WhatsApp", value="", autocomplete="off")
                 cad_empresa_busca = st.text_input("Nome da Empresa", value="", autocomplete="off")
@@ -1455,28 +1496,36 @@ if not st.session_state["autenticado"]:
                         emp_encontrada = cursor.fetchone()
                         if emp_encontrada:
                             empresa_final = emp_encontrada[0]
-                            try:
-                                cursor.execute("INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                                               (formatar_titulo(cad_nome), cpf_formatado, empresa_final, cad_email.strip(), cad_celular.strip(), cad_senha, 'Pendente', 'Somente Visualizar'))
-                                conn.commit()
-                                st.success(f"Cadastro realizado com sucesso! Aguardando liberação do administrador.")
-                            except sqlite3.IntegrityError:
-                                st.error("Este CPF já possui cadastro.")
+                            # Verifica se já existe o mesmo CPF vinculado exatamente a esta mesma empresa
+                            cursor.execute("SELECT id FROM usuarios_sistema WHERE cpf = ? AND empresa = ?", (cpf_formatado, empresa_final))
+                            ja_existe_vinculo = cursor.fetchone()
+                            if ja_existe_vinculo:
+                                st.error("Você já possui cadastro de acesso para esta empresa.")
+                            else:
+                                try:
+                                    cursor.execute("INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                                                   (formatar_titulo(cad_nome), cpf_formatado, empresa_final, cad_email.strip(), cad_celular.strip(), cad_senha, 'Pendente', 'Somente Visualizar'))
+                                    conn.commit()
+                                    st.success(f"Cadastro realizado com sucesso para a empresa {empresa_final}! Aguardando liberação do administrador.")
+                                except Exception as e:
+                                    st.error(f"Erro ao realizar cadastro: {e}")
                         else:
                             st.error("Nenhuma empresa encontrada com esse nome.")
                         conn.close()
                     else:
                         st.error("Preencha todos os campos.")
+                        
         with aba_recuperar:
             with st.form("form_recuperar"):
-                rec_cpf = st.text_input("Digite seu CPF cadastrado", value="", autocomplete="off")
+                rec_cpf = st.text_input("Digite seu CPF cadastrado (com ou sem pontuação)", value="", autocomplete="off")
                 btn_rec_enviar = st.form_submit_button("Enviar Instruções por E-mail", use_container_width=True)
                 if btn_rec_enviar:
                     if rec_cpf.strip():
                         cpf_formatado = formatar_cpf(rec_cpf)
+                        cpf_limpo = re.sub(r"\D", "", rec_cpf)
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
-                        cursor.execute("SELECT nome, email, celular, empresa, senha FROM usuarios_sistema WHERE cpf = ?", (cpf_formatado,))
+                        cursor.execute("SELECT nome, email, celular, empresa, senha FROM usuarios_sistema WHERE cpf = ? OR cpf = ?", (cpf_formatado, cpf_limpo))
                         res_user = cursor.fetchone()
                         conn.close()
                         if res_user:
