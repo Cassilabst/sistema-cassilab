@@ -4,25 +4,51 @@ import pandas as pd
 from datetime import datetime
 import base64
 
-def renderizar_aba_lista_presenca(
-    DB_NAME,
-    get_empresas_func,
-    registrar_log_func
-):
+def renderizar_aba_lista_presenca(*args, **kwargs):
+    # Mapeamento flexível e seguro para os argumentos recebidos do app.py
+    DB_NAME = kwargs.get("DB_NAME") or (args[0] if len(args) > 0 else "cassilab_gestao.db")
+    is_admin = kwargs.get("is_admin") if "is_admin" in kwargs else (args[1] if len(args) > 1 else False)
+    emp_usuario = kwargs.get("emp_usuario") or (args[2] if len(args) > 2 else "")
+    
+    if len(args) >= 5:
+        get_empresas_func = args[3]
+        raw_registrar_log_func = args[4]
+    elif len(args) == 3:
+        get_empresas_func = args[1]
+        raw_registrar_log_func = args[2]
+    else:
+        get_empresas_func = kwargs.get("get_empresas_func") or (lambda: [])
+        raw_registrar_log_func = kwargs.get("registrar_log_func") or None
+
+    def registrar_log_func(*l_args, **l_kwargs):
+        if not callable(raw_registrar_log_func):
+            return
+        try:
+            return raw_registrar_log_func(*l_args, **l_kwargs)
+        except Exception:
+            try:
+                if len(l_args) >= 2:
+                    return raw_registrar_log_func(l_args[0], l_args[1])
+            except Exception:
+                pass
+
     col_h1, col_h2 = st.columns([0.8, 0.2])
     with col_h1: st.title("📋 Gerador de Lista de Presença de Treinamento")
     with col_h2:
         st.write("")
         if st.button("🔄 Atualizar Aba", key="btn_atualizar_lp"): st.rerun()
 
-    empresas = get_empresas_func()
+    empresas = get_empresas_func() if callable(get_empresas_func) else []
     
     if not empresas:
         st.warning("⚠️ Nenhuma empresa cadastrada no sistema.")
         return
 
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    df_cad_tr = pd.read_sql("SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+    try:
+        df_cad_tr = pd.read_sql("SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+    except:
+        df_cad_tr = pd.DataFrame()
     conn.close()
 
     lista_treinamentos_opcoes = df_cad_tr["treinamento"].tolist() if not df_cad_tr.empty else []
@@ -30,7 +56,12 @@ def renderizar_aba_lista_presenca(
 
     with st.expander("⚙️ Configurações da Lista de Presença", expanded=True):
         c_p1, c_p2 = st.columns(2)
-        empresa_selecionada = c_p1.selectbox("Selecione a Empresa Cliente", empresas, key="lp_empresa")
+        if is_admin:
+            empresa_selecionada = c_p1.selectbox("Selecione a Empresa Cliente", empresas, key="lp_empresa")
+        else:
+            empresa_selecionada = emp_usuario if emp_usuario in empresas else (empresas[0] if empresas else "")
+            c_p1.markdown(f"**Empresa Cliente:** {empresa_selecionada}")
+
         logo_file = c_p2.file_uploader("📂 Inserir Logo da Empresa (Opcional)", type=["png", "jpg", "jpeg"])
 
         c_p3, c_p4, c_p5 = st.columns(3)
@@ -81,7 +112,10 @@ def renderizar_aba_lista_presenca(
     st.subheader(f"👥 Participantes da Empresa: {empresa_selecionada}")
     
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    df_funcs = pd.read_sql("SELECT matricula, funcionario, setor, cpf FROM base_funcionarios WHERE empresa = ? AND status LIKE '%Ativo%' ORDER BY funcionario ASC", conn, params=(empresa_selecionada,))
+    try:
+        df_funcs = pd.read_sql("SELECT matricula, funcionario, setor, cpf FROM base_funcionarios WHERE empresa = ? AND status LIKE '%Ativo%' ORDER BY funcionario ASC", conn, params=(empresa_selecionada,))
+    except:
+        df_funcs = pd.DataFrame()
     conn.close()
 
     if not df_funcs.empty:
@@ -122,7 +156,6 @@ def renderizar_aba_lista_presenca(
             else:
                 logo_html = '<div style="border: 1px dashed #ccc; padding: 10px; font-size: 11px; color: #666; text-align: center;">[ Logo da Empresa ]</div>'
 
-            # Linhas com nova proporção de larguras ajustada
             linhas_tabela_html = ""
             for i, (_, row) in enumerate(participantes_selecionados.iterrows(), start=1):
                 mat = str(row["MATRÍCULA"]) if pd.notna(row["MATRÍCULA"]) else ""
