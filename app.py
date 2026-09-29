@@ -1697,13 +1697,16 @@ if menu == "Dashboard / Visão Geral":
     if st.button("🔄 Atualizar Esta Tela"):
       st.rerun()
 
-  try:
+ try:
     df_empresas_all = pd.read_sql("SELECT DISTINCT nome_empresa, data_registro FROM empresas WHERE nome_empresa IS NOT NULL AND nome_empresa != ''", engine)
     total_empresas = len(df_empresas_all) if is_admin else (1 if emp_usuario else 0)
     df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios", engine)
     df_ex_all = pd.read_sql("SELECT * FROM exames", engine)
     df_tr_all = pd.read_sql("SELECT * FROM treinamentos", engine)
     df_docs_all = pd.read_sql("SELECT * FROM documentos", engine)
+except Exception as e:
+    st.error(f"⚠️ Erro exato ao carregar dados: {e}")
+    total_empresas, df_empresas_all, df_funcs_all, df_ex_all, df_tr_all, df_docs_all = 0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
   except:
     total_empresas, df_empresas_all, df_funcs_all, df_ex_all, df_tr_all, df_docs_all = 0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
