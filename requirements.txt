@@ -3,6 +3,7 @@ pandas
 requests
 sqlalchemy
 psycopg2-binary
+psycopg
 libsql-client
 extra-streamlit-components
 plotly
