@@ -1707,7 +1707,7 @@ if menu == "Dashboard / Visão Geral":
           df_ex_all = pd.read_sql("SELECT * FROM exames", engine)
           df_tr_all = pd.read_sql("SELECT * FROM treinamentos", engine)
           df_docs_all = pd.read_sql("SELECT * FROM documentos", engine)
-      except Exception as e:
+    except Exception as e:
           st.error(f"⚠️ Erro exato ao carregar dados: {e}")
           total_empresas, df_empresas_all, df_funcs_all, df_ex_all, df_tr_all, df_docs_all = 0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
  
