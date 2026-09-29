@@ -1697,31 +1697,21 @@ if menu == "Dashboard / Visão Geral":
     if st.button("🔄 Atualizar Esta Tela"):
       st.rerun()
 
- try:
-        df_empresas_all = pd.read_sql(
-            "SELECT DISTINCT nome_empresa, data_registro FROM empresas WHERE"
-            " nome_empresa IS NOT NULL AND nome_empresa != ''",
-            engine,
-        )
-        total_empresas = (
-            len(df_empresas_all) if is_admin else (1 if emp_usuario else 0)
-        )
-        df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios", engine)
-        df_ex_all = pd.read_sql("SELECT * FROM exames", engine)
-        df_tr_all = pd.read_sql("SELECT * FROM treinamentos", engine)
-        df_docs_all = pd.read_sql("SELECT * FROM documentos", engine)
-    except Exception as e:
-        st.error(f"⚠️ Erro exato ao carregar dados: {e}")
-        total_empresas, df_empresas_all, df_funcs_all, df_ex_all, df_tr_all, df_docs_all = (
-            0,
-            pd.DataFrame(),
-            pd.DataFrame(),
-            pd.DataFrame(),
-            pd.DataFrame(),
-            pd.DataFrame(),
-        )
+    try:
+          df_empresas_all = pd.read_sql(
+              "SELECT DISTINCT nome_empresa, data_registro FROM empresas WHERE nome_empresa IS NOT NULL AND nome_empresa != ''",
+              engine,
+          )
+          total_empresas = len(df_empresas_all) if is_admin else (1 if emp_usuario else 0)
+          df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios", engine)
+          df_ex_all = pd.read_sql("SELECT * FROM exames", engine)
+          df_tr_all = pd.read_sql("SELECT * FROM treinamentos", engine)
+          df_docs_all = pd.read_sql("SELECT * FROM documentos", engine)
+      except Exception as e:
+          st.error(f"⚠️ Erro exato ao carregar dados: {e}")
+          total_empresas, df_empresas_all, df_funcs_all, df_ex_all, df_tr_all, df_docs_all = 0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
  
-  if not is_admin and emp_usuario:
+    if not is_admin and emp_usuario:
     if not df_funcs_all.empty:
       df_funcs_all = df_funcs_all[df_funcs_all["empresa"].astype(str).str.strip().str.lower() == str(emp_usuario).str.strip().lower()]
     if not df_ex_all.empty:
@@ -1731,10 +1721,10 @@ if menu == "Dashboard / Visão Geral":
     if not df_docs_all.empty:
       df_docs_all = df_docs_all[df_docs_all["empresa"].astype(str).str.strip().str.lower() == str(emp_usuario).str.strip().lower()]
 
-  total_func_ativos = len(df_funcs_all[df_funcs_all["status"].astype(str).str.contains("Ativo|ativo", na=False)]) if not df_funcs_all.empty else 0
-  total_ex_vencidos = len(df_ex_all[df_ex_all["status"].astype(str).str.contains("Vencido|vencido", na=False)]) if not df_ex_all.empty else 0
-  total_tr_vencidos = len(df_tr_all[df_tr_all["status"].astype(str).str.contains("vencido|Vencido", na=False)]) if not df_tr_all.empty else 0
-  total_doc_vencidos = len(df_docs_all[df_docs_all["status"].astype(str).str.contains("Vencido|vencido", na=False)]) if not df_docs_all.empty else 0
+    total_func_ativos = len(df_funcs_all[df_funcs_all["status"].astype(str).str.contains("Ativo|ativo", na=False)]) if not df_funcs_all.empty else 0
+    total_ex_vencidos = len(df_ex_all[df_ex_all["status"].astype(str).str.contains("Vencido|vencido", na=False)]) if not df_ex_all.empty else 0
+    total_tr_vencidos = len(df_tr_all[df_tr_all["status"].astype(str).str.contains("vencido|Vencido", na=False)]) if not df_tr_all.empty else 0
+    total_doc_vencidos = len(df_docs_all[df_docs_all["status"].astype(str).str.contains("Vencido|vencido", na=False)]) if not df_docs_all.empty else 0
 
   empresas_inativas_detalhes = []
   hoje = datetime.today().date()
