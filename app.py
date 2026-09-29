@@ -1232,24 +1232,17 @@ def dialog_editar_exame(id_alvo):
       nova_periodicidade = st.selectbox(
           "Periodicidade", opcoes_periodicidade, index=idx_p
       )
-      proximo_calc_ed = calcular_proximo_exame(
-          novo_ultimo_ex, nova_periodicidade
-      )
+      
+      # Recálculo automático integrado com base no último exame e periodicidade
+      proximo_calc_ed = calcular_proximo_exame(novo_ultimo_ex, nova_periodicidade)
+      status_calc_ed = calcular_status_por_data(proximo_calc_ed)
+
       novo_proximo_ex = st.text_input(
           "Data Próximo Exame",
-          value=str(ex_proximo) if ex_proximo else proximo_calc_ed,
+          value=proximo_calc_ed,
       )
-      st_limpo_ex = limpar_status_banco(ex_status)
-      opcoes_st_ex = ["Válido", "A Vencer", "Vencido"]
-      try:
-        idx_st_ex = opcoes_st_ex.index(st_limpo_ex)
-      except:
-        idx_st_ex = 0
-      novo_status_ex = st.selectbox(
-          "Status",
-          ["🟢 Válido", "🟠 A Vencer", "🔴 Vencido"],
-          index=idx_st_ex,
-      )
+      
+      st.info(f"📅 Próximo Exame Calculado: **{proximo_calc_ed}** | Status Automático: **{status_calc_ed}**")
 
       if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
         novo_mat = ex_mat
@@ -1261,11 +1254,10 @@ def dialog_editar_exame(id_alvo):
             novo_mat = match_f.iloc[0]["matricula"]
             novo_c = match_f.iloc[0]["cargo"]
             novo_s = match_f.iloc[0]["setor"]
-        proximo_final_ed = (
-            calcular_proximo_exame(novo_ultimo_ex, nova_periodicidade)
-            if not novo_proximo_ex
-            else validar_e_formatar_data_input(novo_proximo_ex)
-        )
+            
+        proximo_final_ed = validar_e_formatar_data_input(novo_proximo_ex) if novo_proximo_ex else proximo_calc_ed
+        status_final_ed = calcular_status_por_data(proximo_final_ed)
+
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
         conn.execute(
             """
@@ -1282,7 +1274,7 @@ def dialog_editar_exame(id_alvo):
                 validar_e_formatar_data_input(novo_ultimo_ex),
                 nova_periodicidade,
                 proximo_final_ed,
-                limpar_status_banco(novo_status_ex),
+                status_final_ed,
                 id_alvo,
             ),
         )

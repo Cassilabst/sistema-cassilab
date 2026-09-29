@@ -204,7 +204,6 @@ def renderizar_aba_funcionarios(
   df = pd.read_sql("SELECT * FROM base_funcionarios", conn)
   conn.close()
 
-  # Ordenação alfabética por nome do funcionário (ignorando maiúsculas/minúsculas)
   if not df.empty and "funcionario" in df.columns:
     df = df.sort_values(
         by="funcionario", key=lambda x: x.astype(str).str.lower()
@@ -244,8 +243,6 @@ def renderizar_aba_funcionarios(
         st.rerun()
 
     st.markdown("---")
-
-    # Âncora invisível para manter a posição da tela após ações/rerun
     st.markdown("<div id='ancora_funcionarios'></div>", unsafe_allow_html=True)
     st.markdown(
         "<script>window.location.hash = 'ancora_funcionarios';</script>",
@@ -266,30 +263,19 @@ def renderizar_aba_funcionarios(
       if "sel_id_func" not in st.session_state:
         st.session_state["sel_id_func"] = None
 
-      id_func_sel = st.session_state["sel_id_func"]
       col_acao1, col_acao2 = st.columns(2)
-
-      if pode_editar:
-        if col_acao1.button(
-            "✏️ Editar Funcionário Selecionado",
-            use_container_width=True,
-            key="btn_edit_func",
-        ):
-          if id_func_sel is not None:
-            dialog_editar_funcionario(int(id_func_sel))
-          else:
-            st.warning("⚠️ Selecione um funcionário marcando o quadradinho.")
-
       if pode_excluir:
         if col_acao2.button(
             "🗑️ Excluir Funcionário Selecionado",
             use_container_width=True,
             key="btn_del_func",
         ):
-          if id_func_sel is not None:
+          if st.session_state["sel_id_func"] is not None:
             st.session_state["modal_excluir_ativo"] = True
             st.session_state["modal_excluir_tabela"] = "base_funcionarios"
-            st.session_state["modal_excluir_id"] = int(id_func_sel)
+            st.session_state["modal_excluir_id"] = int(
+                st.session_state["sel_id_func"]
+            )
             st.session_state["modal_excluir_editor_key"] = (
                 "editor_selecao_funcionarios"
             )
@@ -303,7 +289,6 @@ def renderizar_aba_funcionarios(
       df_edit["Selecionar"] = (
           df_edit["_id_banco"] == st.session_state["sel_id_func"]
       )
-
       cols_func_ord = [
           "Selecionar",
           "_id_banco",
@@ -341,19 +326,15 @@ def renderizar_aba_funcionarios(
           },
       )
 
-      curr_func = (
-          edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
-      )
-      new_func = [
-          uid for uid in curr_func if uid != st.session_state["sel_id_func"]
-      ]
-
-      if new_func:
-        st.session_state["sel_id_func"] = new_func[-1]
-        st.rerun()
-      elif not curr_func and st.session_state["sel_id_func"] is not None:
+      linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
+          "_id_banco"
+      ].tolist()
+      if linhas_marcadas and pode_editar:
+        id_para_editar = int(linhas_marcadas[-1])
         st.session_state["sel_id_func"] = None
-        st.rerun()
+        if "editor_selecao_funcionarios" in st.session_state:
+          del st.session_state["editor_selecao_funcionarios"]
+        dialog_editar_funcionario(id_para_editar)
 
       if st.session_state.get("modal_edit_func_id"):
         dialog_editar_funcionario(st.session_state["modal_edit_func_id"])

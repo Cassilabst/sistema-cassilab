@@ -157,7 +157,6 @@ def renderizar_aba_treinamentos(*args, **kwargs):
     df = df.drop(columns=["empresa"])
 
   with aba_lista:
-    # âncora invisível para manter a posição da tela após ações/rerun
     st.markdown("<div id='ancora_treinamentos'></div>", unsafe_allow_html=True)
     st.markdown(
         "<script>window.location.hash = 'ancora_treinamentos';</script>",
@@ -169,49 +168,36 @@ def renderizar_aba_treinamentos(*args, **kwargs):
       st.info("Nenhum registo de treinamento encontrado.")
     else:
       df_edit = df.copy()
+      df_edit["_id_banco"] = (
+          df_edit["id"] if "id" in df_edit.columns else df.index
+      )
       if "id" in df_edit.columns:
         df_edit = df_edit.drop(columns=["id"])
 
-      if "sel_linha_tr" not in st.session_state:
-        st.session_state["sel_linha_tr"] = None
-
-      id_selecionado_real = None
-      if (
-          st.session_state["sel_linha_tr"] is not None
-          and st.session_state["sel_linha_tr"] < len(df)
-      ):
-        id_selecionado_real = int(df.iloc[st.session_state["sel_linha_tr"]]["id"])
+      if "sel_id_tr" not in st.session_state:
+        st.session_state["sel_id_tr"] = None
 
       col_acao1, col_acao2 = st.columns(2)
-
-      if pode_editar:
-        if col_acao1.button(
-            "✏️ Editar Selecionado", use_container_width=True, key="btn_edit_tr"
-        ):
-          if id_selecionado_real is not None:
-            dialog_editar_treinamento_func(id_selecionado_real)
-          else:
-            st.warning("⚠️ Selecione um registo na tabela marcando a caixa.")
-
       if pode_excluir:
         if col_acao2.button(
-            "🗑️ Excluir Selecionado", use_container_width=True, key="btn_del_tr"
+            "🗑️ Excluir Treinamento Selecionado",
+            use_container_width=True,
+            key="btn_del_tr",
         ):
-          if id_selecionado_real is not None:
+          if st.session_state["sel_id_tr"] is not None:
+            id_exc = int(st.session_state["sel_id_tr"])
             conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
             cursor_exc = conn_exc.cursor()
             cursor_exc.execute(
                 "SELECT treinamento, funcionario FROM treinamentos WHERE id = ?",
-                (id_selecionado_real,),
+                (id_exc,),
             )
             reg_exc = cursor_exc.fetchone()
-            cursor_exc.execute(
-                "DELETE FROM treinamentos WHERE id = ?", (id_selecionado_real,)
-            )
+            cursor_exc.execute("DELETE FROM treinamentos WHERE id = ?", (id_exc,))
             conn_exc.commit()
             conn_exc.close()
 
-            st.session_state["sel_linha_tr"] = None
+            st.session_state["sel_id_tr"] = None
             if "editor_selecao_treinamentos" in st.session_state:
               del st.session_state["editor_selecao_treinamentos"]
             st.session_state["msg_sucesso"] = "🗑️ Registo excluído com sucesso!"
@@ -223,16 +209,11 @@ def renderizar_aba_treinamentos(*args, **kwargs):
             )
             st.rerun()
           else:
-            st.warning("⚠️ Selecione um registo na tabela marcando a caixa.")
+            st.warning("⚠️ Selecione um treinamento marcando o quadradinho.")
 
       st.write("")
 
-      df_edit.insert(0, "Selecionar", False)
-      if (
-          st.session_state["sel_linha_tr"] is not None
-          and st.session_state["sel_linha_tr"] < len(df_edit)
-      ):
-        df_edit.loc[st.session_state["sel_linha_tr"], "Selecionar"] = True
+      df_edit["Selecionar"] = df_edit["_id_banco"] == st.session_state["sel_id_tr"]
 
       if "data_realizacao" in df_edit.columns:
         df_edit["data_realizacao"] = df_edit["data_realizacao"].apply(
@@ -247,7 +228,21 @@ def renderizar_aba_treinamentos(*args, **kwargs):
             lambda x: formatar_status_visual_seguro(x, "trein")
         )
 
-      df_fmt = formatar_colunas_func(df_edit)
+      cols_tr_ord = [
+          "Selecionar",
+          "_id_banco",
+          "funcionario",
+          "treinamento",
+          "carga_horaria",
+          "pessoas_treinadas",
+          "data_realizacao",
+          "validade",
+          "proximo_treinamento",
+          "status",
+      ]
+      df_tr_sel = df_edit[[c for c in cols_tr_ord if c in df_edit.columns]]
+
+      df_fmt = formatar_colunas_func(df_tr_sel)
       df_fmt = adicionar_numeracao_func(df_fmt)
 
       edit_df = st.data_editor(
@@ -260,6 +255,7 @@ def renderizar_aba_treinamentos(*args, **kwargs):
               "Selecionar": st.column_config.CheckboxColumn(
                   "Selecionar", required=True, pinned=True
               ),
+              "_id_banco": None,
               "Nº": st.column_config.NumberColumn(
                   "Nº", disabled=True, pinned=True
               ),
@@ -269,12 +265,19 @@ def renderizar_aba_treinamentos(*args, **kwargs):
           },
       )
 
-      linhas_marcadas = edit_df[edit_df["Selecionar"] == True].index.tolist()
-      nova_linha_sel = linhas_marcadas[-1] if linhas_marcadas else None
+      linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
+          "_id_banco"
+      ].tolist()
+      if linhas_marcadas and pode_editar:
+        id_para_editar = int(linhas_marcadas[-1])
+        st.session_state["sel_id_tr"] = None
+        if "editor_selecao_treinamentos" in st.session_state:
+          del st.session_state["editor_selecao_treinamentos"]
+        dialog_editar_treinamento_func(id_para_editar)
 
-      if nova_linha_sel != st.session_state["sel_linha_tr"]:
-        st.session_state["sel_linha_tr"] = nova_linha_sel
-        st.rerun()
+      if st.session_state.get("modal_edit_tr_id"):
+        dialog_editar_treinamento_func(st.session_state["modal_edit_tr_id"])
+        st.session_state["modal_edit_tr_id"] = None
 
   with aba_novo:
     st.markdown("### ➕ Adicionar Novo Treinamento")
@@ -363,7 +366,7 @@ def renderizar_aba_treinamentos(*args, **kwargs):
                     carga_in.strip(),
                     modalidade_in.strip(),
                     validar_e_formatar_data_input_func(data_real),
-                    validade_in.strip(),
+                    validvalidade_in := validade_in.strip(),
                     prox_tr,
                 ),
             )

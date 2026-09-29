@@ -185,73 +185,54 @@ def renderizar_aba_exames(
       st.info("Nenhum registo de exames encontrado.")
     else:
       df_edit = df.copy()
+      df_edit["_id_banco"] = (
+          df_edit["id"] if "id" in df_edit.columns else df.index
+      )
       if "id" in df_edit.columns:
         df_edit = df_edit.drop(columns=["id"])
 
-      if "sel_linha_ex" not in st.session_state:
-        st.session_state["sel_linha_ex"] = None
-
-      # BOTÕES MOVIDOS PARA A PARTE DE CIMA
-      id_selecionado_real = None
-      if (
-          st.session_state["sel_linha_ex"] is not None
-          and st.session_state["sel_linha_ex"] < len(df)
-      ):
-        id_selecionado_real = int(df.iloc[st.session_state["sel_linha_ex"]]["id"])
+      if "sel_id_ex" not in st.session_state:
+        st.session_state["sel_id_ex"] = None
 
       col_acao1, col_acao2 = st.columns(2)
-
-      if pode_editar:
-        if col_acao1.button(
-            "✏️ Editar Selecionado", use_container_width=True, key="btn_edit_ex"
-        ):
-          if id_selecionado_real is not None:
-            dialog_editar_exame(id_selecionado_real)
-          else:
-            st.warning("⚠️ Selecione um registo na tabela marcando a caixa.")
-
       if pode_excluir:
         if col_acao2.button(
-            "🗑️ Excluir Selecionado", use_container_width=True, key="btn_del_ex"
+            "🗑️ Excluir Exame Selecionado",
+            use_container_width=True,
+            key="btn_del_ex",
         ):
-          if id_selecionado_real is not None:
-            conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
-            cursor_exc = conn_exc.cursor()
-            cursor_exc.execute(
-                "SELECT tipo_exame, funcionario FROM exames WHERE id = ?",
-                (id_selecionado_real,),
+          if st.session_state["sel_id_ex"] is not None:
+            st.session_state["modal_excluir_ativo"] = True
+            st.session_state["modal_excluir_tabela"] = "exames"
+            st.session_state["modal_excluir_id"] = int(
+                st.session_state["sel_id_ex"]
             )
-            reg_exc = cursor_exc.fetchone()
-            cursor_exc.execute(
-                "DELETE FROM exames WHERE id = ?", (id_selecionado_real,)
+            st.session_state["modal_excluir_editor_key"] = (
+                "editor_selecao_exames"
             )
-            conn_exc.commit()
-            conn_exc.close()
-
-            st.session_state["sel_linha_ex"] = None
-            if "editor_selecao_exames" in st.session_state:
-              del st.session_state["editor_selecao_exames"]
-            st.session_state["msg_sucesso"] = "🗑️ Registo excluído com sucesso!"
-            registrar_log(
-                st.session_state.get("nome_usuario", "Desconhecido"),
-                empresa_selecionada,
-                f"Excluiu exame ({reg_exc[0] if reg_exc else ''}) de"
-                f" {reg_exc[1] if reg_exc else ''}",
-            )
+            st.session_state["sel_id_ex"] = None
             st.rerun()
           else:
-            st.warning("⚠️ Selecione um registo na tabela marcando a caixa.")
+            st.warning(
+                "⚠️ Selecione um exame marcando o quadradinho para excluir."
+            )
 
       st.write("")
 
-      df_edit.insert(0, "Selecionar", False)
-      if (
-          st.session_state["sel_linha_ex"] is not None
-          and st.session_state["sel_linha_ex"] < len(df_edit)
-      ):
-        df_edit.loc[st.session_state["sel_linha_ex"], "Selecionar"] = True
+      df_edit["Selecionar"] = df_edit["_id_banco"] == st.session_state["sel_id_ex"]
+      cols_ex_ord = [
+          "Selecionar",
+          "_id_banco",
+          "funcionario",
+          "tipo_exame",
+          "ultimo_exame",
+          "periodicidade",
+          "proximo_exame",
+          "status",
+      ]
+      df_ex_sel = df_edit[[c for c in cols_ex_ord if c in df_edit.columns]]
 
-      df_fmt = formatar_colunas_tabela(df_edit)
+      df_fmt = formatar_colunas_tabela(df_ex_sel)
       df_fmt = adicionar_numeracao(df_fmt)
 
       edit_df = st.data_editor(
@@ -264,6 +245,7 @@ def renderizar_aba_exames(
               "Selecionar": st.column_config.CheckboxColumn(
                   "Selecionar", required=True, pinned=True
               ),
+              "_id_banco": None,
               "Nº": st.column_config.NumberColumn(
                   "Nº", disabled=True, pinned=True
               ),
@@ -273,12 +255,15 @@ def renderizar_aba_exames(
           },
       )
 
-      linhas_marcadas = edit_df[edit_df["Selecionar"] == True].index.tolist()
-      nova_linha_sel = linhas_marcadas[-1] if linhas_marcadas else None
-
-      if nova_linha_sel != st.session_state["sel_linha_ex"]:
-        st.session_state["sel_linha_ex"] = nova_linha_sel
-        st.rerun()
+      linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
+          "_id_banco"
+      ].tolist()
+      if linhas_marcadas and pode_editar:
+        id_para_editar = int(linhas_marcadas[-1])
+        st.session_state["sel_id_ex"] = None
+        if "editor_selecao_exames" in st.session_state:
+          del st.session_state["editor_selecao_exames"]
+        dialog_editar_exame(id_para_editar)
 
   with aba_novo:
     st.markdown("### ➕ Adicionar Novo Exame Ocupacional")

@@ -140,7 +140,11 @@ def renderizar_aba_servicos(*args, **kwargs):
         servico_sel = c2.text_input("Serviço Executado")
 
       valor_serv = c1.number_input(
-          "Valor do Serviço (R$)", min_value=0.0, value=0.0, step=50.0, format="%.2f"
+          "Valor do Serviço (R$)",
+          min_value=0.0,
+          value=0.0,
+          step=50.0,
+          format="%.2f",
       )
       resp_serv = c2.text_input("Responsável Técnico", value="Cassilab SST")
 
@@ -209,8 +213,6 @@ def renderizar_aba_servicos(*args, **kwargs):
           st.error("Selecione a empresa e o serviço.")
 
   st.markdown("---")
-  
-  # âncora invisível para manter a posição da tela após ações/rerun
   st.markdown("<div id='ancora_servicos'></div>", unsafe_allow_html=True)
   st.markdown(
       "<script>window.location.hash = 'ancora_servicos';</script>",
@@ -246,34 +248,26 @@ def renderizar_aba_servicos(*args, **kwargs):
     if "sel_id_serv" not in st.session_state:
       st.session_state["sel_id_serv"] = None
 
-    id_serv_sel = st.session_state["sel_id_serv"]
     col_srv_b1, col_srv_b2 = st.columns(2)
-
-    if col_srv_b1.button(
-        "✏️ Editar Serviço Selecionado",
-        key="btn_editar_serv",
-        use_container_width=True,
-    ):
-      if id_serv_sel is not None:
-        st.session_state["modal_edit_serv_id"] = int(id_serv_sel)
-        st.rerun()
-      else:
-        st.warning("⚠️ Selecione um serviço marcando o quadradinho.")
-
-    if col_srv_b2.button(
-        "🗑️ Excluir Serviço Selecionado",
-        key="btn_excluir_serv",
-        use_container_width=True,
-    ):
-      if id_serv_sel is not None:
-        st.session_state["modal_excluir_ativo"] = True
-        st.session_state["modal_excluir_tabela"] = "servicos_realizados"
-        st.session_state["modal_excluir_id"] = int(id_serv_sel)
-        st.session_state["modal_excluir_editor_key"] = "editor_selecao_servicos"
-        st.session_state["sel_id_serv"] = None
-        st.rerun()
-      else:
-        st.warning("⚠️ Selecione um serviço marcando o quadradinho.")
+    with col_srv_b2:
+      if st.button(
+          "🗑️ Excluir Serviço Selecionado",
+          key="btn_excluir_serv",
+          use_container_width=True,
+      ):
+        if st.session_state["sel_id_serv"] is not None:
+          st.session_state["modal_excluir_ativo"] = True
+          st.session_state["modal_excluir_tabela"] = "servicos_realizados"
+          st.session_state["modal_excluir_id"] = int(
+              st.session_state["sel_id_serv"]
+          )
+          st.session_state["modal_excluir_editor_key"] = (
+              "editor_selecao_servicos"
+          )
+          st.session_state["sel_id_serv"] = None
+          st.rerun()
+        else:
+          st.warning("⚠️ Selecione um serviço marcando o quadradinho.")
 
     st.write("")
 
@@ -329,19 +323,16 @@ def renderizar_aba_servicos(*args, **kwargs):
         },
     )
 
-    curr_srv = (
-        editado_serv[editado_serv["Selecionar"] == True]["_id_banco"].tolist()
-    )
-    new_srv = [
-        uid for uid in curr_srv if uid != st.session_state["sel_id_serv"]
-    ]
-
-    if new_srv:
-      st.session_state["sel_id_serv"] = new_srv[-1]
-      st.rerun()
-    elif not curr_srv and st.session_state["sel_id_serv"] is not None:
+    linhas_marcadas = editado_serv[editado_serv["Selecionar"] == True][
+        "_id_banco"
+    ].tolist()
+    if linhas_marcadas:
+      id_para_editar = int(linhas_marcadas[-1])
       st.session_state["sel_id_serv"] = None
-      st.rerun()
+      if "editor_selecao_servicos" in st.session_state:
+        del st.session_state["editor_selecao_servicos"]
+      if callable(dialog_editar_servico_func):
+        dialog_editar_servico_func(id_para_editar)
 
     if st.session_state.get("modal_edit_serv_id"):
       if callable(dialog_editar_servico_func):
