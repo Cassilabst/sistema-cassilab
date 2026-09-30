@@ -33,12 +33,19 @@ st.set_page_config(
     page_title="Cassilab - Gestão em SST", page_icon="🛡️️", layout="wide"
 )
 
+# --- LIGAÇÃO À BASE DE DADOS (SUPABASE) ---
+import urllib.parse
+
+db_user = st.secrets["user"]
+db_pass = urllib.parse.quote_plus(st.secrets["password"])
+db_host = st.secrets["host"]
+db_port = st.secrets["port"]
+db_name = st.secrets["dbname"]
+
+DATABASE_URL = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+engine = create_engine(DATABASE_URL)
 # --- BANCO DE DADOS LOCAL E BACKUP AUTOMÁTICO ---
 DB_NAME = "cassilab_gestao.db"
-
-# --- LIGAÇÃO AO SUPABASE POSTGRESQL ---
-SUPABASE_URL = "postgresql://postgres:Disc%40976043@db.lythephlnnyyjrcrbbcy.supabase.co:5432/postgres"
-engine = create_engine(SUPABASE_URL)
 
 
 def criar_backup_automatico():
