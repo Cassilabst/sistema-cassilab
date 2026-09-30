@@ -1721,7 +1721,7 @@ if st.session_state.get("msg_sucesso"):
 if menu == "Dashboard / Visão Geral":
   col_t1, col_t2 = st.columns([0.8, 0.2])
   with col_t1:
-    st.title("📊 Dashboard - Visão Geral Cassilab SST)
+    st.title("📊 Dashboard - Visão Geral Cassilab SST")
   with col_t2:
     st.write("")
     if st.button("🔄 Atualizar Esta Tela"):
