@@ -28,11 +28,6 @@ from modulo_relatorios import renderizar_aba_relatorios
 from modulo_servicos import renderizar_aba_servicos
 from modulo_treinamentos import renderizar_aba_treinamentos
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="Cassilab - Gestão em SST", page_icon="🛡️️", layout="wide"
-)
-
 # --- LIGAÇÃO À BASE DE DADOS (SUPABASE) ---
 import urllib.parse
 
@@ -44,6 +39,34 @@ db_name = st.secrets["dbname"]
 
 DATABASE_URL = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
 engine = create_engine(DATABASE_URL)
+
+
+# --- CONTROLO DE AUTENTICAÇÃO (Para tirar a "sombra" do login) ---
+if "autenticado" not in st.session_state:
+  st.session_state.autenticado = False
+
+# 1. Se NÃO estiver autenticado, mostra apenas o ecrã de login centrado
+if not st.session_state.autenticado:
+  col1, col2, col3 = st.columns([1, 2, 1])
+  with col2:
+    st.subheader("Login - Cassilab SST")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+
+    if st.button("Acessar Sistema", use_container_width=True):
+      if usuario == "admin" and senha == "Disc@976043":
+        st.session_state.autenticado = True
+        st.rerun()
+      else:
+        st.error("Utilizador ou senha incorretos.")
+
+# 2. Se JÁ estiver autenticado, esconde o login e mostra o sistema completo
+else:
+  # Título limpo (sem menção ao Supabase)
+  st.markdown("### 📊 Dashboard - Visão Geral Cassilab SST")
+
+  # --- AQUI ENTRA O RESTO DO SEU CÓDIGO ATUAL (Menus, abas, etc.) ---
+  # Exemplo: renderizar_aba_empresas(), etc.
 # --- BANCO DE DADOS LOCAL E BACKUP AUTOMÁTICO ---
 DB_NAME = "cassilab_gestao.db"
 
@@ -1698,7 +1721,7 @@ if st.session_state.get("msg_sucesso"):
 if menu == "Dashboard / Visão Geral":
   col_t1, col_t2 = st.columns([0.8, 0.2])
   with col_t1:
-    st.title("📊 Dashboard - Visão Geral Cassilab SST (Supabase)")
+    st.title("📊 Dashboard - Visão Geral Cassilab SST)
   with col_t2:
     st.write("")
     if st.button("🔄 Atualizar Esta Tela"):
