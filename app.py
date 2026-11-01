@@ -14,7 +14,7 @@ import streamlit as st
 
 st.subheader("Teste de Conexão - Supabase")
 try:
-    # Testa uma consulta simples ao banco de dados configurado nas secrets
+    # Testa se a ligação ao Supabase está ativa
     conn = st.connection("postgres", type="sql")
     df = conn.query("SELECT 1 as teste;", ttl=0)
     st.success("Ligação ao Supabase estabelecida com sucesso!")
