@@ -12,15 +12,6 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.subheader("Teste de Conexão - Supabase")
-try:
-    # Testa se a ligação ao Supabase está ativa
-    conn = st.connection("postgres", type="sql")
-    df = conn.query("SELECT 1 as teste;", ttl=0)
-    st.success("Ligação ao Supabase estabelecida com sucesso!")
-except Exception as e:
-    st.error(f"Erro ao conectar com a base de dados: {e}")
-
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
 from modulo_absenteismo import renderizar_aba_absenteismo
 from modulo_admin import renderizar_aba_admin
