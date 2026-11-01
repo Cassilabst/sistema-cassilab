@@ -1,7 +1,7 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import os
+from sqlalchemy import text
 
 def renderizar_aba_admin(
     DB_NAME,
@@ -22,9 +22,8 @@ def renderizar_aba_admin(
         st.subheader("📧 Configuração de E-mail (Gmail - Senha de App)")
         st.markdown("Insira o seu e-mail do Gmail e a **Senha de Aplicativo** gerada na sua conta Google para habilitar o envio de e-mails.")
         
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_cfg_mail = pd.read_sql("SELECT email, senha_app FROM configuracoes_email LIMIT 1", conn)
-        conn.close()
+        conn = st.connection("postgres", type="sql")
+        df_cfg_mail = conn.query("SELECT email, senha_app FROM configuracoes_email LIMIT 1", ttl=0)
         
         email_salvo = df_cfg_mail.iloc[0]["email"] if not df_cfg_mail.empty and pd.notna(df_cfg_mail.iloc[0]["email"]) else ""
         senha_salva = df_cfg_mail.iloc[0]["senha_app"] if not df_cfg_mail.empty and pd.notna(df_cfg_mail.iloc[0]["senha_app"]) else ""
@@ -36,12 +35,13 @@ def renderizar_aba_admin(
             btn_salvar_config_email = c_em1.form_submit_button("💾 Salvar Configurações de E-mail", use_container_width=True)
             
             if btn_salvar_config_email:
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM configuracoes_email")
-                cursor.execute("INSERT INTO configuracoes_email (email, senha_app) VALUES (?, ?)", (input_email_remetente.strip(), input_senha_app.strip()))
-                conn.commit()
-                conn.close()
+                with conn.session as s:
+                    s.execute(text("DELETE FROM configuracoes_email"))
+                    s.execute(
+                        text("INSERT INTO configuracoes_email (email, senha_app) VALUES (:email, :senha)"),
+                        {"email": input_email_remetente.strip(), "senha": input_senha_app.strip()}
+                    )
+                    s.commit()
                 st.session_state["msg_sucesso"] = "✅ Configurações de e-mail salvas com sucesso!"
                 registrar_log_func("Administrador", "Todas", "Atualizou configurações de e-mail SMTP")
                 st.rerun()
@@ -50,9 +50,7 @@ def renderizar_aba_admin(
         st.subheader("📋 Histórico de Alertas Enviados (Controle Anti-Duplicidade)")
         st.markdown("Aqui você pode visualizar diretamente os registros de itens que já foram notificados por e-mail para evitar envios duplicados:")
         
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_alertas_hist = pd.read_sql("SELECT id, empresa, tipo_item, item_id, data_vencimento, data_envio FROM alertas_enviados ORDER BY id DESC LIMIT 100", conn)
-        conn.close()
+        df_alertas_hist = conn.query("SELECT id, empresa, tipo_item, item_id, data_vencimento, data_envio FROM alertas_enviados ORDER BY id DESC LIMIT 100", ttl=0)
         
         if not df_alertas_hist.empty:
             df_alertas_exib = df_alertas_hist.rename(columns={
@@ -68,9 +66,7 @@ def renderizar_aba_admin(
         st.subheader("👥 Controle de Acessos e Níveis de Permissão")
         st.markdown("Defina o nível de permissão de cada usuário diretamente na tabela abaixo e clique em salvar.")
         
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_users = pd.read_sql("SELECT id, nome, cpf, empresa, email, celular, status, nivel_permissao FROM usuarios_sistema", conn)
-        conn.close()
+        df_users = conn.query("SELECT id, nome, cpf, empresa, email, celular, status, nivel_permissao FROM usuarios_sistema", ttl=0)
 
         if not df_users.empty:
             if "sel_id_user" not in st.session_state: st.session_state["sel_id_user"] = None
@@ -112,15 +108,16 @@ def renderizar_aba_admin(
             col_salvar_niveis, col_esp = st.columns([1, 1])
             
             if col_salvar_niveis.button("💾 Salvar Alterações de Níveis de Acesso", use_container_width=True):
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                for _, row in edit_users.iterrows():
-                    u_id = row.get("_id_banco")
-                    novo_nivel = row.get("Nível de Acesso")
-                    if pd.notna(u_id) and pd.notna(novo_nivel):
-                        cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = ? WHERE id = ?", (str(novo_nivel), int(u_id)))
-                conn.commit()
-                conn.close()
+                with conn.session as s:
+                    for _, row in edit_users.iterrows():
+                        u_id = row.get("_id_banco")
+                        novo_nivel = row.get("Nível de Acesso")
+                        if pd.notna(u_id) and pd.notna(novo_nivel):
+                            s.execute(
+                                text("UPDATE usuarios_sistema SET nivel_permissao = :nivel WHERE id = :id"),
+                                {"nivel": str(novo_nivel), "id": int(u_id)}
+                            )
+                    s.commit()
                 if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
                 st.session_state["sel_id_user"] = None
                 st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
@@ -132,10 +129,9 @@ def renderizar_aba_admin(
             if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
-                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                    conn.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE id = ?", (uid,))
-                    conn.commit()
-                    conn.close()
+                    with conn.session as s:
+                        s.execute(text("UPDATE usuarios_sistema SET status = 'Ativo' WHERE id = :id"), {"id": uid})
+                        s.commit()
                     if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
                     st.session_state["sel_id_user"] = None
                     st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
@@ -147,10 +143,9 @@ def renderizar_aba_admin(
             if cu2.button("🚫 Bloquear Acesso Selecionado", use_container_width=True):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
-                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                    conn.execute("UPDATE usuarios_sistema SET status = 'Bloqueado' WHERE id = ?", (uid,))
-                    conn.commit()
-                    conn.close()
+                    with conn.session as s:
+                        s.execute(text("UPDATE usuarios_sistema SET status = 'Bloqueado' WHERE id = :id"), {"id": uid})
+                        s.commit()
                     if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
                     st.session_state["sel_id_user"] = None
                     st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
@@ -175,9 +170,7 @@ def renderizar_aba_admin(
 
         st.markdown("---")
         st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_logs = pd.read_sql("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", conn)
-        conn.close()
+        df_logs = conn.query("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", ttl=0)
         
         if not df_logs.empty:
             df_logs_exib = df_logs.rename(columns={"data_hora": "Data / Hora", "usuario": "Nome do Usuário", "empresa": "Empresa", "acao": "Ação / Evento"})
@@ -187,24 +180,25 @@ def renderizar_aba_admin(
             st.info("Nenhum log registrado até o momento.")
 
         st.markdown("---")
-        st.subheader("💾 Backup do Banco de Dados")
-        col_bk1, col_bk2 = st.columns(2)
-        with col_bk1:
-            st.markdown("##### Baixar Banco Atual (.db)")
-            with open(DB_NAME, "rb") as f:
-                st.download_button("📥 Baixar Backup Atual", f, file_name="cassilab_gestao.db", mime="application/octet-stream")
-        with col_bk2:
-            st.markdown("##### Backups Automáticos Salvos na Pasta")
-            backup_dir = "backups"
-            if os.path.exists(backup_dir):
-                arquivos_backup = sorted([f for f in os.listdir(backup_dir) if f.endswith(".db")], reverse=True)
-                if arquivos_backup:
-                    arq_sel = st.selectbox("Selecione o backup automático:", arquivos_backup)
-                    if arq_sel:
-                        caminho_arq = os.path.join(backup_dir, arq_sel)
-                        with open(caminho_arq, "rb") as fb:
-                            st.download_button(f"📥 Baixar {arq_sel}", fb, file_name=arq_sel, mime="application/octet-stream")
+        st.subheader("💾 Backup e Exportação de Dados (Supabase)")
+        st.markdown("Como o banco de dados está no Supabase, selecione a tabela desejada abaixo para descarregar o backup em formato CSV:")
+        
+        tabelas_backup = ["empresas", "funcionarios", "exames", "epis", "treinamentos", "documentos", "usuarios_sistema", "logs_sistema"]
+        tabela_sel_bkp = st.selectbox("Selecione a tabela para exportar:", tabelas_backup)
+        
+        if st.button("📥 Gerar e Descarregar Backup da Tabela"):
+            try:
+                df_bkp = conn.query(f"SELECT * FROM {tabela_sel_bkp};", ttl=0)
+                if df_bkp.empty:
+                    st.warning(f"A tabela '{tabela_sel_bkp}' está vazia.")
                 else:
-                    st.info("Nenhum backup automático na pasta ainda.")
-            else:
-                st.info("Pasta de backups será criada automaticamente.")
+                    csv_data = df_bkp.to_csv(index=False).encode('utf-8')
+                    st.success(f"Backup da tabela **{tabela_sel_bkp}** gerado com sucesso!")
+                    st.download_button(
+                        label=f"📥 Baixar {tabela_sel_bkp}.csv",
+                        data=csv_data,
+                        file_name=f"backup_{tabela_sel_bkp}_{pd.Timestamp.now().strftime('%Y-%m-%d')}.csv",
+                        mime="text/csv"
+                    )
+            except Exception as e:
+                st.error(f"Erro ao exportar tabela: {e}")
