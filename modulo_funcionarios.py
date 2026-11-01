@@ -184,9 +184,17 @@ def renderizar_aba_funcionarios(
     if empresa_global != "Todas":
       empresa_selecionada = empresa_global
     else:
-      empresa_selecionada = st.selectbox(
-          "🏢 Selecione a Empresa", ["Todas"] + empresas_cad, key="sel_func_admin"
+      opcoes_emp = ["Todas"] + empresas_cad
+      idx_sel = (
+          opcoes_emp.index(empresa_global)
+          if empresa_global in opcoes_emp
+          else 0
       )
+      empresa_selecionada = st.selectbox(
+          "🏢 Selecione a Empresa", opcoes_emp, index=idx_sel, key="sel_func_admin"
+      )
+      if empresa_selecionada != empresa_global:
+        st.session_state["empresa_global"] = empresa_selecionada
   else:
     empresa_selecionada = emp_usuario
 
@@ -345,11 +353,16 @@ def renderizar_aba_funcionarios(
     if not pode_lancar:
       st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
     else:
-      emp_alvo_novo = (
-          empresa_selecionada
-          if empresa_selecionada != "Todas"
-          else (empresas_cad[0] if empresas_cad else "")
-      )
+      if is_admin:
+        emp_global_atual = st.session_state.get("empresa_global", "Todas")
+        emp_alvo_novo = (
+            emp_global_atual
+            if emp_global_atual != "Todas"
+            else (empresas_cad[0] if empresas_cad else "")
+        )
+      else:
+        emp_alvo_novo = emp_usuario
+
       with st.form("form_novo_funcionario"):
         mat_in = st.text_input("Matrícula")
         nome_in = st.text_input("Nome Completo")

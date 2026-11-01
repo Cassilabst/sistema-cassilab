@@ -170,29 +170,6 @@ def renderizar_aba_documentos(
       df_doc_exib = formatar_colunas_func(df_doc_sel)
       df_doc_exib = adicionar_numeracao_func(df_doc_exib)
 
-      col_doc_b1, col_doc_b2 = st.columns(2)
-      if pode_excluir:
-        if col_doc_b2.button(
-            "🗑️ Excluir Documento Selecionado",
-            key="btn_excluir_doc",
-            use_container_width=True,
-        ):
-          if st.session_state["sel_id_doc"] is not None:
-            st.session_state["modal_excluir_ativo"] = True
-            st.session_state["modal_excluir_tabela"] = "documentos"
-            st.session_state["modal_excluir_id"] = int(
-                st.session_state["sel_id_doc"]
-            )
-            st.session_state["modal_excluir_editor_key"] = (
-                "editor_selecao_documentos"
-            )
-            st.session_state["sel_id_doc"] = None
-            st.rerun()
-          else:
-            st.warning("⚠️ Selecione um documento marcando o quadradinho.")
-
-      st.write("")
-
       editado_doc = st.data_editor(
           df_doc_exib,
           hide_index=True,
@@ -208,19 +185,72 @@ def renderizar_aba_documentos(
           },
       )
 
-      linhas_marcadas = edit_df = editado_doc[
-          editado_doc["Selecionar"] == True
-      ]["_id_banco"].tolist()
-      if linhas_marcadas and pode_editar:
-        id_para_editar = int(linhas_marcadas[-1])
+      # Atualiza apenas a seleção atual
+      linhas_marcadas = editado_doc[editado_doc["Selecionar"] == True][
+          "_id_banco"
+      ].tolist()
+      if linhas_marcadas:
+        st.session_state["sel_id_doc"] = int(linhas_marcadas[-1])
+      else:
+        st.session_state["sel_id_doc"] = None
+
+      st.write("")
+      col_doc_b1, col_doc_b2 = st.columns(2)
+
+      # Botão Excluir Direto e Efetivo
+      if pode_excluir:
+        if col_doc_b2.button(
+            "🗑️ Excluir Documento Selecionado",
+            key="btn_excluir_doc",
+            use_container_width=True,
+        ):
+          if st.session_state["sel_id_doc"] is not None:
+            id_exc_doc = int(st.session_state["sel_id_doc"])
+            conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
+            cursor_exc = conn_exc.cursor()
+            cursor_exc.execute(
+                "SELECT documento FROM documentos WHERE id = ?", (id_exc_doc,)
+            )
+            reg_exc_doc = cursor_exc.fetchone()
+            cursor_exc.execute("DELETE FROM documentos WHERE id = ?", (id_exc_doc,))
+            conn_exc.commit()
+            conn_exc.close()
+
+            st.session_state["sel_id_doc"] = None
+            if "editor_selecao_documentos" in st.session_state:
+              del st.session_state["editor_selecao_documentos"]
+            st.session_state["msg_sucesso"] = "🗑️ Documento excluído com sucesso!"
+            registrar_log_func(
+                st.session_state.get("nome_usuario", "Desconhecido"),
+                filtro_doc if filtro_doc != "Todas as Empresas" else "Geral",
+                f"Excluiu documento ({reg_exc_doc[0] if reg_exc_doc else ''})",
+            )
+            st.rerun()
+          else:
+            st.warning("⚠️ Selecione um documento marcando o quadradinho.")
+
+      # Botão Editar Exclusivo
+      if pode_editar:
+        if col_doc_b1.button(
+            "✏️ Editar Documento Selecionado",
+            key="btn_editar_doc_modal",
+            use_container_width=True,
+        ):
+          if st.session_state["sel_id_doc"] is not None:
+            st.session_state["modal_edit_doc_id"] = int(
+                st.session_state["sel_id_doc"]
+            )
+            st.rerun()
+          else:
+            st.warning("⚠️ Selecione um documento marcando o quadradinho para editar.")
+
+      if st.session_state.get("modal_edit_doc_id"):
+        id_ed_doc = st.session_state["modal_edit_doc_id"]
+        st.session_state["modal_edit_doc_id"] = None
         st.session_state["sel_id_doc"] = None
         if "editor_selecao_documentos" in st.session_state:
           del st.session_state["editor_selecao_documentos"]
-        dialog_editar_documento_func(id_para_editar)
-
-      if st.session_state.get("modal_edit_doc_id"):
-        dialog_editar_documento_func(st.session_state["modal_edit_doc_id"])
-        st.session_state["modal_edit_doc_id"] = None
+        dialog_editar_documento_func(id_ed_doc)
     else:
       df_doc_exib = df_doc[[
           "empresa",

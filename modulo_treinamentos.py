@@ -2,394 +2,525 @@ from datetime import datetime
 import pandas as pd
 import sqlite3
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def renderizar_aba_treinamentos(*args, **kwargs):
-  DB_NAME = kwargs.get("DB_NAME") or (
-      args[0] if len(args) > 0 else "cassilab_gestao.db"
-  )
-  is_admin = (
-      kwargs.get("is_admin")
-      if "is_admin" in kwargs
-      else (args[1] if len(args) > 1 else False)
-  )
-  emp_usuario = kwargs.get("emp_usuario") or (
-      args[2] if len(args) > 2 else ""
-  )
-  pode_lancar = (
-      kwargs.get("pode_lancar")
-      if "pode_lancar" in kwargs
-      else (args[3] if len(args) > 3 else True)
-  )
-  pode_editar = (
-      kwargs.get("pode_editar")
-      if "pode_editar" in kwargs
-      else (args[4] if len(args) > 4 else True)
-  )
-  pode_excluir = (
-      kwargs.get("pode_excluir")
-      if "pode_excluir" in kwargs
-      else (args[5] if len(args) > 5 else True)
-  )
-
-  get_empresas_func = kwargs.get("get_empresas_func") or (
-      args[6] if len(args) > 6 else lambda: []
-  )
-  calcular_proximo_treinamento_func = kwargs.get(
-      "calcular_proximo_treinamento_func"
-  ) or (args[7] if len(args) > 7 else lambda d, v: d)
-  validar_e_formatar_data_input_func = (
-      kwargs.get("validar_e_formatar_data_input_func")
-      or (args[8] if len(args) > 8 else lambda x: x)
-  )
-  limpar_status_banco_func = kwargs.get("limpar_status_banco_func") or (
-      args[9] if len(args) > 9 else lambda x: x
-  )
-  sincronizar_status_treinamentos_func = kwargs.get(
-      "sincronizar_status_treinamentos_func"
-  ) or (args[10] if len(args) > 10 else lambda: None)
-  atualizar_filtro_empresa_func = kwargs.get(
-      "atualizar_filtro_empresa_func"
-  ) or (args[11] if len(args) > 11 else lambda x: None)
-  raw_registrar_log_func = kwargs.get("registrar_log_func") or (
-      args[12] if len(args) > 12 else None
-  )
-  formatar_data_br_func = kwargs.get("formatar_data_br_func") or (
-      args[13] if len(args) > 13 else lambda x: x
-  )
-
-  raw_formatar_status_visual_func = kwargs.get(
-      "formatar_status_visual_func"
-  ) or (args[14] if len(args) > 14 else None)
-  formatar_colunas_func = kwargs.get("formatar_colunas_func") or (
-      args[15] if len(args) > 15 else lambda df: df
-  )
-  adicionar_numeracao_func = kwargs.get("adicionar_numeracao_func") or (
-      args[16] if len(args) > 16 else lambda df: df
-  )
-  reset_tr_selection_func = kwargs.get("reset_tr_selection_func") or (
-      args[17] if len(args) > 17 else lambda: None
-  )
-  dialog_editar_treinamento_func = kwargs.get(
-      "dialog_editar_treinamento_func"
-  ) or (args[18] if len(args) > 18 else lambda x: None)
-  renderizar_matriz_treinamentos_func = kwargs.get(
-      "renderizar_matriz_treinamentos_func"
-  ) or (args[19] if len(args) > 19 else None)
-
-  def registrar_log_func_seguro(*l_args, **l_kwargs):
-    if not callable(raw_registrar_log_func):
-      return
-    try:
-      return raw_registrar_log_func(*l_args, **l_kwargs)
-    except Exception:
-      try:
-        if len(l_args) >= 2:
-          return raw_registrar_log_func(l_args[0], l_args[1])
-      except Exception:
-        pass
-
-  def formatar_status_visual_seguro(val, tipo="trein"):
-    if pd.isna(val) or not str(val).strip():
-      return "🟢 em dia"
-    v = str(val).strip()
-    if "🟢" in v or "🔴" in v or "🟠" in v or "🟡" in v:
-      return v
-    if callable(raw_formatar_status_visual_func):
-      try:
-        return raw_formatar_status_visual_func(val, tipo)
-      except Exception:
-        try:
-          return raw_formatar_status_visual_func(val)
-        except Exception:
-          pass
-    v_low = v.lower()
-    if "vencido" in v_low:
-      return f"🔴 {v}"
-    return f"🟢 {v}"
-
-  st.title("📚 Gestão de Treinamentos")
-
-  empresas_cad = get_empresas_func() if callable(get_empresas_func) else []
-  if is_admin:
-    empresa_global = st.session_state.get("empresa_global", "Todas")
-    if empresa_global != "Todas":
-      empresa_selecionada = empresa_global
-    else:
-      empresa_selecionada = st.selectbox(
-          "🏢 Selecione a Empresa", ["Todas"] + empresas_cad, key="sel_tr_admin"
-      )
-  else:
-    empresa_selecionada = emp_usuario
-
-  if isinstance(empresa_selecionada, bool):
-    empresa_selecionada = "Todas"
-
-  st.markdown(
-      f"<h3 style='color: #2980b9; margin-top: -10px;'>🏢 Empresa:"
-      f" <b>{empresa_selecionada}</b></h3>",
-      unsafe_allow_html=True,
-  )
-  st.markdown("---")
-
-  aba_lista, aba_novo, aba_matriz = st.tabs(
-      ["📋 Lista e Gestão", "➕ Novo Lançamento", "📊 Matriz de Treinamentos"]
-  )
-
-  conn = sqlite3.connect(DB_NAME, timeout=10.0)
-  try:
-    df = pd.read_sql("SELECT * FROM treinamentos", conn)
-  except:
-    df = pd.DataFrame()
-  conn.close()
-
-  if not df.empty and "empresa" in df.columns:
-    if is_admin and empresa_selecionada != "Todas":
-      df = df[
-          df["empresa"].astype(str).str.strip().str.lower()
-          == str(empresa_selecionada).strip().lower()
-      ]
-    elif not is_admin:
-      df = df[
-          df["empresa"].astype(str).str.strip().str.lower()
-          == str(empresa_selecionada).strip().lower()
-      ]
-    df = df.drop(columns=["empresa"])
-
-  with aba_lista:
-    st.markdown("<div id='ancora_treinamentos'></div>", unsafe_allow_html=True)
-    st.markdown(
-        "<script>window.location.hash = 'ancora_treinamentos';</script>",
-        unsafe_allow_html=True,
+    DB_NAME = kwargs.get("DB_NAME") or (
+        args[0] if len(args) > 0 else "cassilab_gestao.db"
+    )
+    is_admin = (
+        kwargs.get("is_admin")
+        if "is_admin" in kwargs
+        else (args[1] if len(args) > 1 else False)
+    )
+    emp_usuario = kwargs.get("emp_usuario") or (
+        args[2] if len(args) > 2 else ""
+    )
+    pode_lancar = (
+        kwargs.get("pode_lancar")
+        if "pode_lancar" in kwargs
+        else (args[3] if len(args) > 3 else True)
+    )
+    pode_editar = (
+        kwargs.get("pode_editar")
+        if "pode_editar" in kwargs
+        else (args[4] if len(args) > 4 else True)
+    )
+    pode_excluir = (
+        kwargs.get("pode_excluir")
+        if "pode_excluir" in kwargs
+        else (args[5] if len(args) > 5 else True)
     )
 
-    st.markdown("### 📋 Registos de Treinamentos e Gestão")
-    if df.empty:
-      st.info("Nenhum registo de treinamento encontrado.")
+    get_empresas_func = kwargs.get("get_empresas_func") or (
+        args[6] if len(args) > 6 else lambda: []
+    )
+    calcular_proximo_treinamento_func = kwargs.get(
+        "calcular_proximo_treinamento_func"
+    ) or (args[7] if len(args) > 7 else lambda d, v: d)
+    validar_e_formatar_data_input_func = (
+        kwargs.get("validar_e_formatar_data_input_func")
+        or (args[8] if len(args) > 8 else lambda x: x)
+    )
+    limpar_status_banco_func = kwargs.get("limpar_status_banco_func") or (
+        args[9] if len(args) > 9 else lambda x: x
+    )
+    sincronizar_status_treinamentos_func = kwargs.get(
+        "sincronizar_status_treinamentos_func"
+    ) or (args[10] if len(args) > 10 else lambda: None)
+    atualizar_filtro_empresa_func = kwargs.get(
+        "atualizar_filtro_empresa_func"
+    ) or (args[11] if len(args) > 11 else lambda x: None)
+    raw_registrar_log_func = kwargs.get("registrar_log_func") or (
+        args[12] if len(args) > 12 else None
+    )
+    formatar_data_br_func = kwargs.get("formatar_data_br_func") or (
+        args[13] if len(args) > 13 else lambda x: x
+    )
+
+    raw_formatar_status_visual_func = kwargs.get(
+        "formatar_status_visual_func"
+    ) or (args[14] if len(args) > 14 else None)
+    formatar_colunas_func = kwargs.get("formatar_colunas_func") or (
+        args[15] if len(args) > 15 else lambda df: df
+    )
+    adicionar_numeracao_func = kwargs.get("adicionar_numeracao_func") or (
+        args[16] if len(args) > 16 else lambda df: df
+    )
+    reset_tr_selection_func = kwargs.get("reset_tr_selection_func") or (
+        args[17] if len(args) > 17 else lambda: None
+    )
+    dialog_editar_treinamento_func = kwargs.get(
+        "dialog_editar_treinamento_func"
+    ) or (args[18] if len(args) > 18 else lambda x: None)
+    renderizar_matriz_treinamentos_func = kwargs.get(
+        "renderizar_matriz_treinamentos_func"
+    ) or (args[19] if len(args) > 19 else None)
+
+    def registrar_log_func_seguro(*l_args, **l_kwargs):
+        if not callable(raw_registrar_log_func):
+            return
+        try:
+            return raw_registrar_log_func(*l_args, **l_kwargs)
+        except Exception:
+            try:
+                if len(l_args) >= 2:
+                    return raw_registrar_log_func(l_args[0], l_args[1])
+            except Exception:
+                pass
+
+    def formatar_status_visual_seguro(val, tipo="trein"):
+        if pd.isna(val) or not str(val).strip():
+            return "🟢 em dia"
+        v = str(val).strip()
+        if "🟢" in v or "🔴" in v or "🟠" in v or "🟡" in v:
+            return v
+        if callable(raw_formatar_status_visual_func):
+            try:
+                return raw_formatar_status_visual_func(val, tipo)
+            except Exception:
+                try:
+                    return raw_formatar_status_visual_func(val)
+                except Exception:
+                    pass
+        v_low = v.lower()
+        if "vencido" in v_low:
+            return f"🔴 {v}"
+        return f"🟢 {v}"
+
+    st.title("📚 Gestão de Treinamentos")
+
+    empresas_cad = get_empresas_func() if callable(get_empresas_func) else []
+    if is_admin:
+        empresa_global = st.session_state.get("empresa_global", "Todas")
+        if empresa_global != "Todas":
+            empresa_selecionada = empresa_global
+        else:
+            opcoes_emp = ["Todas"] + empresas_cad
+            idx_sel = (
+                opcoes_emp.index(empresa_global)
+                if empresa_global in opcoes_emp
+                else 0
+            )
+            empresa_selecionada = st.selectbox(
+                "🏢 Selecione a Empresa", opcoes_emp, index=idx_sel, key="sel_tr_admin"
+            )
+        if empresa_selecionada != empresa_global:
+            st.session_state["empresa_global"] = empresa_selecionada
     else:
-      df_edit = df.copy()
-      df_edit["_id_banco"] = (
-          df_edit["id"] if "id" in df_edit.columns else df.index
-      )
-      if "id" in df_edit.columns:
-        df_edit = df_edit.drop(columns=["id"])
+        empresa_selecionada = emp_usuario
 
-      if "sel_id_tr" not in st.session_state:
-        st.session_state["sel_id_tr"] = None
+    if isinstance(empresa_selecionada, bool):
+        empresa_selecionada = "Todas"
 
-      col_acao1, col_acao2 = st.columns(2)
-      if pode_excluir:
-        if col_acao2.button(
-            "🗑️ Excluir Treinamento Selecionado",
-            use_container_width=True,
-            key="btn_del_tr",
-        ):
-          if st.session_state["sel_id_tr"] is not None:
-            id_exc = int(st.session_state["sel_id_tr"])
-            conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
-            cursor_exc = conn_exc.cursor()
-            cursor_exc.execute(
-                "SELECT treinamento, funcionario FROM treinamentos WHERE id = ?",
-                (id_exc,),
+    st.markdown(
+        f"<h3 style='color: #2980b9; margin-top: -10px;'>🏢 Empresa:"
+        f" <b>{empresa_selecionada}</b></h3>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
+
+    aba_lista, aba_novo, aba_matriz, aba_faltantes = st.tabs(
+        [
+            "📋 Lista e Gestão",
+            "➕ Novo Lançamento",
+            "📊 Matriz de Treinamentos",
+            "⚠️ Treinamentos Faltantes",
+        ]
+    )
+
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    try:
+        df = pd.read_sql("SELECT * FROM treinamentos", conn)
+    except:
+        df = pd.DataFrame()
+    conn.close()
+
+    if not df.empty and "empresa" in df.columns:
+        if is_admin and empresa_selecionada != "Todas":
+            df = df[
+                df["empresa"].astype(str).str.strip().str.lower()
+                == str(empresa_selecionada).strip().lower()
+            ]
+        elif not is_admin:
+            df = df[
+                df["empresa"].astype(str).str.strip().str.lower()
+                == str(empresa_selecionada).strip().lower()
+            ]
+        df = df.drop(columns=["empresa"])
+
+    with aba_lista:
+        st.markdown("<div id='ancora_treinamentos'></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<script>window.location.hash = 'ancora_treinamentos';</script>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("### 📋 Registos de Treinamentos e Gestão")
+        if df.empty:
+            st.info("Nenhum registo de treinamento encontrado.")
+        else:
+            df_edit = df.copy()
+            df_edit["_id_banco"] = (
+                df_edit["id"] if "id" in df_edit.columns else df.index
             )
-            reg_exc = cursor_exc.fetchone()
-            cursor_exc.execute("DELETE FROM treinamentos WHERE id = ?", (id_exc,))
-            conn_exc.commit()
-            conn_exc.close()
+            if "id" in df_edit.columns:
+                df_edit = df_edit.drop(columns=["id"])
 
-            st.session_state["sel_id_tr"] = None
-            if "editor_selecao_treinamentos" in st.session_state:
-              del st.session_state["editor_selecao_treinamentos"]
-            st.session_state["msg_sucesso"] = "🗑️ Registo excluído com sucesso!"
-            registrar_log_func_seguro(
-                st.session_state.get("nome_usuario", "Desconhecido"),
-                empresa_selecionada,
-                f"Excluiu treinamento ({reg_exc[0] if reg_exc else ''}) de"
-                f" {reg_exc[1] if reg_exc else ''}",
+            if "sel_id_tr" not in st.session_state:
+                st.session_state["sel_id_tr"] = None
+
+            if "data_realizacao" in df_edit.columns:
+                df_edit["data_realizacao"] = df_edit["data_realizacao"].apply(
+                    formatar_data_br_func
+                )
+            if "proximo_treinamento" in df_edit.columns:
+                df_edit["proximo_treinamento"] = df_edit["proximo_treinamento"].apply(
+                    formatar_data_br_func
+                )
+            if "status" in df_edit.columns:
+                df_edit["status"] = df_edit["status"].apply(
+                    lambda x: formatar_status_visual_seguro(x, "trein")
+                )
+
+            cols_tr_ord = [
+                "Selecionar",
+                "_id_banco",
+                "funcionario",
+                "treinamento",
+                "carga_horaria",
+                "pessoas_treinadas",
+                "data_realizacao",
+                "validade",
+                "proximo_treinamento",
+                "status",
+            ]
+            
+            df_edit["Selecionar"] = df_edit["_id_banco"] == st.session_state["sel_id_tr"]
+            df_tr_sel = df_edit[[c for c in cols_tr_ord if c in df_edit.columns]]
+
+            df_fmt = formatar_colunas_func(df_tr_sel)
+            df_fmt = adicionar_numeracao_func(df_fmt)
+
+            edit_df = st.data_editor(
+                df_fmt,
+                hide_index=True,
+                num_rows="fixed",
+                key="editor_selecao_treinamentos",
+                use_container_width=True,
+                column_config={
+                    "Selecionar": st.column_config.CheckboxColumn(
+                        "Selecionar", required=True, pinned=True
+                    ),
+                    "_id_banco": None,
+                    "Nº": st.column_config.NumberColumn(
+                        "Nº", disabled=True, pinned=True
+                    ),
+                    "funcionario": st.column_config.TextColumn(
+                        "Funcionário", disabled=True, pinned=True
+                    ),
+                },
             )
-            st.rerun()
-          else:
-            st.warning("⚠️ Selecione um treinamento marcando o quadradinho.")
 
-      st.write("")
+            linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
+                "_id_banco"
+            ].tolist()
+            if linhas_marcadas:
+                st.session_state["sel_id_tr"] = int(linhas_marcadas[-1])
+            else:
+                st.session_state["sel_id_tr"] = None
 
-      df_edit["Selecionar"] = df_edit["_id_banco"] == st.session_state["sel_id_tr"]
+            st.write("")
+            col_acao1, col_acao2 = st.columns(2)
+            
+            if pode_excluir:
+                if col_acao2.button(
+                    "🗑️ Excluir Treinamento Selecionado",
+                    use_container_width=True,
+                    key="btn_del_tr",
+                ):
+                    if st.session_state["sel_id_tr"] is not None:
+                        id_exc = int(st.session_state["sel_id_tr"])
+                        conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
+                        cursor_exc = conn_exc.cursor()
+                        cursor_exc.execute(
+                            "SELECT treinamento, funcionario FROM treinamentos WHERE id = ?",
+                            (id_exc,),
+                        )
+                        reg_exc = cursor_exc.fetchone()
+                        cursor_exc.execute("DELETE FROM treinamentos WHERE id = ?", (id_exc,))
+                        conn_exc.commit()
+                        conn_exc.close()
 
-      if "data_realizacao" in df_edit.columns:
-        df_edit["data_realizacao"] = df_edit["data_realizacao"].apply(
-            formatar_data_br_func
-        )
-      if "proximo_treinamento" in df_edit.columns:
-        df_edit["proximo_treinamento"] = df_edit["proximo_treinamento"].apply(
-            formatar_data_br_func
-        )
-      if "status" in df_edit.columns:
-        df_edit["status"] = df_edit["status"].apply(
-            lambda x: formatar_status_visual_seguro(x, "trein")
-        )
+                        st.session_state["sel_id_tr"] = None
+                        if "editor_selecao_treinamentos" in st.session_state:
+                            del st.session_state["editor_selecao_treinamentos"]
+                        st.session_state["msg_sucesso"] = "🗑️ Registo excluído com sucesso!"
+                        registrar_log_func_seguro(
+                            st.session_state.get("nome_usuario", "Desconhecido"),
+                            empresa_selecionada,
+                            f"Excluiu treinamento ({reg_exc[0] if reg_exc else ''}) de"
+                            f" {reg_exc[1] if reg_exc else ''}",
+                        )
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Selecione um treinamento marcando o quadradinho.")
 
-      cols_tr_ord = [
-          "Selecionar",
-          "_id_banco",
-          "funcionario",
-          "treinamento",
-          "carga_horaria",
-          "pessoas_treinadas",
-          "data_realizacao",
-          "validade",
-          "proximo_treinamento",
-          "status",
-      ]
-      df_tr_sel = df_edit[[c for c in cols_tr_ord if c in df_edit.columns]]
+            if pode_editar:
+                if col_acao1.button(
+                    "✏️ Editar Treinamento Selecionado",
+                    use_container_width=True,
+                    key="btn_edit_tr_modal",
+                ):
+                    if st.session_state["sel_id_tr"] is not None:
+                        st.session_state["modal_edit_tr_id"] = int(st.session_state["sel_id_tr"])
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Selecione um treinamento marcando o quadradinho para editar.")
 
-      df_fmt = formatar_colunas_func(df_tr_sel)
-      df_fmt = adicionar_numeracao_func(df_fmt)
-
-      edit_df = st.data_editor(
-          df_fmt,
-          hide_index=True,
-          num_rows="fixed",
-          key="editor_selecao_treinamentos",
-          use_container_width=True,
-          column_config={
-              "Selecionar": st.column_config.CheckboxColumn(
-                  "Selecionar", required=True, pinned=True
-              ),
-              "_id_banco": None,
-              "Nº": st.column_config.NumberColumn(
-                  "Nº", disabled=True, pinned=True
-              ),
-              "funcionario": st.column_config.TextColumn(
-                  "Funcionário", disabled=True, pinned=True
-              ),
-          },
-      )
-
-      linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
-          "_id_banco"
-      ].tolist()
-      if linhas_marcadas and pode_editar:
-        id_para_editar = int(linhas_marcadas[-1])
+    if st.session_state.get("modal_edit_tr_id"):
+        id_ed = st.session_state["modal_edit_tr_id"]
+        st.session_state["modal_edit_tr_id"] = None
         st.session_state["sel_id_tr"] = None
         if "editor_selecao_treinamentos" in st.session_state:
-          del st.session_state["editor_selecao_treinamentos"]
-        dialog_editar_treinamento_func(id_para_editar)
+            del st.session_state["editor_selecao_treinamentos"]
+        dialog_editar_treinamento_func(id_ed)
 
-      if st.session_state.get("modal_edit_tr_id"):
-        dialog_editar_treinamento_func(st.session_state["modal_edit_tr_id"])
-        st.session_state["modal_edit_tr_id"] = None
-
-  with aba_novo:
-    st.markdown("### ➕ Adicionar Novo Treinamento")
-    if not pode_lancar:
-      st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
-    else:
-      emp_alvo_novo = (
-          empresa_selecionada
-          if empresa_selecionada != "Todas"
-          else (empresas_cad[0] if empresas_cad else "")
-      )
-      with st.form("form_novo_treinamento"):
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        try:
-          df_funcs = pd.read_sql(
-              "SELECT funcionario, matricula, cargo, setor FROM base_funcionarios"
-              " WHERE empresa = ?",
-              conn,
-              params=(emp_alvo_novo,),
-          )
-          df_cad_tr = pd.read_sql(
-              "SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY"
-              " treinamento ASC",
-              conn,
-          )
-        except:
-          df_funcs = pd.DataFrame()
-          df_cad_tr = pd.DataFrame()
-        conn.close()
-
-        lista_f = (
-            df_funcs["funcionario"].tolist() if not df_funcs.empty else []
-        )
-        lista_tr = (
-            df_cad_tr["treinamento"].tolist() if not df_cad_tr.empty else []
-        )
-        mapa_ch = (
-            dict(zip(df_cad_tr["treinamento"], df_cad_tr["carga_horaria"]))
-            if not df_cad_tr.empty
-            else {}
-        )
-
-        func_escolhido = st.selectbox("Funcionário", lista_f)
-
-        if lista_tr:
-          trein_sel = st.selectbox("Treinamento", lista_tr)
-          carga_sug = mapa_ch.get(trein_sel, "8 horas")
+    with aba_novo:
+        st.markdown("### ➕ Adicionar Novo Treinamento")
+        if not pode_lancar:
+            st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
         else:
-          trein_sel = st.text_input("Treinamento", value="Integração")
-          carga_sug = "8 horas"
+            if is_admin:
+                emp_global_atual = st.session_state.get("empresa_global", "Todas")
+                emp_alvo_novo = (
+                    emp_global_atual
+                    if emp_global_atual != "Todas"
+                    else (empresas_cad[0] if empresas_cad else "")
+                )
+            else:
+                emp_alvo_novo = emp_usuario
 
-        carga_in = st.text_input("Carga Horária", value=str(carga_sug))
-        modalidade_in = st.selectbox(
-            "Tipo de Treinamento", ["Presencial", "Semi-presencial", "EaD"]
-        )
-        data_real = st.text_input(
-            "Data da Realização", value=datetime.today().strftime("%d/%m/%Y")
-        )
-        validade_in = st.text_input("Validade (ex: 12 meses)", value="12 meses")
+            with st.form("form_novo_treinamento"):
+                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                try:
+                    df_funcs = pd.read_sql(
+                        "SELECT funcionario, matricula, cargo, setor FROM base_funcionarios"
+                        " WHERE empresa = ? ORDER BY funcionario ASC",
+                        conn,
+                        params=(emp_alvo_novo,),
+                    )
+                    df_cad_tr = pd.read_sql(
+                        "SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY"
+                        " treinamento ASC",
+                        conn,
+                    )
+                except:
+                    df_funcs = pd.DataFrame()
+                    df_cad_tr = pd.DataFrame()
+                conn.close()
 
-        btn_salvar_tr = st.form_submit_button("Salvar Novo Treinamento")
-        if btn_salvar_tr:
-          if func_escolhido and trein_sel:
-            mat_f, cargo_f, setor_f = "", "", ""
-            if not df_funcs.empty:
-              m_row = df_funcs[df_funcs["funcionario"] == func_escolhido]
-              if not m_row.empty:
-                mat_f = m_row.iloc[0]["matricula"]
-                cargo_f = m_row.iloc[0]["cargo"]
-                setor_f = m_row.iloc[0]["setor"]
+                lista_f = (
+                    df_funcs["funcionario"].tolist() if not df_funcs.empty else []
+                )
+                lista_tr = (
+                    df_cad_tr["treinamento"].tolist() if not df_cad_tr.empty else []
+                )
+                mapa_ch = (
+                    dict(zip(df_cad_tr["treinamento"], df_cad_tr["carga_horaria"]))
+                    if not df_cad_tr.empty
+                    else {}
+                )
 
-            prox_tr = calcular_proximo_treinamento_func(data_real, validade_in)
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
-            conn.execute(
-                """
+                func_escolhido = st.selectbox("Funcionário", lista_f)
+
+                if lista_tr:
+                    trein_sel = st.selectbox("Treinamento", lista_tr)
+                    carga_sug = mapa_ch.get(trein_sel, "8 horas")
+                else:
+                    trein_sel = st.text_input("Treinamento", value="Integração")
+                    carga_sug = "8 horas"
+
+                carga_in = st.text_input("Carga Horária", value=str(carga_sug))
+                modalidade_in = st.selectbox(
+                    "Tipo de Treinamento", ["Presencial", "Semi-presencial", "EaD"]
+                )
+                data_real = st.text_input(
+                    "Data da Realização", value=datetime.today().strftime("%d/%m/%Y")
+                )
+                validade_in = st.text_input("Validade (ex: 12 meses)", value="12 meses")
+
+                btn_salvar_tr = st.form_submit_button("Salvar Novo Treinamento")
+                if btn_salvar_tr:
+                    if func_escolhido and trein_sel:
+                        mat_f, cargo_f, setor_f = "", "", ""
+                        if not df_funcs.empty:
+                            m_row = df_funcs[df_funcs["funcionario"] == func_escolhido]
+                            if not m_row.empty:
+                                mat_f = m_row.iloc[0]["matricula"]
+                                cargo_f = m_row.iloc[0]["cargo"]
+                                setor_f = m_row.iloc[0]["setor"]
+
+                        prox_tr = calcular_proximo_treinamento_func(data_real, validade_in)
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn.execute(
+                            """
                             INSERT INTO treinamentos (empresa, matricula, funcionario, cargo, setor, treinamento, carga_horaria, pessoas_treinadas, data_realizacao, validade, proximo_treinamento, status)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'em dia')
-                        """,
-                (
-                    emp_alvo_novo,
-                    str(mat_f),
-                    func_escolhido,
-                    str(cargo_f),
-                    str(setor_f),
-                    trein_sel,
-                    carga_in.strip(),
-                    modalidade_in.strip(),
-                    validar_e_formatar_data_input_func(data_real),
-                    validvalidade_in := validade_in.strip(),
-                    prox_tr,
-                ),
-            )
-            conn.commit()
-            conn.close()
-            if callable(sincronizar_status_treinamentos_func):
-              sincronizar_status_treinamentos_func()
-            st.session_state["msg_sucesso"] = (
-                "✅ Treinamento cadastrado com sucesso!"
-            )
-            registrar_log_func_seguro(
-                st.session_state.get("nome_usuario", "Desconhecido"),
-                emp_alvo_novo,
-                f"Cadastrou treinamento ({trein_sel}) para {func_escolhido}",
-            )
-            st.rerun()
-          else:
-            st.error("Preencha todos os campos obrigatórios.")
+                            """,
+                            (
+                                emp_alvo_novo,
+                                str(mat_f),
+                                func_escolhido,
+                                str(cargo_f),
+                                str(setor_f),
+                                trein_sel,
+                                carga_in.strip(),
+                                modalidade_in.strip(),
+                                validar_e_formatar_data_input_func(data_real),
+                                validade_in.strip(),
+                                prox_tr,
+                            ),
+                        )
+                        conn.commit()
+                        conn.close()
+                        if callable(sincronizar_status_treinamentos_func):
+                            sincronizar_status_treinamentos_func()
+                        st.session_state["msg_sucesso"] = (
+                            "✅ Treinamento cadastrado com sucesso!"
+                        )
+                        registrar_log_func_seguro(
+                            st.session_state.get("nome_usuario", "Desconhecido"),
+                            emp_alvo_novo,
+                            f"Cadastrou treinamento ({trein_sel}) para {func_escolhido}",
+                        )
+                        st.rerun()
+                    else:
+                        st.error("Preencha todos os campos obrigatórios.")
 
-  with aba_matriz:
-    if callable(renderizar_matriz_treinamentos_func):
-      renderizar_matriz_treinamentos_func(
-          DB_NAME, empresas_cad, registrar_log_func_seguro
-      )
-    else:
-      st.info("Matriz de treinamentos não disponível.")
+    with aba_matriz:
+        if callable(renderizar_matriz_treinamentos_func):
+            empresas_para_matriz = (
+                empresas_cad
+                if is_admin
+                else ([emp_usuario] if emp_usuario else [])
+            )
+            renderizar_matriz_treinamentos_func(
+                DB_NAME, empresas_para_matriz, registrar_log_func_seguro
+            )
+
+    with aba_faltantes:
+        st.markdown("### ⚠️ Relatório de Treinamentos Faltantes / Pendentes")
+        st.markdown(
+            "Esta aba cruza os dados da **Matriz de Treinamentos** com o histórico de execuções"
+            " para identificar os colaboradores que possuem treinamentos marcados como **Obrigatórios**"
+            " mas que **nunca os realizaram**."
+        )
+
+        if empresa_selecionada == "Todas":
+            st.info("ℹ️ Selecione uma empresa específica no filtro superior para visualizar os treinamentos faltantes.")
+        else:
+            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            df_funcs_f = pd.read_sql(
+                "SELECT funcionario, cargo, setor, status FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            df_mat_status = pd.read_sql(
+                "SELECT funcionario, treinamento, obrigatoriedade FROM matriz_treinamentos_status WHERE empresa = ?",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            df_execs = pd.read_sql(
+                "SELECT funcionario, treinamento FROM treinamentos WHERE empresa = ?",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            conn.close()
+
+            if df_mat_status.empty:
+                st.warning(
+                    "⚠️ Nenhuma matriz de treinamentos configurada para esta empresa. "
+                    "Configure a matriz na aba '📊 Matriz de Treinamentos' para ativar este relatório de pendências."
+                )
+            else:
+                df_obrigatorios = df_mat_status[df_mat_status["obrigatoriedade"] == "Obrigatório"]
+
+                execucoes_realizadas = set()
+                if not df_execs.empty:
+                    for _, r in df_execs.iterrows():
+                        f_clean = str(r["funcionario"]).strip().lower()
+                        t_clean = str(r["treinamento"]).strip().lower()
+                        execucoes_realizadas.add((f_clean, t_clean))
+
+                pendencias = []
+                for _, r in df_obrigatorios.iterrows():
+                    func = r["funcionario"]
+                    trein = r["treinamento"]
+                    f_key = str(func).strip().lower()
+                    t_key = str(trein).strip().lower()
+
+                    if (f_key, t_key) not in execucoes_realizadas:
+                        cargo_f = ""
+                        setor_f = ""
+                        if not df_funcs_f.empty:
+                            match_f = df_funcs_f[df_funcs_f["funcionario"].str.strip().str.lower() == f_key]
+                            if not match_f.empty:
+                                cargo_f = match_f.iloc[0]["cargo"]
+                                setor_f = match_f.iloc[0]["setor"]
+
+                        pendencias.append({
+                            "Funcionário": func,
+                            "Cargo": cargo_f,
+                            "Setor": setor_f,
+                            "Treinamento Obrigatório": trein,
+                            "Situação": "🔴 Nunca Realizado (Pendente)"
+                        })
+
+                if pendencias:
+                    df_pend = pd.DataFrame(pendencias)
+                    # Ordena o DataFrame de pendências por nome do funcionário em ordem alfabética
+                    df_pend = df_pend.sort_values(by="Funcionário", ascending=True)
+                    df_pend_fmt = adicionar_numeracao_func(formatar_colunas_func(df_pend))
+                    st.warning(f"Foram encontrados {len(pendencias)} treinamento(s) obrigatório(s) em falta para os colaboradores.")
+                    st.dataframe(df_pend_fmt, use_container_width=True, hide_index=True)
+
+                    st.markdown("---")
+                    if st.button("🖨️ Imprimir / Relatório de Pendências", key="btn_print_pendencias"):
+                        html_pend = df_pend.to_html(index=False)
+                        print_html = f"""
+                        <!DOCTYPE html>
+                        <html>
+                        <head><meta charset="utf-8"><title>Treinamentos Faltantes - {empresa_selecionada}</title></head>
+                        <body>
+                            <h2 style="text-align: center;">Relatório de Treinamentos Faltantes / Pendentes</h2>
+                            <h3 style="text-align: center;">Empresa: {empresa_selecionada}</h3>
+                            {html_pend}
+                            <script>setTimeout(function() {{ window.print(); }}, 400);</script>
+                        </body>
+                        </html>
+                        """
+                        components.html(print_html, height=50)
+                else:
+                    st.success("🎉 Parabéns! Todos os colaboradores realizaram ao menos uma vez os treinamentos marcados como obrigatórios na matriz.")

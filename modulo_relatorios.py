@@ -1,6 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+from datetime import datetime
 import streamlit.components.v1 as components
 
 def obter_cnpj_empresa(DB_NAME, empresa_nome):
@@ -38,7 +39,6 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
         .tabela-relatorio td { color: #000000 !important; border: 1px solid #bbbbbb; padding: 6px; }
         .tabela-relatorio tr:nth-child(even) { background-color: #f8f9fa; }
 
-        /* Ajuste fino para alinhar perfeitamente o botão nativo do Streamlit ao lado do componente */
         div.stButton > button {
             height: 38px !important;
             padding-top: 0px !important;
@@ -47,7 +47,7 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
         }
 
         @media print {
-            @page { size: A4 landscape; margin: 10mm; }
+            @page { size: A4 portrait; margin: 10mm; }
             
             section[data-testid="stSidebar"],
             div[data-testid="stSidebar"],
@@ -135,7 +135,6 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
     col_h1, col_h2, col_h3 = st.columns([0.5, 0.25, 0.25])
     with col_h1: st.title("📈 Relatórios Consolidados")
     with col_h2:
-        # Removido o st.write("") extra para nivelar perfeitamente com o título
         components.html("""
             <div style="font-family: Source Sans Pro, sans-serif; margin: 0; padding-top: 5px;">
                 <button onclick="parent.window.print();" style="
@@ -151,7 +150,6 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
             </div>
         """, height=44)
     with col_h3:
-        # Espaçamento idêntico aplicado ao botão nativo do Streamlit
         st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
         if st.button("🔄 Atualizar Aba", key="btn_atualizar_rel", use_container_width=True): st.rerun()
 
@@ -164,6 +162,7 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
     show_doc = c_chk3.checkbox("Documentos", value=False)
     show_serv = c_chk3.checkbox("Serviços", value=True)
     show_abs = c_chk4.checkbox("Absenteísmo", value=True)
+    show_aniv = c_chk4.checkbox("🎂 Aniversariantes do Mês", value=True)
 
     empresas = get_empresas_func()
     opcoes_filtro = ["Todas as Empresas"] + (empresas if empresas else [])
@@ -228,6 +227,33 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
     if not df_serv.empty and "servico" in df_serv.columns: df_serv = df_serv.sort_values(by="servico", ascending=True)
     if not df_abs.empty and "nome" in df_abs.columns: df_abs = df_abs.sort_values(by="nome", ascending=True)
 
+    # Preparar dados de aniversariantes estritamente do MÊS CORRENTE
+    df_aniversariantes = pd.DataFrame()
+    if not df_funcs.empty and "data_nascimento" in df_funcs.columns:
+        mes_atual = datetime.now().month
+        lista_aniv = []
+        for _, row in df_funcs.iterrows():
+            dt_nasc = str(row.get("data_nascimento", "")).strip()
+            if dt_nasc and dt_nasc not in ("nan", "None", ""):
+                try:
+                    partes = dt_nasc.split("/")
+                    if len(partes) >= 2:
+                        dia = int(partes[0])
+                        mes = int(partes[1])
+                        if mes == mes_atual:
+                            lista_aniv.append({
+                                "empresa": row.get("empresa", ""),
+                                "funcionario": row.get("funcionario", ""),
+                                "cargo": row.get("cargo", ""),
+                                "data": dt_nasc,
+                                "_dia": dia
+                            })
+                except:
+                    continue
+        if lista_aniv:
+            df_aniversariantes = pd.DataFrame(lista_aniv)
+            df_aniversariantes = df_aniversariantes.sort_values(by=["_dia"]).drop(columns=["_dia"])
+
     def renderizar_tabela_html(df, titulo, csv_nome):
         st.subheader(titulo)
         if not df.empty:
@@ -240,6 +266,24 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
             st.info(f"Nenhum registro encontrado para {titulo.lower()}.")
         st.markdown("---")
 
+    def renderizar_aniversariantes_estilo(df):
+        st.subheader("🎂 Aniversariantes do Mês")
+        if not df.empty:
+            empresas_unicas = df["empresa"].unique()
+            for emp in empresas_unicas:
+                st.markdown(f"#### 🏢 {emp}")
+                funcs_emp = df[df["empresa"] == emp]
+                for _, f in funcs_emp.iterrows():
+                    cargo_txt = f" — *{f['cargo']}*" if f["cargo"] else ""
+                    st.markdown(f"* **{f['data'][:5]}** — **{f['funcionario']}**{cargo_txt}")
+                st.markdown("")
+            
+            csv_data = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Baixar Relatório de Aniversariantes (CSV)", data=csv_data, file_name="relatorio_aniversariantes_mes.csv", mime="text/csv", key="dl_aniv_mes")
+        else:
+            st.info("Nenhum aniversariante registrado para este mês.")
+        st.markdown("---")
+
     if show_funcs: renderizar_tabela_html(df_funcs, "👥 Relatório de Funcionários", "relatorio_funcionarios.csv")
     if show_ex: renderizar_tabela_html(df_exames, "🩺 Relatório de Exames Ocupacionais", "relatorio_exames.csv")
     if show_tr: renderizar_tabela_html(df_trein, "📚 Relatório de Treinamentos", "relatorio_treinamentos.csv")
@@ -247,6 +291,7 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
     if show_doc: renderizar_tabela_html(df_docs, "📄 Relatório de Documentos", "relatorio_documentos.csv")
     if show_serv: renderizar_tabela_html(df_serv, "🛠️ Relatório de Serviços Realizados", "relatorio_servicos.csv")
     if show_abs: renderizar_tabela_html(df_abs, "📊 Relatório de Absenteísmo", "relatorio_absenteismo.csv")
+    if show_aniv: renderizar_aniversariantes_estilo(df_aniversariantes)
 
 def adicionar_numeracao_func_local(df):
     if df is None or df.empty: return df

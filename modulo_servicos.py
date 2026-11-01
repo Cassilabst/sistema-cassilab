@@ -220,21 +220,38 @@ def renderizar_aba_servicos(*args, **kwargs):
   )
 
   st.subheader("Serviços Registrados")
+
+  empresa_global_atual = st.session_state.get("empresa_global", "Todas")
+  opcoes_filtro_emp = ["Todas as Empresas"] + empresas
+  idx_filtro_inicial = 0
+  if empresa_global_atual in opcoes_filtro_emp and empresa_global_atual != "Todas":
+    idx_filtro_inicial = opcoes_filtro_emp.index(empresa_global_atual)
+
   filtro_serv = st.selectbox(
       "Filtrar por Empresa",
-      ["Todas as Empresas"] + empresas,
-      key="filtro_srv_emp_trad",
+      opcoes_filtro_emp,
+      index=idx_filtro_inicial,
+      key="filtro_servicos_empresa_local",
       on_change=safe_reset_serv,
   )
 
   conn = sqlite3.connect(DB_NAME, timeout=10.0)
   try:
-    df_srv = pd.read_sql(
-        "SELECT * FROM servicos_realizados ORDER BY data_realizacao DESC", conn
-    )
+    df_srv = pd.read_sql("SELECT * FROM servicos_realizados", conn)
   except:
     df_srv = pd.DataFrame()
   conn.close()
+
+  # ORDENAÇÃO DECRESCENTE RIGOROSA (DA DATA MAIS RECENTE PARA A MAIS ANTIGA)
+  if not df_srv.empty and "data_realizacao" in df_srv.columns:
+    df_srv["_dt_parse"] = pd.to_datetime(
+        df_srv["data_realizacao"], format="%d/%m/%Y", errors="coerce"
+    )
+    df_srv = (
+        df_srv.sort_values(by=["_dt_parse", "id"], ascending=[False, False])
+        .drop(columns=["_dt_parse"])
+        .reset_index(drop=True)
+    )
 
   if filtro_serv != "Todas as Empresas" and not df_srv.empty:
     df_srv = df_srv[
@@ -242,36 +259,29 @@ def renderizar_aba_servicos(*args, **kwargs):
         == str(filtro_serv).strip().lower()
     ]
 
+  # --- PAINEL DE MÉTRICAS (TOTAL DE SERVIÇOS E VALOR TOTAL) ---
+  if not df_srv.empty:
+    total_servicos = len(df_srv)
+    try:
+      valor_total = df_srv["valor"].astype(float).sum()
+    except:
+      valor_total = 0.0
+
+    val_fmt_total = formatar_valor_brasileiro_func(valor_total) if callable(formatar_valor_brasileiro_func) else f"{valor_total:.2f}"
+
+    col_m1, col_m2 = st.columns(2)
+    col_m1.metric("📊 Total de Serviços Registrados", total_servicos)
+    col_m2.metric("💰 Valor Total Acumulado", f"R$ {val_fmt_total}")
+    st.markdown("---")
+
   if not df_srv.empty:
     df_srv["_id_banco"] = df_srv["id"]
 
     if "sel_id_serv" not in st.session_state:
       st.session_state["sel_id_serv"] = None
 
-    col_srv_b1, col_srv_b2 = st.columns(2)
-    with col_srv_b2:
-      if st.button(
-          "🗑️ Excluir Serviço Selecionado",
-          key="btn_excluir_serv",
-          use_container_width=True,
-      ):
-        if st.session_state["sel_id_serv"] is not None:
-          st.session_state["modal_excluir_ativo"] = True
-          st.session_state["modal_excluir_tabela"] = "servicos_realizados"
-          st.session_state["modal_excluir_id"] = int(
-              st.session_state["sel_id_serv"]
-          )
-          st.session_state["modal_excluir_editor_key"] = (
-              "editor_selecao_servicos"
-          )
-          st.session_state["sel_id_serv"] = None
-          st.rerun()
-        else:
-          st.warning("⚠️ Selecione um serviço marcando o quadradinho.")
-
-    st.write("")
-
     df_srv["Selecionar"] = df_srv["_id_banco"] == st.session_state["sel_id_serv"]
+
     cols_srv_ord = [
         "Selecionar",
         "_id_banco",
@@ -326,13 +336,51 @@ def renderizar_aba_servicos(*args, **kwargs):
     linhas_marcadas = editado_serv[editado_serv["Selecionar"] == True][
         "_id_banco"
     ].tolist()
+
     if linhas_marcadas:
-      id_para_editar = int(linhas_marcadas[-1])
-      st.session_state["sel_id_serv"] = None
-      if "editor_selecao_servicos" in st.session_state:
-        del st.session_state["editor_selecao_servicos"]
-      if callable(dialog_editar_servico_func):
-        dialog_editar_servico_func(id_para_editar)
+      novo_selecionado = int(linhas_marcadas[-1])
+      if st.session_state["sel_id_serv"] != novo_selecionado:
+        st.session_state["sel_id_serv"] = novo_selecionado
+        st.rerun()
+    else:
+      if st.session_state["sel_id_serv"] is not None:
+        st.session_state["sel_id_serv"] = None
+
+    st.write("")
+    col_btn1, col_btn2 = st.columns(2)
+
+    with col_btn1:
+      if st.button("✏️ Editar Serviço Selecionado", use_container_width=True, key="btn_editar_serv_acao"):
+        if st.session_state["sel_id_serv"] is not None:
+          id_alvo_ed = int(st.session_state["sel_id_serv"])
+          st.session_state["sel_id_serv"] = None
+          if "editor_selecao_servicos" in st.session_state:
+            del st.session_state["editor_selecao_servicos"]
+          if callable(dialog_editar_servico_func):
+            dialog_editar_servico_func(id_alvo_ed)
+        else:
+          st.warning("⚠️ Selecione um serviço marcando o quadradinho para editar.")
+
+    with col_btn2:
+      if st.button("🗑️ Excluir Serviço Selecionado", use_container_width=True, key="btn_excluir_serv_acao"):
+        if st.session_state["sel_id_serv"] is not None:
+          id_alvo_exc = int(st.session_state["sel_id_serv"])
+          conn = sqlite3.connect(DB_NAME, timeout=10.0)
+          conn.execute("DELETE FROM servicos_realizados WHERE id = ?", (id_alvo_exc,))
+          conn.commit()
+          conn.close()
+          st.session_state["sel_id_serv"] = None
+          if "editor_selecao_servicos" in st.session_state:
+            del st.session_state["editor_selecao_servicos"]
+          st.session_state["msg_sucesso"] = "🗑️ Serviço excluído com sucesso!"
+          registrar_log_func_seguro(
+              st.session_state.get("nome_usuario", "Administrador"),
+              "Todas",
+              f"Excluiu serviço ID {id_alvo_exc}",
+          )
+          st.rerun()
+        else:
+          st.warning("⚠️ Selecione um serviço marcando o quadradinho para excluir.")
 
     if st.session_state.get("modal_edit_serv_id"):
       if callable(dialog_editar_servico_func):

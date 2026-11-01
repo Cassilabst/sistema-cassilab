@@ -131,9 +131,17 @@ def renderizar_aba_exames(
     if empresa_global != "Todas":
       empresa_selecionada = empresa_global
     else:
-      empresa_selecionada = st.selectbox(
-          "🏢 Selecione a Empresa", ["Todas"] + empresas_cad, key="sel_ex_admin"
+      opcoes_emp = ["Todas"] + empresas_cad
+      idx_sel = (
+          opcoes_emp.index(empresa_global)
+          if empresa_global in opcoes_emp
+          else 0
       )
+      empresa_selecionada = st.selectbox(
+          "🏢 Selecione a Empresa", opcoes_emp, index=idx_sel, key="sel_ex_admin"
+      )
+      if empresa_selecionada != empresa_global:
+        st.session_state["empresa_global"] = empresa_selecionada
   else:
     empresa_selecionada = emp_usuario
 
@@ -162,7 +170,7 @@ def renderizar_aba_exames(
     elif not is_admin:
       df = df[
           df["empresa"].astype(str).str.strip().str.lower()
-          == str(empresa_selecionada).strip().lower()
+          == str(emp_usuario).strip().lower()
       ]
     df = df.drop(columns=["empresa"])
 
@@ -233,6 +241,17 @@ def renderizar_aba_exames(
       df_ex_sel = df_edit[[c for c in cols_ex_ord if c in df_edit.columns]]
 
       df_fmt = formatar_colunas_tabela(df_ex_sel)
+      
+      # ORDENAÇÃO ALFABÉTICA RIGOROSA NA TABELA FORMATADA (DE A a Z)
+      if "Funcionário" in df_fmt.columns:
+        df_fmt["_sort_key"] = df_fmt["Funcionário"].astype(str).str.strip().str.lower()
+        df_fmt = df_fmt.sort_values(by="_sort_key", ascending=True).drop(columns=["_sort_key"])
+        df_fmt = df_fmt.reset_index(drop=True)
+
+      if "Status" in df_fmt.columns:
+        df_fmt["Status"] = df_fmt["Status"].apply(
+            lambda x: formatar_status_visual(x, "ex")
+        )
       df_fmt = adicionar_numeracao(df_fmt)
 
       edit_df = st.data_editor(
@@ -249,7 +268,7 @@ def renderizar_aba_exames(
               "Nº": st.column_config.NumberColumn(
                   "Nº", disabled=True, pinned=True
               ),
-              "funcionario": st.column_config.TextColumn(
+              "Funcionário": st.column_config.TextColumn(
                   "Funcionário", disabled=True, pinned=True
               ),
           },
@@ -270,16 +289,21 @@ def renderizar_aba_exames(
     if not pode_lancar:
       st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
     else:
-      emp_alvo_novo = (
-          empresa_selecionada
-          if empresa_selecionada != "Todas"
-          else (empresas_cad[0] if empresas_cad else "")
-      )
+      if is_admin:
+        emp_global_atual = st.session_state.get("empresa_global", "Todas")
+        emp_alvo_novo = (
+            emp_global_atual
+            if emp_global_atual != "Todas"
+            else (empresas_cad[0] if empresas_cad else "")
+        )
+      else:
+        emp_alvo_novo = emp_usuario
+
       with st.form("form_novo_exame"):
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
         df_funcs = pd.read_sql(
             "SELECT funcionario, matricula, cargo, setor FROM base_funcionarios"
-            " WHERE empresa = ?",
+            " WHERE empresa = ? ORDER BY funcionario ASC",
             conn,
             params=(emp_alvo_novo,),
         )
@@ -331,9 +355,9 @@ def renderizar_aba_exames(
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
             conn.execute(
                 """
-                            INSERT INTO exames (empresa, matricula, funcionario, cargo, setor, tipo_exame, ultimo_exame, periodicidade, proximo_exame, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Válido')
-                        """,
+                INSERT INTO exames (empresa, matricula, funcionario, cargo, setor, tipo_exame, ultimo_exame, periodicidade, proximo_exame, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Válido')
+                """,
                 (
                     emp_alvo_novo,
                     str(mat_f),

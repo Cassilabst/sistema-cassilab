@@ -5,7 +5,6 @@ from datetime import datetime
 import base64
 
 def renderizar_aba_lista_presenca(*args, **kwargs):
-    # Mapeamento flexível e seguro para os argumentos recebidos do app.py
     DB_NAME = kwargs.get("DB_NAME") or (args[0] if len(args) > 0 else "cassilab_gestao.db")
     is_admin = kwargs.get("is_admin") if "is_admin" in kwargs else (args[1] if len(args) > 1 else False)
     emp_usuario = kwargs.get("emp_usuario") or (args[2] if len(args) > 2 else "")
@@ -152,213 +151,146 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                 bytes_logo = logo_file.getvalue()
                 encoded_logo = base64.b64encode(bytes_logo).decode()
                 tipo_arquivo = logo_file.type.split("/")[-1]
-                logo_html = f'<img src="data:image/{tipo_arquivo};base64,{encoded_logo}" style="max-height: 70px; max-width: 180px; object-fit: contain;" />'
+                logo_html = f'<img src="data:image/{tipo_arquivo};base64,{encoded_logo}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />'
             else:
-                logo_html = '<div style="border: 1px dashed #ccc; padding: 10px; font-size: 11px; color: #666; text-align: center;">[ Logo da Empresa ]</div>'
+                logo_html = '<div style="border: 1px dashed #ccc; padding: 6px; font-size: 10px; color: #666; text-align: center;">[ Logo da Empresa ]</div>'
 
-            linhas_tabela_html = ""
-            for i, (_, row) in enumerate(participantes_selecionados.iterrows(), start=1):
-                mat = str(row["MATRÍCULA"]) if pd.notna(row["MATRÍCULA"]) else ""
-                nome = str(row["NOME COMPLETO"]) if pd.notna(row["NOME COMPLETO"]) else ""
-                area = str(row["ÁREA"]) if pd.notna(row["ÁREA"]) else ""
-                cpf = str(row["RG/CPF"]) if pd.notna(row["RG/CPF"]) else ""
-                
-                linhas_tabela_html += f"""
-                <tr>
-                    <td style="text-align: center; width: 4%;">{i}</td>
-                    <td style="text-align: center; width: 10%;">{mat}</td>
-                    <td style="text-align: left; width: 26%; padding-left: 6px;">{nome}</td>
-                    <td style="text-align: left; width: 16%; padding-left: 6px;">{area}</td>
-                    <td style="text-align: center; width: 14%;">{cpf}</td>
-                    <td style="text-align: center; width: 30%; height: 26px;"></td>
-                </tr>
-                """
+            lista_participantes_rows = list(participantes_selecionados.iterrows())
+            linhas_por_pagina = 23
+            total_participantes = len(lista_participantes_rows)
+            
+            if total_participantes < linhas_por_pagina:
+                alvo_linhas = linhas_por_pagina
+            else:
+                resto = total_participantes % linhas_por_pagina
+                alvo_linhas = total_participantes if resto == 0 else total_participantes + (linhas_por_pagina - resto)
+
+            paginas_html = ""
+            
+            for i in range(0, max(alvo_linhas, linhas_por_pagina), linhas_por_pagina):
+                bloco_linhas_html = ""
+                for j in range(linhas_por_pagina):
+                    idx_atual = i + j
+                    num_linha = idx_atual + 1
+                    
+                    if idx_atual < total_participantes:
+                        _, row = lista_participantes_rows[idx_atual]
+                        mat = str(row["MATRÍCULA"]) if pd.notna(row["MATRÍCULA"]) else ""
+                        nome = str(row["NOME COMPLETO"]) if pd.notna(row["NOME COMPLETO"]) else ""
+                        area = str(row["ÁREA"]) if pd.notna(row["ÁREA"]) else ""
+                        cpf = str(row["RG/CPF"]) if pd.notna(row["RG/CPF"]) else ""
+                    else:
+                        mat, nome, area, cpf = "", "", "", ""
+
+                    bloco_linhas_html += (
+                        "<tr>"
+                        f'<td style="text-align: center; width: 4%;">{num_linha}</td>'
+                        f'<td style="text-align: center; width: 10%;">{mat}</td>'
+                        f'<td style="text-align: left; width: 26%; padding-left: 6px;">{nome}</td>'
+                        f'<td style="text-align: left; width: 16%; padding-left: 6px;">{area}</td>'
+                        f'<td style="text-align: center; width: 14%;">{cpf}</td>'
+                        f'<td style="text-align: center; width: 30%; height: 20px;"></td>'
+                        "</tr>"
+                    )
+
+                data_hoje_str = datetime.today().strftime('%d/%m/%Y')
+                data_trein_str = data_treinamento.strftime('%d/%m/%Y')
+                tema_fmt = tema_treinamento.replace("\n", "<br>")
+
+                paginas_html += (
+                    '<div class="sheet">'
+                    '<table class="cabecalho-principal"><tr>'
+                    f'<td style="width: 20%; text-align: center;">{logo_html}</td>'
+                    '<td style="width: 45%; text-align: center; font-size: 14px; font-weight: bold;">LISTA DE PRESENÇA</td>'
+                    f'<td style="width: 35%; font-size: 9.5px;"><b>Empresa:</b> {empresa_selecionada}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
+                    '</tr></table>'
+                    '<table class="borda-tabela">'
+                    f'<tr><td colspan="4"><b>Treinamento:</b> {treinamento_nome}</td><td colspan="2"><b>Carga Horária:</b> {carga_horaria}</td></tr>'
+                    f'<tr><td colspan="3"><b>Data:</b> {data_trein_str}</td><td colspan="3"><b>Local:</b> {local_treinamento}</td></tr>'
+                    f'<tr><td colspan="3"><b>Tema:</b> {tema_fmt}</td><td colspan="3"><b>Horário:</b> {horario_treinamento}</td></tr>'
+                    f'<tr><td colspan="3"><b>Instrutores:</b> {tipo_instrutor}</td><td colspan="3"><b>Classificação:</b> {classificacao_trein}</td></tr>'
+                    '</table>'
+                    '<table class="borda-tabela" style="margin-top: 4px;">'
+                    '<thead><tr>'
+                    '<th style="width: 4%;">N°</th>'
+                    '<th style="width: 10%;">MATRÍCULA</th>'
+                    '<th style="width: 26%;">NOME COMPLETO</th>'
+                    '<th style="width: 16%;">ÁREA</th>'
+                    '<th style="width: 14%;">RG/CPF</th>'
+                    '<th style="width: 30%;">ASSINATURA</th>'
+                    '</tr></thead>'
+                    f'<tbody>{bloco_linhas_html}</tbody>'
+                    '</table>'
+                    '</div>'
+                    '<div class="page-break"></div>'
+                )
 
             itens_detalhe_html = ""
             for item in detalhamento_conteudo.split("\n"):
                 if item.strip():
                     itens_detalhe_html += f"<li>{item.strip()}</li>"
 
-            html_documento = f"""
-            <!DOCTYPE html>
-            <html lang="pt-BR">
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    @page {{
-                        size: A4 landscape;
-                        margin: 10mm;
-                    }}
-                    body {{
-                        font-family: Arial, sans-serif;
-                        font-size: 11px;
-                        color: #000;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #fff;
-                    }}
-                    .sheet {{
-                        width: 100%;
-                        box-sizing: border-box;
-                    }}
-                    table.borda-tabela {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-bottom: 5px;
-                    }}
-                    table.borda-tabela th, table.borda-tabela td {{
-                        border: 1px solid #000;
-                        padding: 4px 6px;
-                        font-size: 11px;
-                    }}
-                    table.borda-tabela th {{
-                        background-color: #f2f2f2;
-                        text-align: center;
-                        font-weight: bold;
-                    }}
-                    .cabecalho-principal {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-bottom: 8px;
-                    }}
-                    .cabecalho-principal td {{
-                        border: 1px solid #000;
-                        padding: 6px;
-                        vertical-align: middle;
-                    }}
-                    .secao-titulo {{
-                        background-color: #e6e6e6;
-                        font-weight: bold;
-                        padding: 4px 6px;
-                        border: 1px solid #000;
-                        margin-top: 8px;
-                        margin-bottom: 0px;
-                        font-size: 11px;
-                    }}
-                    .detalhes-box {{
-                        border: 1px solid #000;
-                        border-top: none;
-                        padding: 6px;
-                        font-size: 10.5px;
-                        margin-bottom: 8px;
-                    }}
-                    .detalhes-box ul {{
-                        margin: 0;
-                        padding-left: 20px;
-                    }}
-                    .detalhes-box li {{
-                        margin-bottom: 2px;
-                    }}
-                    .rodape-assinaturas {{
-                        width: 100%;
-                        margin-top: 15px;
-                        border-collapse: collapse;
-                    }}
-                    .rodape-assinaturas td {{
-                        border: 1px solid #000;
-                        padding: 6px;
-                        vertical-align: top;
-                        font-size: 10.5px;
-                    }}
-                    @media print {{
-                        body {{
-                            -webkit-print-color-adjust: exact;
-                        }}
-                        .no-print {{
-                            display: none !important;
-                        }}
-                    }}
-                </style>
-            </head>
-            <body>
-                <div class="no-print" style="background: #e9ecef; padding: 12px; margin-bottom: 15px; border-radius: 6px; text-align: center;">
-                    <button onclick="window.print()" style="background-color: #28a745; color: white; border: none; padding: 12px 25px; font-size: 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">
-                        🖨️ IMPRIMIR / SALVAR EM PDF (A4 PAISAGEM)
-                    </button>
-                    <p style="margin: 5px 0 0 0; font-size: 12px; color: #555;">Dica: Na janela de impressão, certifique-se de configurar o Destino como <b>"Salvar como PDF"</b> e Layout como <b>"Paisagem"</b>.</p>
-                </div>
+            data_hoje_str = datetime.today().strftime('%d/%m/%Y')
 
-                <div class="sheet">
-                    <!-- CABEÇALHO -->
-                    <table class="cabecalho-principal">
-                        <tr>
-                            <td style="width: 20%; text-align: center;">
-                                {logo_html}
-                            </td>
-                            <td style="width: 45%; text-align: center; font-size: 15px; font-weight: bold;">
-                                LISTA DE TREINAMENTO
-                            </td>
-                            <td style="width: 35%;">
-                                <b>Empresa:</b> {empresa_selecionada}<br>
-                                <b>Data Emissão:</b> {datetime.today().strftime('%d/%m/%Y')}<br>
-                                <b>Revisão:</b> _____/_____/_________
-                            </td>
-                        </tr>
-                    </table>
+            paginas_html += (
+                '<div class="sheet">'
+                '<table class="cabecalho-principal"><tr>'
+                f'<td style="width: 20%; text-align: center;">{logo_html}</td>'
+                '<td style="width: 45%; text-align: center; font-size: 14px; font-weight: bold;">LISTA DE PRESENÇA (CONTEÚDO E ENCERRAMENTO)</td>'
+                f'<td style="width: 35%; font-size: 9.5px;"><b>Empresa:</b> {empresa_selecionada}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
+                '</tr></table>'
+                '<div class="secao-titulo" style="margin-top: 15px;">DETALHAMENTO DE CONTEÚDO:</div>'
+                '<div class="detalhes-box" style="font-size: 11px; padding: 10px;">'
+                f'<ul>{itens_detalhe_html}</ul>'
+                '</div>'
+                '<div class="secao-titulo" style="margin-top: 25px;">REGISTRO DE INSTRUTORES E CONTRATANTE:</div>'
+                '<table class="rodape-assinaturas" style="margin-top: 5px;"><tr>'
+                f'<td style="width: 50%; padding: 10px;"><b>INSTRUTOR:</b> {instrutor_nome}<br><b>ÁREA:</b> {instrutor_area}<br><br><b>ASSINATURA:</b><br><br></td>'
+                f'<td style="width: 50%; padding: 10px;"><b>CONTRATANTE / REPRESENTANTE:</b> {contratante_nome_final}<br><br><b>ASSINATURA:</b><br><br></td>'
+                '</tr></table>'
+                '</div>'
+            )
 
-                    <!-- DADOS DO TREINAMENTO -->
-                    <table class="borda-tabela">
-                        <tr>
-                            <td colspan="4"><b>Treinamento:</b> {treinamento_nome}</td>
-                            <td colspan="2"><b>Carga Horária:</b> {carga_horaria}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3"><b>Data:</b> {data_treinamento.strftime('%d/%m/%Y')}</td>
-                            <td colspan="3"><b>Local:</b> {local_treinamento}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3"><b>Tema:</b> {tema_treinamento.replace(chr(10), '<br>')}</td>
-                            <td colspan="3"><b>Horário:</b> {horario_treinamento}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3"><b>Instrutores:</b> {tipo_instrutor}</td>
-                            <td colspan="3"><b>Classificação:</b> {classificacao_trein}</td>
-                        </tr>
-                    </table>
-
-                    <!-- TABELA DE PARTICIPANTES -->
-                    <table class="borda-tabela" style="margin-top: 8px;">
-                        <thead>
-                            <tr>
-                                <th style="width: 4%;">N°</th>
-                                <th style="width: 10%;">MATRÍCULA</th>
-                                <th style="width: 26%;">NOME COMPLETO</th>
-                                <th style="width: 16%;">ÁREA</th>
-                                <th style="width: 14%;">RG/CPF</th>
-                                <th style="width: 30%;">ASSINATURA</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {linhas_tabela_html}
-                        </tbody>
-                    </table>
-
-                    <!-- DETALHAMENTO DE CONTEÚDO -->
-                    <div class="secao-titulo">DETALHAMENTO DE CONTEÚDO:</div>
-                    <div class="detalhes-box">
-                        <ul>
-                            {itens_detalhe_html}
-                        </ul>
-                    </div>
-
-                    <!-- REGISTRO DE INSTRUTORES E CONTRATANTE -->
-                    <div class="secao-titulo">REGISTRO DE INSTRUTORES E CONTRATANTE:</div>
-                    <table class="rodape-assinaturas">
-                        <tr>
-                            <td style="width: 50%;">
-                                <b>INSTRUTOR:</b> {instrutor_nome}<br>
-                                <b>ÁREA:</b> {instrutor_area}
-                            </td>
-                            <td style="width: 50%;">
-                                <b>CONTRATANTE / REPRESENTANTE:</b> {contratante_nome_final}<br>
-                                <b>ASSINATURA:</b><br><br>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-            </body>
-            </html>
+            css_estilos = """
+            <style>
+                @page { size: A4 landscape; margin: 6mm; }
+                body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; background-color: #fff; }
+                .sheet { width: 100%; box-sizing: border-box; }
+                .page-break { page-break-after: always; break-after: page; }
+                table.borda-tabela { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+                table.borda-tabela th, table.borda-tabela td { border: 1px solid #000; padding: 2.5px 4px; font-size: 10px; line-height: 1.1; }
+                table.borda-tabela th { background-color: #f2f2f2; text-align: center; font-weight: bold; padding: 3px 4px; }
+                .cabecalho-principal { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+                .cabecalho-principal td { border: 1px solid #000; padding: 4px; vertical-align: middle; }
+                .secao-titulo { background-color: #e6e6e6; font-weight: bold; padding: 4px 6px; border: 1px solid #000; margin-top: 10px; margin-bottom: 0px; font-size: 10px; }
+                .detalhes-box { border: 1px solid #000; border-top: none; padding: 8px; font-size: 10px; margin-bottom: 10px; }
+                .detalhes-box ul { margin: 0; padding-left: 20px; }
+                .detalhes-box li { margin-bottom: 4px; }
+                .rodape-assinaturas { width: 100%; border-collapse: collapse; }
+                .rodape-assinaturas td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 10px; }
+                
+                @media print {
+                    body { -webkit-print-color-adjust: exact; }
+                    .no-print { display: none !important; }
+                    .page-break { page-break-after: always; break-after: page; }
+                }
+            </style>
             """
+
+            html_documento = (
+                "<!DOCTYPE html>"
+                '<html lang="pt-BR">'
+                f"<head><meta charset=\"UTF-8\">{css_estilos}</head>"
+                "<body>"
+                '<div class="no-print" style="background: #e9ecef; padding: 12px; margin-bottom: 15px; border-radius: 6px; text-align: center;">'
+                '<button onclick="window.print()" style="background-color: #28a745; color: white; border: none; padding: 12px 25px; font-size: 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">'
+                '🖨️ IMPRIMIR / SALVAR EM PDF (A4 PAISAGEM)'
+                '</button>'
+                '<p style="margin: 5px 0 0 0; font-size: 12px; color: #555;">Dica: Na janela de impressão, certifique-se de configurar o Destino como <b>"Salvar como PDF"</b> e Layout como <b>"Paisagem"</b>.</p>'
+                '</div>'
+                f"{paginas_html}"
+                "</body></html>"
+            )
 
             st.components.v1.html(html_documento, height=900, scrolling=True)
 
