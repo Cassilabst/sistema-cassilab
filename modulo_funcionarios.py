@@ -1,6 +1,7 @@
 from datetime import datetime
 import pandas as pd
 import sqlite3
+import streamlit as str_module
 import streamlit as st
 
 
@@ -271,29 +272,6 @@ def renderizar_aba_funcionarios(
       if "sel_id_func" not in st.session_state:
         st.session_state["sel_id_func"] = None
 
-      col_acao1, col_acao2 = st.columns(2)
-      if pode_excluir:
-        if col_acao2.button(
-            "🗑️ Excluir Funcionário Selecionado",
-            use_container_width=True,
-            key="btn_del_func",
-        ):
-          if st.session_state["sel_id_func"] is not None:
-            st.session_state["modal_excluir_ativo"] = True
-            st.session_state["modal_excluir_tabela"] = "base_funcionarios"
-            st.session_state["modal_excluir_id"] = int(
-                st.session_state["sel_id_func"]
-            )
-            st.session_state["modal_excluir_editor_key"] = (
-                "editor_selecao_funcionarios"
-            )
-            st.session_state["sel_id_func"] = None
-            st.rerun()
-          else:
-            st.warning("⚠️ Selecione um funcionário marcando o quadradinho.")
-
-      st.write("")
-
       df_edit["Selecionar"] = (
           df_edit["_id_banco"] == st.session_state["sel_id_func"]
       )
@@ -334,15 +312,50 @@ def renderizar_aba_funcionarios(
           },
       )
 
-      linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
-          "_id_banco"
-      ].tolist()
-      if linhas_marcadas and pode_editar:
-        id_para_editar = int(linhas_marcadas[-1])
+      # Gestão de seleção única idêntica à aba de Administração
+      curr_f = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
+      new_f = [f_id for f_id in curr_f if f_id != st.session_state["sel_id_func"]]
+      if new_f:
+        st.session_state["sel_id_func"] = new_f[-1]
+        st.rerun()
+      elif not curr_f and st.session_state["sel_id_func"] is not None:
         st.session_state["sel_id_func"] = None
-        if "editor_selecao_funcionarios" in st.session_state:
-          del st.session_state["editor_selecao_funcionarios"]
-        dialog_editar_funcionario(id_para_editar)
+        st.rerun()
+
+      sel_funcs = edit_df[edit_df["Selecionar"] == True]
+
+      st.markdown("")
+      col_btn_ed, col_btn_ex = st.columns(2)
+
+      # BOTÃO EDITAR (Abre o Pop-up)
+      if col_btn_ed.button("✏️ Editar Funcionário Selecionado", use_container_width=True):
+        if pode_editar:
+          if len(sel_funcs) == 1:
+            id_para_editar = int(sel_funcs.iloc[0]["_id_banco"])
+            st.session_state["sel_id_func"] = None
+            if "editor_selecao_funcionarios" in st.session_state:
+              del st.session_state["editor_selecao_funcionarios"]
+            dialog_editar_funcionario(id_para_editar)
+          else:
+            st.warning("⚠️ Selecione um único funcionário marcando o quadradinho.")
+        else:
+          st.warning("🔒 Seu perfil não possui permissão para editar.")
+
+      # BOTÃO EXCLUIR (Exclui direto sem abrir pop-up)
+      if col_btn_ex.button("🗑️ Excluir Funcionário Selecionado", use_container_width=True):
+        if pode_excluir:
+          if len(sel_funcs) == 1:
+            uid = int(sel_funcs.iloc[0]["_id_banco"])
+            st.session_state["modal_excluir_ativo"] = True
+            st.session_state["modal_excluir_tabela"] = "base_funcionarios"
+            st.session_state["modal_excluir_id"] = uid
+            st.session_state["modal_excluir_editor_key"] = "editor_selecao_funcionarios"
+            st.session_state["sel_id_func"] = None
+            st.rerun()
+          else:
+            st.warning("⚠️ Selecione um funcionário marcando o quadradinho.")
+        else:
+          st.warning("🔒 Seu perfil não possui permissão para excluir.")
 
       if st.session_state.get("modal_edit_func_id"):
         dialog_editar_funcionario(st.session_state["modal_edit_func_id"])
