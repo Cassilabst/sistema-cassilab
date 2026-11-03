@@ -346,11 +346,24 @@ def renderizar_aba_funcionarios(
         if pode_excluir:
           if len(sel_funcs) == 1:
             uid = int(sel_funcs.iloc[0]["_id_banco"])
-            st.session_state["modal_excluir_ativo"] = True
-            st.session_state["modal_excluir_tabela"] = "base_funcionarios"
-            st.session_state["modal_excluir_id"] = uid
-            st.session_state["modal_excluir_editor_key"] = "editor_selecao_funcionarios"
+            
+            # Executa a exclusão diretamente no SQLite
+            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn.execute("DELETE FROM base_funcionarios WHERE id = ?", (uid,))
+            conn.commit()
+            conn.close()
+            
+            # Limpa a seleção e recarrega a página
+            if "editor_selecao_funcionarios" in st.session_state:
+              del st.session_state["editor_selecao_funcionarios"]
             st.session_state["sel_id_func"] = None
+            st.session_state["msg_sucesso"] = "✅ Funcionário excluído com sucesso!"
+            
+            registrar_log(
+                st.session_state.get("nome_usuario", "Desconhecido"),
+                empresa_selecionada,
+                f"Excluiu funcionário ID {uid}",
+            )
             st.rerun()
           else:
             st.warning("⚠️ Selecione um funcionário marcando o quadradinho.")
