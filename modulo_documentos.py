@@ -39,9 +39,10 @@ def renderizar_aba_treinamentos(*args, **kwargs):
   calcular_proximo_treinamento_func = kwargs.get(
       "calcular_proximo_treinamento_func"
   ) or (args[7] if len(args) > 7 else lambda d, v: d)
-  validar_e_formatar_data_input_func = kwargs.get(
-      "validar_e_formatar_data_input_func"
-  ) or (args[8] if len(args) > 8 else lambda x: x)
+  validar_e_formatar_data_input_func = (
+      kwargs.get("validar_e_formatar_data_input_func")
+      or (args[8] if len(args) > 8 else lambda x: x)
+  )
   limpar_status_banco_func = kwargs.get("limpar_status_banco_func") or (
       args[9] if len(args) > 9 else lambda x: x
   )
@@ -263,8 +264,11 @@ def renderizar_aba_treinamentos(*args, **kwargs):
           if pode_editar:
             if st.session_state.get("sel_id_tr") is not None:
               id_alvo_ed = int(st.session_state["sel_id_tr"])
-              st.session_state["modal_edit_tr_id"] = id_alvo_ed
-              st.rerun()
+              st.session_state["sel_id_tr"] = None
+              if "editor_selecao_treinamentos" in st.session_state:
+                del st.session_state["editor_selecao_treinamentos"]
+              if callable(dialog_editar_treinamento_func):
+                dialog_editar_treinamento_func(id_alvo_ed)
             else:
               st.warning("⚠️ Selecione um treinamento marcando o quadradinho para editar.")
           else:
@@ -300,13 +304,6 @@ def renderizar_aba_treinamentos(*args, **kwargs):
               st.warning("⚠️ Selecione um treinamento marcando o quadradinho.")
           else:
             st.warning("🔒 Seu perfil não possui permissão para excluir.")
-
-      if st.session_state.get("modal_edit_tr_id"):
-        id_ed = st.session_state["modal_edit_tr_id"]
-        st.session_state["modal_edit_tr_id"] = None
-        st.session_state["sel_id_tr"] = None
-        if callable(dialog_editar_treinamento_func):
-          dialog_editar_treinamento_func(id_ed)
 
   with aba_novo:
     st.markdown("### ➕ Adicionar Novo Treinamento")
