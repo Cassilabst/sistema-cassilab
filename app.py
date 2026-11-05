@@ -2312,6 +2312,7 @@ if not st.session_state["autenticado"]:
         btn_cad_usuario = st.form_submit_button(
             "Cadastrar Acesso", use_container_width=True
         )
+        
         if btn_cad_usuario:
           if (
               cad_nome
@@ -2324,47 +2325,29 @@ if not st.session_state["autenticado"]:
             cpf_formatado = formatar_cpf(cad_cpf)
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
             cursor = conn.cursor()
+            
             cursor.execute(
-                "SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ?"
-                " LIMIT 1",
+                "SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1",
                 (f"%{cad_empresa_busca.strip()}%",),
             )
             emp_encontrada = cursor.fetchone()
+            
             if emp_encontrada:
               empresa_final = emp_encontrada[0]
               cursor.execute(
-                  "SELECT id FROM usuarios_sistema WHERE cpf = ? AND empresa"
-                  " = ?",
+                  "SELECT id FROM usuarios_sistema WHERE cpf = ? AND empresa = ?",
                   (cpf_formatado, empresa_final),
               )
               ja_existe_vinculo = cursor.fetchone()
+              
               if ja_existe_vinculo:
-                st.error(
-                    "Você já possui cadastro de acesso para esta empresa."
-                )
+                st.error("Você já possui cadastro de acesso para esta empresa.")
               else:
                 try:
                   cursor.execute(
-                      "INSERT INTO usuarios_sistema (nome, cpf, empresa, email,"
-                      " celular, senha, status, nivel_permissao) VALUES (?, ?,"
-                      " ?, ?, ?, ?, ?, ?)",
-                      (
-                          formatar_titulo(cad_nome),
-                          cpf_formatado,
-                          empresa_final,
-                          cad_email.strip(),
-                          cad_celular.strip(),
-                          cad_senha,
-                          "Pendente",
-                          "Somente Visualizar",
-                      ),
-                  )
-                  conn.commit()
-                    try:
-                  cursor.execute(
-                      "INSERT INTO usuarios_sistema (nome, cpf, empresa, email,"
-                      " celular, senha, status, nivel_permissao) VALUES (?, ?,"
-                      " ?, ?, ?, ?, ?, ?)",
+                      """INSERT INTO usuarios_sistema 
+                         (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                       (
                           formatar_titulo(cad_nome),
                           cpf_formatado,
@@ -2400,19 +2383,13 @@ Aceda à aba Administração no seu painel para aprovar ou bloquear o acesso.
 Atenciosamente,
 Sistema Cassilab SST"""
                       enviar_email_smtp(email_admin, assunto_adm, corpo_adm)
-                  except Exception as e:
+                  except Exception:
                     pass
                   # -------------------------------------------------------
 
                   st.success(
-                      f"Cadastro realizado com sucesso para a empresa"
-                      f" {empresa_final}! Aguardando liberação do"
-                      " administrador."
-                  )
-                  st.success(
-                      f"Cadastro realizado com sucesso para a empresa"
-                      f" {empresa_final}! Aguardando liberação do"
-                      " administrador."
+                      f"Cadastro realizado com sucesso para a empresa {empresa_final}! "
+                      "Aguardando liberação do administrador."
                   )
                 except Exception as e:
                   st.error(f"Erro ao realizar cadastro: {e}")
