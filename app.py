@@ -3504,12 +3504,15 @@ elif menu == "Cadastros Gerais":
         ):
           conn = sqlite3.connect(DB_NAME, timeout=10.0)
           cursor = conn.cursor()
+          erro_integridade = False
+          
           for _, row in edit_epis.iterrows():
             epi_id = row.get("_id_banco", row.get("id"))
             e_val = row.get("Empresa", row.get("empresa"))
             epi_val = row.get("EPI", row.get("epi"))
             ca_val = row.get("CA", row.get("ca"))
             tipo_val = row.get("Tipo", row.get("tipo", "Diversos"))
+            
             if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
               if pd.notna(epi_id) and str(epi_id).strip() not in (
                   "",
@@ -3520,18 +3523,38 @@ elif menu == "Cadastros Gerais":
                   cursor.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
                 except:
                   pass
-                cursor.execute(
-                    "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=? WHERE id=?",
-                    (
-                        str(e_val).strip(),
-                        formatar_titulo(epi_val),
-                        str(ca_val).strip(),
-                        str(tipo_val).strip(),
-                        int(epi_id),
-                    ),
-                )
-          conn.commit()
-          conn.close()
+                
+                try:
+                  cursor.execute(
+                      "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=? WHERE id=?",
+                      (
+                          str(e_val).strip(),
+                          formatar_titulo(epi_val),
+                          str(ca_val).strip(),
+                          str(tipo_val).strip(),
+                          int(epi_id),
+                      ),
+                  )
+                except sqlite3.IntegrityError:
+                  erro_integridade = True
+                  st.error(f"❌ Conflito: Já existe um EPI chamado '{formatar_titulo(epi_val)}' cadastrado para a empresa '{str(e_val).strip()}'.")
+
+          if not erro_integridade:
+            conn.commit()
+            conn.close()
+            if "edit_epis_tbl" in st.session_state:
+              del st.session_state["edit_epis_tbl"]
+            st.session_state["sel_id_epi_geral"] = None
+            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+            registrar_log(
+                st.session_state.get("nome_usuario", "Administrador"),
+                "Todas",
+                "Atualização na tabela de EPIs cadastrados",
+            )
+            st.rerun()
+          else:
+            conn.rollback()
+            conn.close()
           if "edit_epis_tbl" in st.session_state:
             del st.session_state["edit_epis_tbl"]
           st.session_state["sel_id_epi_geral"] = None
