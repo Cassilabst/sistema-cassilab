@@ -2360,6 +2360,55 @@ if not st.session_state["autenticado"]:
                       ),
                   )
                   conn.commit()
+                    try:
+                  cursor.execute(
+                      "INSERT INTO usuarios_sistema (nome, cpf, empresa, email,"
+                      " celular, senha, status, nivel_permissao) VALUES (?, ?,"
+                      " ?, ?, ?, ?, ?, ?)",
+                      (
+                          formatar_titulo(cad_nome),
+                          cpf_formatado,
+                          empresa_final,
+                          cad_email.strip(),
+                          cad_celular.strip(),
+                          cad_senha,
+                          "Pendente",
+                          "Somente Visualizar",
+                      ),
+                  )
+                  conn.commit()
+
+                  # --- ENVIO DE ALERTA POR E-MAIL PARA O ADMINISTRADOR ---
+                  try:
+                    cursor.execute("SELECT email FROM configuracoes_email LIMIT 1")
+                    cfg_mail = cursor.fetchone()
+                    if cfg_mail and cfg_mail[0]:
+                      email_admin = cfg_mail[0]
+                      assunto_adm = "🔔 Novo Cadastro Pendente de Aprovação - Sistema Cassilab SST"
+                      corpo_adm = f"""Olá Administrador,
+
+Um novo usuário realizou o cadastro de acesso no sistema e está aguardando a sua aprovação:
+
+- Nome: {formatar_titulo(cad_nome)}
+- CPF: {cpf_formatado}
+- Empresa: {empresa_final}
+- E-mail: {cad_email.strip()}
+- Celular: {cad_celular.strip()}
+
+Aceda à aba Administração no seu painel para aprovar ou bloquear o acesso.
+
+Atenciosamente,
+Sistema Cassilab SST"""
+                      enviar_email_smtp(email_admin, assunto_adm, corpo_adm)
+                  except Exception as e:
+                    pass
+                  # -------------------------------------------------------
+
+                  st.success(
+                      f"Cadastro realizado com sucesso para a empresa"
+                      f" {empresa_final}! Aguardando liberação do"
+                      " administrador."
+                  )
                   st.success(
                       f"Cadastro realizado com sucesso para a empresa"
                       f" {empresa_final}! Aguardando liberação do"
