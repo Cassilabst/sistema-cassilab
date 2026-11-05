@@ -3314,10 +3314,6 @@ elif menu == "Cadastros Gerais":
       # (Mantenha o código original de Serviços aqui se necessário)
       pass
 
-    elif aba_selecionada == "Treinamentos":
-      # (Mantenha o código original de Treinamentos aqui se necessário)
-      pass
-
     elif aba_selecionada == "EPIs":
       st.subheader("Gerenciar EPIs por Empresa (com CA e Tipo)")
       with st.form("form_cad_epi_unico"):
@@ -3373,7 +3369,7 @@ elif menu == "Cadastros Gerais":
             conn.close()
           else:
             st.error("Selecione a empresa e preencha o nome do EPI.")
-
+              
       st.markdown("---")
       col_f1, col_f2 = st.columns(2)
       with col_f1:
