@@ -3,16 +3,136 @@ import csv
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from modulo_senha import renderizar_aba_alterar_senha
 import os
 import re
 import shutil
-import smtplib
-import sqlite3
+import sys
 import pandas as pd
 import requests
 import streamlit as st
+import sqlalchemy
+from sqlalchemy import create_engine, text
 
+# --- CONEXÃO COM O SUPABASE VIA STREAMLIT SECRETS ---
+try:
+    pg = st.secrets["postgres"]
+    DATABASE_URL = f"postgresql://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}"
+    engine = create_engine(DATABASE_URL)
+except Exception as e:
+    st.error(f"Erro ao ligar ao Supabase via Secrets: {e}")
+    st.stop()
+
+# --- CAMADA DE COMPATIBILIDADE (MOCK DO SQLITE PARA POSTGRESQL) ---
+class PostgresCursorWrapper:
+    def __init__(self, connection):
+        self.conn = connection
+        self.last_result = None
+
+    def execute(self, sql, params=None):
+        if "PRAGMA" in sql.upper():
+            return self
+        
+        if "PRAGMA table_info" in sql:
+            match = re.search(r"table_info\((.*?)\)", sql)
+            if match:
+                tbl = match.group(1).strip()
+                sql = "SELECT column_name FROM information_schema.columns WHERE table_name = :tbl"
+                params = {"tbl": tbl}
+
+        if params:
+            if isinstance(params, (list, tuple)):
+                param_dict = {}
+                new_sql_parts = []
+                parts = sql.split('?')
+                for i, part in enumerate(parts[:-1]):
+                    param_name = f"arg{i}"
+                    new_sql_parts.append(part)
+                    new_sql_parts.append(f":{param_name}")
+                    param_dict[param_name] = params[i]
+                new_sql_parts.append(parts[-1])
+                sql = "".join(new_sql_parts)
+                params = param_dict
+            elif isinstance(params, dict):
+                pass
+        else:
+            params = {}
+
+        try:
+            self.last_result = self.conn.execute(text(sql), params)
+        except Exception as e:
+            raise e
+        return self
+
+    def fetchone(self):
+        if self.last_result:
+            row = self.last_result.fetchone()
+            return row if row else None
+        return None
+
+    def fetchall(self):
+        if self.last_result:
+            rows = self.last_result.fetchall()
+            return rows if rows else []
+        return []
+
+    @property
+    def rowcount(self):
+        return self.last_result.rowcount if self.last_result else 0
+
+class PostgresConnWrapper:
+    def __init__(self, eng):
+        self.eng = eng
+        self._conn = eng.connect()
+        self._trans = self._conn.begin()
+
+    def cursor(self):
+        return PostgresCursorWrapper(self._conn)
+
+    def commit(self):
+        try:
+            self._trans.commit()
+            self._trans = self._conn.begin()
+        except Exception:
+            pass
+
+    def rollback(self):
+        try:
+            self._trans.rollback()
+            self._trans = self._conn.begin()
+        except Exception:
+            pass
+
+    def close(self):
+        try:
+            self._trans.commit()
+        except:
+            pass
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        return cur.execute(sql, params)
+
+class MockSqlite3:
+    IntegrityError = sqlalchemy.exc.IntegrityError
+    OperationalError = Exception
+
+    def connect(self, database, timeout=10.0):
+        return PostgresConnWrapper(engine)
+
+# Substitui globalmente o sqlite3 pelo wrapper do Supabase
+sys.modules['sqlite3'] = MockSqlite3()
+import sqlite3
 
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
 from modulo_absenteismo import renderizar_aba_absenteismo
@@ -28,66 +148,27 @@ from modulo_os import renderizar_aba_os
 from modulo_relatorios import renderizar_aba_relatorios
 from modulo_servicos import renderizar_aba_servicos
 from modulo_treinamentos import renderizar_aba_treinamentos
+from modulo_senha import renderizar_aba_alterar_senha
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide"
 )
 
-# --- BANCO DE DADOS LOCAL E BACKUP AUTOMÁTICO ---
 DB_NAME = "cassilab_gestao.db"
 
-
 def criar_backup_automatico():
-  try:
-    backup_dir = "backups"
-    if not os.path.exists(backup_dir):
-      os.makedirs(backup_dir)
-    hoje_data = datetime.now().strftime("%Y-%m-%d")
-    backup_path = os.path.join(
-        backup_dir, f"cassilab_gestao_backup_{hoje_data}.db"
-    )
-    if not os.path.exists(backup_path) and os.path.exists(DB_NAME):
-      shutil.copy(DB_NAME, backup_path)
-  except:
-    pass
-
+  pass
 
 def formatar_titulo(texto):
   if not texto or pd.isna(texto):
     return ""
   excecoes = {"e", "da", "de", "do", "das", "dos", "em", "para", "com", "S.A."}
   siglas_maiusculas = {
-      "ltda",
-      "nr",
-      "me",
-      "mei",
-      "epp",
-      "epi",
-      "cnae",
-      "pgr",
-      "pcmso",
-      "pgrs",
-      "pca",
-      "ppr",
-      "npt",
-      "ccb",
-      "aet",
-      "aep",
-      "arp",
-      "ltcat",
-      "apr",
-      "ppp",
-      "cipa",
-      "epc",
-      "aso",
-      "sst",
-      "sesmt",
-      "ca",
-      "nfes",
-      "dds",
-      "w",
-      "pemt"
+      "ltda", "nr", "me", "mei", "epp", "epi", "cnae", "pgr", "pcmso",
+      "pgrs", "pca", "ppr", "npt", "ccb", "aet", "aep", "arp", "ltcat",
+      "apr", "ppp", "cipa", "epc", "aso", "sst", "sesmt", "ca", "nfes",
+      "dds", "w", "pemt"
   }
   palavras = str(texto).strip().split()
   palavras_formatadas = []
@@ -102,16 +183,13 @@ def formatar_titulo(texto):
       else:
         if "-" in p:
           partes = [
-              sub.upper()
-              if sub.lower() in siglas_maiusculas
-              else sub.capitalize()
+              sub.upper() if sub.lower() in siglas_maiusculas else sub.capitalize()
               for sub in p.split("-")
           ]
           palavras_formatadas.append("-".join(partes))
         else:
           palavras_formatadas.append(p.capitalize())
   return " ".join(palavras_formatadas)
-
 
 def adicionar_numeracao(df):
   if df is None or df.empty:
@@ -122,14 +200,11 @@ def adicionar_numeracao(df):
   df.insert(0, "Nº", range(1, len(df) + 1))
   return df
 
-
 def registrar_log(usuario, empresa, acao):
   try:
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
-    
     dt_atual = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
-    
     cursor.execute(
         "INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES (?, ?, ?, ?)",
         (dt_atual, str(usuario), str(empresa), str(acao)),
@@ -139,7 +214,6 @@ def registrar_log(usuario, empresa, acao):
   except:
     pass
 
-
 def enviar_email_smtp(destinatario, assunto, corpo):
   try:
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -148,10 +222,7 @@ def enviar_email_smtp(destinatario, assunto, corpo):
     cfg = cursor.fetchone()
     conn.close()
     if not cfg or not cfg[0] or not cfg[1]:
-      return (
-          False,
-          "Configurações de e-mail não encontradas na aba Administração.",
-      )
+      return False, "Configurações de e-mail não encontradas na aba Administração."
     remetente = cfg[0]
     senha_app = cfg[1]
     msg = MIMEMultipart()
@@ -167,7 +238,6 @@ def enviar_email_smtp(destinatario, assunto, corpo):
     return True, "E-mail enviado com sucesso!"
   except Exception as e:
     return False, str(e)
-
 
 def calcular_proximo_exame(data_str, meses_str):
   if not data_str or not meses_str:
@@ -194,7 +264,6 @@ def calcular_proximo_exame(data_str, meses_str):
   except:
     return data_str
 
-
 def calcular_proximo_treinamento(data_str, validade_str):
   if not data_str or not validade_str:
     return data_str
@@ -213,35 +282,15 @@ def calcular_proximo_treinamento(data_str, validade_str):
       return data_str
     if "ano" in val_lower:
       qtd = qtd * 12
-      mes_novo = dt.month - 1 + qtd
-      ano_novo = dt.year + mes_novo // 12
-      mes_novo = mes_novo % 12 + 1
-      ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-      dia_novo = min(dt.day, ultimo_dia_mes)
-      dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-      return dt_futura.strftime("%d/%m/%Y")
-    elif "mes" in val_lower or "mês" in val_lower:
-      mes_novo = dt.month - 1 + qtd
-      ano_novo = dt.year + mes_novo // 12
-      mes_novo = mes_novo % 12 + 1
-      ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-      dia_novo = min(dt.day, ultimo_dia_mes)
-      dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-      return dt_futura.strftime("%d/%m/%Y")
-    elif "dia" in val_lower:
-      dt_futura = dt + timedelta(days=qtd)
-      return dt_futura.strftime("%d/%m/%Y")
-    else:
-      mes_novo = dt.month - 1 + qtd
-      ano_novo = dt.year + mes_novo // 12
-      mes_novo = mes_novo % 12 + 1
-      ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-      dia_novo = min(dt.day, ultimo_dia_mes)
-      dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-      return dt_futura.strftime("%d/%m/%Y")
+    mes_novo = dt.month - 1 + qtd
+    ano_novo = dt.year + mes_novo // 12
+    mes_novo = mes_novo % 12 + 1
+    ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+    dia_novo = min(dt.day, ultimo_dia_mes)
+    dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+    return dt_futura.strftime("%d/%m/%Y")
   except:
     return data_str
-
 
 def calcular_proxima_renovacao(data_str, vigencia_str):
   if not data_str or not vigencia_str:
@@ -290,7 +339,6 @@ def calcular_proxima_renovacao(data_str, vigencia_str):
   except:
     return data_str
 
-
 def calcular_status_por_data(data_str):
   if not data_str or pd.isna(data_str):
     return "Válido"
@@ -336,14 +384,11 @@ def sincronizar_status_exames():
       for _, row in df.iterrows():
         prox = row["proximo_exame"]
         novo_st = calcular_status_exame(prox)
-        cursor.execute(
-            "UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"])
-        )
+        cursor.execute("UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"]))
       conn.commit()
     conn.close()
   except:
     pass
-
 
 def sincronizar_status_treinamentos():
   try:
@@ -367,15 +412,11 @@ def sincronizar_status_treinamentos():
               break
             except ValueError:
               continue
-        cursor.execute(
-            "UPDATE treinamentos SET status = ? WHERE id = ?",
-            (novo_st, row["id"]),
-        )
+        cursor.execute("UPDATE treinamentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
       conn.commit()
     conn.close()
   except:
     pass
-
 
 def sincronizar_status_documentos():
   try:
@@ -401,15 +442,11 @@ def sincronizar_status_documentos():
               break
             except ValueError:
               continue
-        cursor.execute(
-            "UPDATE documentos SET status = ? WHERE id = ?",
-            (novo_st, row["id"]),
-        )
+        cursor.execute("UPDATE documentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
       conn.commit()
     conn.close()
   except:
     pass
-
 
 def atualizar_cargo_setor_treinamentos_antigos():
   try:
@@ -417,12 +454,8 @@ def atualizar_cargo_setor_treinamentos_antigos():
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE treinamentos 
-        SET cargo = COALESCE(NULLIF(cargo, ''), (SELECT b.cargo FROM
-        base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND
-        b.empresa = treinamentos.empresa LIMIT 1)),
-            setor = COALESCE(NULLIF(setor, ''), (SELECT b.setor FROM
-            base_funcionarios b WHERE b.funcionario = treinamentos.funcionario
-            AND b.empresa = treinamentos.empresa LIMIT 1))
+        SET cargo = COALESCE(NULLIF(cargo, ''), (SELECT b.cargo FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1)),
+            setor = COALESCE(NULLIF(setor, ''), (SELECT b.setor FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1))
         WHERE cargo IS NULL OR cargo = '' OR setor IS NULL OR setor = ''
     """)
     conn.commit()
@@ -430,15 +463,11 @@ def atualizar_cargo_setor_treinamentos_antigos():
   except:
     pass
 
-
 def atualizar_validade_treinamentos_para_meses():
   try:
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, validade, data_realizacao FROM treinamentos WHERE validade"
-        " LIKE '%ano%'"
-    )
+    cursor.execute("SELECT id, validade, data_realizacao FROM treinamentos WHERE validade LIKE '%ano%'")
     rows = cursor.fetchall()
     for row in rows:
       rid, val_str, dt_real = row[0], str(row[1]).lower(), row[2]
@@ -447,23 +476,14 @@ def atualizar_validade_treinamentos_para_meses():
       meses = anos * 12
       nova_val = f"{meses} meses"
       novo_prox = calcular_proximo_treinamento(dt_real, nova_val)
-      cursor.execute(
-          """
-          UPDATE treinamentos 
-          SET validade = ?, proximo_treinamento = ?
-          WHERE id = ?
-      """,
-          (nova_val, novo_prox, rid),
-      )
+      cursor.execute("UPDATE treinamentos SET validade = ?, proximo_treinamento = ? WHERE id = ?", (nova_val, novo_prox, rid))
     conn.commit()
     conn.close()
   except:
     pass
 
-
 def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -475,14 +495,14 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS configuracoes_email (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             email TEXT,
             senha_app TEXT
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS alertas_enviados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             tipo_item TEXT,
             item_id INTEGER,
@@ -492,7 +512,7 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             treinamento TEXT,
             carga_horaria TEXT,
@@ -505,7 +525,7 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matriz_treinamentos_status (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             funcionario TEXT,
             treinamento TEXT,
@@ -515,7 +535,7 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS absenteismo (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             nome TEXT,
             turno TEXT,
@@ -550,7 +570,7 @@ def init_db():
                             grau = row[-1].strip()
                             desc = ",".join(row[1:-1]).strip()
                             cursor.execute(
-                                "INSERT OR REPLACE INTO grau_risco_nr04 (cnae, descricao, grau_risco) VALUES (?, ?, ?)",
+                                "INSERT INTO grau_risco_nr04 (cnae, descricao, grau_risco) VALUES (?, ?, ?)",
                                 (cnae, desc, grau),
                             )
         except:
@@ -558,7 +578,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             data_registro TEXT,
             nome_empresa TEXT UNIQUE,
             cnpj TEXT,
@@ -575,15 +595,9 @@ def init_db():
             porte TEXT
         )
     """)
-    try:
-        cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_empresas_cnpj ON empresas(cnpj) WHERE cnpj IS NOT NULL AND cnpj != '';"
-        )
-    except:
-        pass
-        
-    cursor.execute("PRAGMA table_info(empresas);")
-    cols_emp_db = [col[1] for col in cursor.fetchall()]
+    
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'empresas'")
+    cols_emp_db = [col[0] for col in cursor.fetchall()]
     if "data_registro" not in cols_emp_db:
         try:
             cursor.execute("ALTER TABLE empresas ADD COLUMN data_registro TEXT;")
@@ -601,14 +615,11 @@ def init_db():
             pass
             
     data_hoje = datetime.now().strftime("%d/%m/%Y")
-    cursor.execute(
-        "UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR data_registro = '' OR data_registro = 'nan'",
-        (data_hoje,),
-    )
+    cursor.execute("UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR data_registro = '' OR data_registro = 'nan'", (data_hoje,))
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             matricula TEXT,
             funcionario TEXT,
             cargo TEXT,
@@ -620,8 +631,8 @@ def init_db():
             data_nascimento TEXT
         )
     """)
-    cursor.execute("PRAGMA table_info(base_funcionarios);")
-    cols_func_db = [col[1] for col in cursor.fetchall()]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'base_funcionarios'")
+    cols_func_db = [col[0] for col in cursor.fetchall()]
     if "data_nascimento" not in cols_func_db:
         try:
             cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;")
@@ -630,7 +641,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_sistema (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nome TEXT,
             cpf TEXT,
             empresa TEXT,
@@ -642,8 +653,8 @@ def init_db():
         )
     """)
 
-    cursor.execute("PRAGMA table_info(usuarios_sistema);")
-    cols_user_db = [col[1] for col in cursor.fetchall()]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'usuarios_sistema'")
+    cols_user_db = [col[0] for col in cursor.fetchall()]
     for col_nova, tipo_col in [
         ("email", "TEXT"),
         ("celular", "TEXT"),
@@ -675,7 +686,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS exames (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             matricula TEXT,
             funcionario TEXT,
@@ -688,8 +699,8 @@ def init_db():
             status TEXT
         )
     """)
-    cursor.execute("PRAGMA table_info(exames);")
-    cols_ex_db = [col[1] for col in cursor.fetchall()]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'exames'")
+    cols_ex_db = [col[0] for col in cursor.fetchall()]
     if "periodicidade" not in cols_ex_db:
         try:
             cursor.execute("ALTER TABLE exames ADD COLUMN periodicidade TEXT;")
@@ -698,7 +709,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS treinamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             matricula TEXT,
             funcionario TEXT,
@@ -713,8 +724,8 @@ def init_db():
             status TEXT
         )
     """)
-    cursor.execute("PRAGMA table_info(treinamentos);")
-    cols_tr_db = [col[1] for col in cursor.fetchall()]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'treinamentos'")
+    cols_tr_db = [col[0] for col in cursor.fetchall()]
     if "pessoas_treinadas" not in cols_tr_db:
         try:
             cursor.execute("ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;")
@@ -733,7 +744,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS epis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             matricula TEXT,
             funcionario TEXT,
@@ -748,7 +759,7 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS servicos_realizados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             servico TEXT,
             data_realizacao TEXT,
@@ -759,8 +770,8 @@ def init_db():
             nfes TEXT
         )
     """)
-    cursor.execute("PRAGMA table_info(servicos_realizados);")
-    cols_srv_db = [col[1] for col in cursor.fetchall()]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'servicos_realizados'")
+    cols_srv_db = [col[0] for col in cursor.fetchall()]
     if "valor" not in cols_srv_db:
         try:
             cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;")
@@ -774,7 +785,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             documento TEXT,
             data_emissao TEXT,
@@ -783,13 +794,8 @@ def init_db():
             status TEXT
         )
     """)
-    cursor.execute("PRAGMA table_info(documentos);")
-    cols_doc_db = [col[1] for col in cursor.fetchall()]
-    if "validade" in cols_doc_db and "vigencia" not in cols_doc_db:
-        try:
-            cursor.execute("ALTER TABLE documentos RENAME COLUMN validade TO vigencia;")
-        except:
-            pass
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'documentos'")
+    cols_doc_db = [col[0] for col in cursor.fetchall()]
     if "proxima_renovacao" not in cols_doc_db:
         try:
             cursor.execute("ALTER TABLE documentos ADD COLUMN proxima_renovacao TEXT;")
@@ -798,7 +804,7 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs_sistema (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             data_hora TEXT,
             usuario TEXT,
             empresa TEXT,
@@ -807,21 +813,21 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_cargos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             cargo TEXT
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_setores (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             setor TEXT
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_epis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             empresa TEXT,
             epi TEXT,
             ca TEXT,
@@ -830,13 +836,13 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_treinamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             treinamento TEXT UNIQUE,
             carga_horaria TEXT
         )
     """)
-    cursor.execute("PRAGMA table_info(cad_treinamentos);")
-    cols_cad_tr = [col[1] for col in cursor.fetchall()]
+    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'cad_treinamentos'")
+    cols_cad_tr = [col[0] for col in cursor.fetchall()]
     if "carga_horaria" not in cols_cad_tr:
         try:
             cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;")
@@ -844,13 +850,12 @@ def init_db():
             pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_servicos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             servico TEXT UNIQUE
         )
     """)
     conn.commit()
     conn.close()
-
 
 init_db()
 atualizar_cargo_setor_treinamentos_antigos()
@@ -859,6 +864,8 @@ criar_backup_automatico()
 sincronizar_status_exames()
 sincronizar_status_treinamentos()
 sincronizar_status_documentos()
+
+# --- O RESTANTE DA APLICAÇÃO SEGUE NORMALMENTE ---
 
 
 def atualizar_filtro_empresa(empresa_nome):
