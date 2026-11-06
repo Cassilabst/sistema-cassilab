@@ -643,33 +643,26 @@ def init_db():
         )
     """)
   cursor.execute("PRAGMA table_info(usuarios_sistema);")
-  cols_user_db = [col[1] for col in cursor.fetchall()]
-  for col_nova, tipo_col in [
-      ("email", "TEXT"),
-      ("celular", "TEXT"),
-      ("status", "TEXT"),
-      ("nivel_permissao", "TEXT"),
-  ]:
-    if col_nova not in cols_user_db:
-      try:
-        cursor.execute(
-            f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};"
-        )
-      except:
-        pass
-  try:
-    cursor.execute(
-        "UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR"
-        " status = '';"
-    )
-    cursor.execute(
-        "UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar'"
-        " WHERE nivel_permissao IS NULL OR nivel_permissao = '';"
-    )
+    cols_user_db = [col[1] for col in cursor.fetchall()]
+    for col_nova, tipo_col in [
+        ("email", "TEXT"),
+        ("celular", "TEXT"),
+        ("status", "TEXT"),
+        ("nivel_permissao", "TEXT")
+    ]:
+        if col_nova not in cols_user_db:
+            try:
+                cursor.execute(f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
+            except Exception:
+                pass
+
+    try:
+        cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
+        cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
     except Exception:
         pass
 
-    # --- BLOCO DE SEGURANÇA CONTRA REBOOTS ---
+    # Bloco de segurança contra reboots
     try:
         cursor.execute("SELECT COUNT(*) FROM usuarios_sistema WHERE nivel_permissao = 'Fazer Tudo'")
         if cursor.fetchone()[0] == 0:
