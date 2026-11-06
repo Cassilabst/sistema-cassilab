@@ -537,7 +537,7 @@ def migrar_sqlite_para_neon():
 migrar_sqlite_para_neon()
 
     # Criar tabelas principais com segurança
-    try:
+        try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
                 cnae TEXT PRIMARY KEY,
