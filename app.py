@@ -2577,6 +2577,7 @@ else:
       "Controle de Absenteísmo",
       "Controle de EPIs",
       "Controle de Documentos",
+      "Alterar Senha",
       "Relatórios Consolidados",
   ]
 
