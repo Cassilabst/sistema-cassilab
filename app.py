@@ -10,14 +10,12 @@ import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
 
-# 1. IMPORTAR O SQLITE ORIGINAL ANTES DE QUALQUER MOCK
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- CONFIGURAÇÃO DA LIGAÇÃO AO NEON / POSTGRES ---
+# --- CONFIGURAÇÃO DA LIGAÇÃO AO NEON ---
 try:
     db_url = st.secrets["postgres"]["url"]
-    # Força o driver psycopg2 para evitar conflitos com a versão 3
     if "postgresql://" in db_url and not "psycopg2" in db_url:
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://")
 except Exception:
@@ -32,7 +30,7 @@ engine = create_engine(db_url)
 
 DB_NAME = "cassilab_gestao.db"
 
-# --- TRADUTOR PERFEITO PARA O PANDAS ---
+# --- TRADUTOR PARA O PANDAS ---
 if not hasattr(pd, "_original_read_sql"):
     pd._original_read_sql = pd.read_sql
 
@@ -41,7 +39,7 @@ def _patched_read_sql(sql, con, *args, **kwargs):
 
 pd.read_sql = _patched_read_sql
 
-# --- WRAPPERS PARA COMPATIBILIDADE COM SQLITE/POSTGRES ---
+# --- WRAPPER PARA COMPATIBILIDADE SQLITE/POSTGRES ---
 class PostgresCursorWrapper:
     def __init__(self, conn):
         self.conn = conn
@@ -136,10 +134,7 @@ class MockSqliteModule:
     Cursor = sqlite_original.Cursor
 
     def connect(self, database, *args, **kwargs):
-        if USAR_SUPABASE and engine is not None:
-            return PostgresConnWrapper(engine)
-        else:
-            return sqlite_original.connect(database, *args, **kwargs)
+        return PostgresConnWrapper(engine)
 
 sys.modules["sqlite3"] = MockSqliteModule()
 import sqlite3
