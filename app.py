@@ -4,6 +4,16 @@ from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
+# --- TRADUTOR AUTOMÁTICO PARA O PANDAS (RESOLVE O ERRO NAS ABAS) ---
+_original_read_sql = pd.read_sql
+def _patched_read_sql(sql, con, *args, **kwargs):
+    if hasattr(con, '_conn'):
+        con = con._conn
+    elif hasattr(con, 'eng'):
+        con = con.eng
+    return _original_read_sql(sql, con, *args, **kwargs)
+pd.read_sql = _patched_read_sql
+
 DB_NAME = "cassilab_gestao.db"
 
 # --- TENTA LIGAR AO SUPABASE, MAS USA SQLite LOCAL SE FALHAR ---
