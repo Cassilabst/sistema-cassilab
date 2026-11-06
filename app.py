@@ -1,29 +1,14 @@
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
-import sys, re, sqlite3, pandas as pd
+import sys, re
+import sqlite3 as real_sqlite3  # Guarda o sqlite3 real antes de mockar
+import pandas as pd
 from datetime import datetime, date
-
-# --- TRADUTOR NATIVO PERFEITO PARA O PANDAS ---
-if not hasattr(pd, '_original_read_sql'):
-    pd._original_read_sql = pd.read_sql
-    def _patched_read_sql(sql, con, *args, **kwargs):
-        global engine, USAR_SUPABASE
-        # Se estamos no Supabase, entrega o motor SQLAlchemy diretamente ao Pandas (que ele adora!)
-        if USAR_SUPABASE and engine is not None:
-            return pd._original_read_sql(sql, engine, *args, **kwargs)
-        else:
-            # Se for local, usa uma conexão nativa do SQLite
-            local_conn = sqlite3.connect(DB_NAME)
-            try:
-                return pd._original_read_sql(sql, local_conn, *args, **kwargs)
-            finally:
-                local_conn.close()
-    pd.read_sql = _patched_read_sql
 
 DB_NAME = "cassilab_gestao.db"
 
-# --- TENTA LIGAR AO SUPABASE, MAS USA SQLite LOCAL SE FALHAR ---
+# --- TENTA LIGAR AO SUPABASE ---
 USAR_SUPABASE = False
 engine = None
 
@@ -36,18 +21,23 @@ try:
             USAR_SUPABASE = True
 except Exception as e:
     USAR_SUPABASE = False
-engine = None
 
-try:
-    if "postgres" in st.secrets:
-        pg = st.secrets["postgres"]
-        DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
-        engine = create_engine(DATABASE_URL, connect_args={'connect_timeout': 5})
-        # Teste rápido de conexão
-        with engine.connect() as conn:
-            USAR_SUPABASE = True
-except Exception as e:
-    USAR_SUPABASE = False
+# --- TRADUTOR PERFEITO PARA O PANDAS (SEM CONFLITOS) ---
+if not hasattr(pd, '_original_read_sql'):
+    pd._original_read_sql = pd.read_sql
+    def _patched_read_sql(sql, con, *args, **kwargs):
+        global engine, USAR_SUPABASE
+        if USAR_SUPABASE and engine is not None:
+            # Pandas adora receber o motor SQLAlchemy diretamente para o Postgres!
+            return pd._original_read_sql(sql, engine, *args, **kwargs)
+        else:
+            # Se for local, usa uma conexão real do sqlite3
+            local_conn = real_sqlite3.connect(DB_NAME)
+            try:
+                return pd._original_read_sql(sql, local_conn, *args, **kwargs)
+            finally:
+                local_conn.close()
+    pd.read_sql = _patched_read_sql
 
 # --- CAMADA INTELIGENTE DE COMPATIBILIDADE ---
 class PostgresCursorWrapper:
@@ -143,15 +133,12 @@ class MockSqlite3:
         if USAR_SUPABASE and engine:
             return PostgresConnWrapper(engine)
         else:
-            return sqlite3.connect(DB_NAME, timeout=timeout)
+            return real_sqlite3.connect(database, timeout=timeout)
 
 sys.modules['sqlite3'] = MockSqlite3()
 
 # ==========================================
 # A PARTIR DAQUI, COLE O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
-# ==========================================
-# ==========================================
-# A PARTIR DAQUI, COLE TODO O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
 # ==========================================
 
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
