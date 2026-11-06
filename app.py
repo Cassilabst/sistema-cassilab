@@ -17,19 +17,18 @@ import pandas as pd
 # --- CONFIGURAÇÃO DA LIGAÇÃO AO NEON / POSTGRES ---
 try:
     db_url = st.secrets["postgres"]["url"]
-    # Força explicitamente o driver psycopg (v3)
-    if db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    # Força o driver psycopg2 para evitar conflitos com a versão 3
+    if "postgresql://" in db_url and not "psycopg2" in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://")
 except Exception:
     user = st.secrets.get("user", "neondb_owner")
     password = st.secrets.get("password", "")
     host = st.secrets.get("host", "")
     database = st.secrets.get("database", "neondb")
     port = st.secrets.get("port", "5432")
-    db_url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}?sslmode=require"
+    db_url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}?sslmode=require"
 
 engine = create_engine(db_url)
-USAR_SUPABASE = True
 
 DB_NAME = "cassilab_gestao.db"
 
