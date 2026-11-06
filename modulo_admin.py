@@ -174,68 +174,30 @@ def renderizar_aba_admin(
             st.info("Nenhum usuário cadastrado no sistema.")
 
         st.markdown("---")
-        st.subheader("➕ Cadastrar ou Restaurar Acesso de Cliente Manualmente")
-        st.markdown("Use este formulário para recriar ou adicionar o acesso de um cliente caso necessário, garantindo que ele não precise se cadastrar novamente e já fique com status **Ativo**.")
+        st.subheader("➕ Cadastrar ou Restaurar Acesso Puxando dos Funcionários")
+        st.markdown("Selecione um funcionário já cadastrado no sistema para recriar o acesso dele de forma rápida e com status **Ativo**.")
 
-        with st.form("form_cad_usuario_manual"):
-            c_cad1, c_cad2 = st.columns(2)
-            m_nome = c_cad1.text_input("Nome Completo do Cliente")
-            m_cpf = c_cad2.text_input("CPF (com ou sem pontuação)")
-            
-            conn_emp = sqlite3.connect(DB_NAME, timeout=10.0)
-            df_emp_cad = pd.read_sql("SELECT nome_empresa FROM empresas ORDER BY nome_empresa ASC", conn_emp)
-            conn_emp.close()
-            lista_empresas_cad = df_emp_cad["nome_empresa"].tolist() if not df_emp_cad.empty else ["Geral"]
+        conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
+        df_func_cad = pd.read_sql("SELECT id, nome, empresa, cpf, email, celular FROM funcionarios ORDER BY nome ASC", conn_func)
+        conn_func.close()
 
-            m_empresa = st.selectbox("Empresa Vinculada", lista_empresas_cad)
-            
-            c_cad3, c_cad4 = st.columns(2)
-            m_email = c_cad3.text_input("E-mail")
-            m_celular = c_cad4.text_input("Celular / WhatsApp")
-            
-            c_cad5, c_cad6 = st.columns(2)
-            m_senha = c_cad5.text_input("Senha de Acesso", type="password")
-            m_nivel = c_cad6.selectbox("Nível de Permissão", ["Somente Visualizar", "Lançar", "Editar", "Fazer Tudo"])
+        if not df_func_cad.empty:
+            df_func_cad["rotulo"] = df_func_cad["nome"] + " (" + df_func_cad["empresa"] + " - CPF: " + df_func_cad["cpf"].fillna("") + ")"
+            lista_funcs_opcoes = df_func_cad["rotulo"].tolist()
 
-            btn_salvar_manual = st.form_submit_button("💾 Salvar e Ativar Acesso Manualmente", use_container_width=True)
+            with st.form("form_cad_usuario_via_funcionario"):
+                func_selecionado_rotulo = st.selectbox("Selecione o Funcionário", lista_funcs_opcoes)
+                
+                c_cad5, c_cad6 = st.columns(2)
+                m_senha = c_cad5.text_input("Definir ou Manter a Senha de Acesso", type="password", placeholder="Digite a senha")
+                m_nivel = c_cad6.selectbox("Nível de Permissão", ["Somente Visualizar", "Lançar", "Editar", "Fazer Tudo"])
 
-            if btn_salvar_manual:
-                if m_nome and m_cpf and m_email and m_senha and m_empresa:
-                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    try:
-                        cursor.execute(
-                            """INSERT OR REPLACE INTO usuarios_sistema 
-                               (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
-                               VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?)""",
-                            (
-                                m_nome.strip(),
-                                m_cpf.strip(),
-                                m_empresa,
-                                m_email.strip(),
-                                m_celular.strip(),
-                                m_senha,
-                                m_nivel,
-                            ),
-                        )
-                        conn.commit()
-                        conn.close()
-                        st.session_state["msg_sucesso"] = "✅ Cliente cadastrado/restaurado com sucesso com status Ativo!"
-                        registrar_log_func("Administrador", m_empresa, f"Cadastrou/Restaurou manualmente o acesso para {m_nome.strip()}")
-                        st.rerun()
-                    except Exception as e:
-                        conn.close()
-                        st.error(f"Erro ao salvar usuário: {e}")
-                else:
-                    st.warning("⚠️ Preencha todos os campos obrigatórios (Nome, CPF, Empresa, E-mail e Senha).")
+                btn_salvar_via_func = st.form_submit_button("💾 Gerar/Restaurar Acesso Ativo para o Funcionário", use_container_width=True)
 
-        st.markdown("---")
-        st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_logs = pd.read_sql("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", conn)
-        conn.close()
-        
-        if not df_logs.empty:
-            df_logs_exib = df_logs.rename(columns={"data_hora": "Data / Hora", "usuario": "Nome do Usuário", "empresa": "Empresa", "acao": "Ação / Evento"})
-            df_logs_exib = adicionar_numeracao_func(df_logs_exib)
-            st.dataframe(df_logs_exib, use_container_width=True, hide_index=True)
+                if btn_salvar_via_func:
+                    dados_func = df_func_cad[df_func_cad["rotulo"] == func_selecionado_rotulo].iloc[0]
+                    
+                    f_nome = dados_func["nome"]
+                    f_empresa = dados_func["empresa"]
+                    f_cpf = dados_func["cpf"]
+                    f_
