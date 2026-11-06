@@ -125,10 +125,12 @@ def registrar_log(usuario, empresa, acao):
   try:
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
-    dt_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    
+    # Ajusta para o horário do Brasil (UTC-3) independentemente do servidor
+    dt_atual = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
+    
     cursor.execute(
-        "INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES"
-        " (?, ?, ?, ?)",
+        "INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES (?, ?, ?, ?)",
         (dt_atual, str(usuario), str(empresa), str(acao)),
     )
     conn.commit()
