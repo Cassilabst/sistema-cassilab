@@ -2509,7 +2509,7 @@ Seguem abaixo os seus dados cadastrados para acesso:
 Recomendamos que você guarde essas informações em um local seguro. Caso não tenha solicitado essa recuperação, ignore esta mensagem.
 
 Atenciosamente,
-Cassilab Consultoria e Treinamentos em SST"""
+st.title("Cassilab Consultoria e Treinamentos em SST")
                 sucesso, msg_ret = enviar_email_smtp(email_u, assunto, corpo)
                 if sucesso:
                   st.success(
