@@ -668,8 +668,6 @@ def init_db():
     )
     except Exception:
         pass
-except Exception:
-        pass
 
     # --- BLOCO DE SEGURANÇA CONTRA REBOOTS ---
     try:
@@ -682,7 +680,6 @@ except Exception:
             conn.commit()
     except Exception:
         pass
-    # ------------------------------------------
 
     try:
         cursor.execute("""
