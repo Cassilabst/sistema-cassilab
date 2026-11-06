@@ -494,42 +494,51 @@ def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
-    # [Todo o código de criação de tabelas do init_db fica aqui dentro...]
+    # ── [Criação e verificação de tabelas principais] ──
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS base_funcionarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT
+        )
+    """)
+    # (mantenha aqui o restante código de criação de tabelas que já tinha no seu init_db)
     
+    conn.commit()
     conn.close()
 
-    # A função de migração fica FORA do init_db() (com 0 espaços de avanço à esquerda)
-    def migrar_sqlite_para_neon():
-        import os
-        try:
-            with engine.connect() as conn:
-                res = conn.execute(text("SELECT COUNT(*) FROM base_funcionarios")).fetchone()
-                count_pg = res[0] if res else 0
+
+def migrar_sqlite_para_neon():
+    import os
+    try:
+        with engine.connect() as conn:
+            res = conn.execute(text("SELECT COUNT(*) FROM base_funcionarios")).fetchone()
+            count_pg = res[0] if res else 0
+        
+        if count_pg == 0 and os.path.exists(DB_NAME):
+            sqlite_conn = sqlite_original.connect(DB_NAME)
+            sqlite_cursor = sqlite_conn.cursor()
             
-            if count_pg == 0 and os.path.exists(DB_NAME):
-                sqlite_conn = sqlite_original.connect(DB_NAME)
-                sqlite_cursor = sqlite_conn.cursor()
-                
-                sqlite_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-                tabelas = [row[0] for row in sqlite_cursor.fetchall()]
-                
-                with engine.begin() as pg_conn:
-                    for tabela in tabelas:
-                        try:
-                            df_tab = pd.read_sql(f"SELECT * FROM {tabela}", sqlite_conn)
-                            if not df_tab.empty:
-                                df_tab.to_sql(tabela, pg_conn, if_exists='append', index=False, method='multi')
-                        except Exception as ex:
-                            pass
-                sqlite_conn.close()
-        except Exception as e:
-            pass
-    
-    # Executa a inicialização e logo depois a migração automática:
-    init_db()
-    migrar_sqlite_para_neon()
-    atualizar_cargo_setor_treinamentos_antigos()
-    atualizar_validade_treinamentos_para_meses()
+            sqlite_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            tabelas = [row[0] for row in sqlite_cursor.fetchall()]
+            
+            with engine.begin() as pg_conn:
+                for tabela in tabelas:
+                    try:
+                        df_tab = pd.read_sql(f"SELECT * FROM {tabela}", sqlite_conn)
+                        if not df_tab.empty:
+                            df_tab.to_sql(tabela, pg_conn, if_exists='append', index=False, method='multi')
+                    except Exception as ex:
+                        pass
+            sqlite_conn.close()
+    except Exception as e:
+        pass
+
+
+# --- EXECUÇÃO EM SEQUÊNCIA (FORA DAS FUNÇÕES) ---
+init_db()
+migrar_sqlite_para_neon()
+atualizar_cargo_setor_treinamentos_antigos()
+atualizar_validade_treinamentos_para_meses()
 
     # Criar tabelas principais com segurança
     try:
