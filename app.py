@@ -2904,12 +2904,12 @@ if menu == "Dashboard / Visão Geral":
     st.markdown("---")
 
     if st.button(
-        "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
-        use_container_width=True,
-    ):
-        conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
-        cursor_m = conn_m.cursor()
-        alertas_por_empresa = {}
+            "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
+            use_container_width=True,
+        ):
+            conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
+            cursor_m = conn_m.cursor()
+            alertas_por_empresa = {}
         
         if not df_ex_alertas.empty:
             for _, row in df_ex_alertas.iterrows():
