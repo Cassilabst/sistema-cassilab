@@ -14,6 +14,32 @@ def renderizar_aba_admin(
     if not is_admin:
         st.warning("🔒 Área exclusiva para o Administrador.")
     else:
+        # Garante a criação automática das tabelas essenciais para evitar erros
+        conn_init = sqlite3.connect(DB_NAME, timeout=10.0)
+        cursor_init = conn_init.cursor()
+        cursor_init.execute('''
+            CREATE TABLE IF NOT EXISTS configuracoes_email (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                senha_app TEXT
+            )
+        ''')
+        cursor_init.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios_sistema (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                cpf TEXT,
+                empresa TEXT,
+                email TEXT,
+                celular TEXT,
+                senha TEXT,
+                status TEXT,
+                nivel_permissao TEXT
+            )
+        ''')
+        conn_init.commit()
+        conn_init.close()
+
         col_h1, col_h2 = st.columns([0.8, 0.2])
         with col_h1: st.title("🛠️ Painel Administrativo e Configurações")
         with col_h2:
@@ -23,17 +49,17 @@ def renderizar_aba_admin(
         st.subheader("📧 Configuração de E-mail (Gmail - Senha de App)")
         st.markdown("Insira o seu e-mail do Gmail e a **Senha de Aplicativo** gerada na sua conta Google para habilitar o envio de e-mails.")
         
-        conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
         try:
-            df_func_cad = pd.read_sql("SELECT id, nome, empresa, cpf, email, celular FROM funcionarios ORDER BY nome ASC", conn_func)
+            df_cfg_mail = pd.read_sql("SELECT email, senha_app FROM configuracoes_email LIMIT 1", conn)
         except Exception:
-            df_func_cad = pd.DataFrame()
-        conn_func.close()
+            df_cfg_mail = pd.DataFrame()
+        conn.close()
         
-        val_email = df_cfg_mail.iloc[0]["email"] if not df_cfg_mail.empty else ""
+        val_email = df_cfg_mail.iloc[0]["email"] if not df_cfg_mail.empty and "email" in df_cfg_mail.columns and pd.notna(df_cfg_mail.iloc[0]["email"]) else ""
         email_salvo = str(val_email) if val_email is not None and str(val_email).lower() != "nan" else ""
-        
-        val_senha = df_cfg_mail.iloc[0]["senha_app"] if not df_cfg_mail.empty else ""
+
+        val_senha = df_cfg_mail.iloc[0]["senha_app"] if not df_cfg_mail.empty and "senha_app" in df_cfg_mail.columns and pd.notna(df_cfg_mail.iloc[0]["senha_app"]) else ""
         senha_salva = str(val_senha) if val_senha is not None and str(val_senha).lower() != "nan" else ""
         
         with st.form("form_config_email"):
@@ -58,7 +84,10 @@ def renderizar_aba_admin(
         st.markdown("Aqui você pode visualizar diretamente os registros de itens que já foram notificados por e-mail para evitar envios duplicados:")
         
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_alertas_hist = pd.read_sql("SELECT id, empresa, tipo_item, item_id, data_vencimento, data_envio FROM alertas_enviados ORDER BY id DESC LIMIT 100", conn)
+        try:
+            df_alertas_hist = pd.read_sql("SELECT id, empresa, tipo_item, item_id, data_vencimento, data_envio FROM alertas_enviados ORDER BY id DESC LIMIT 100", conn)
+        except Exception:
+            df_alertas_hist = pd.DataFrame()
         conn.close()
         
         if not df_alertas_hist.empty:
@@ -76,7 +105,10 @@ def renderizar_aba_admin(
         st.markdown("Defina o nível de permissão de cada usuário diretamente na tabela abaixo e clique em salvar.")
         
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_users = pd.read_sql("SELECT id, nome, cpf, empresa, email, celular, status, nivel_permissao FROM usuarios_sistema", conn)
+        try:
+            df_users = pd.read_sql("SELECT id, nome, cpf, empresa, email, celular, status, nivel_permissao FROM usuarios_sistema", conn)
+        except Exception:
+            df_users = pd.DataFrame()
         conn.close()
 
         if not df_users.empty:
@@ -185,7 +217,10 @@ def renderizar_aba_admin(
         st.markdown("Selecione um funcionário já cadastrado no sistema para recriar o acesso dele de forma rápida e com status **Ativo**.")
 
         conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_func_cad = pd.read_sql("SELECT id, nome, empresa, cpf, email, celular FROM funcionarios ORDER BY nome ASC", conn_func)
+        try:
+            df_func_cad = pd.read_sql("SELECT id, nome, empresa, cpf, email, celular FROM funcionarios ORDER BY nome ASC", conn_func)
+        except Exception:
+            df_func_cad = pd.DataFrame()
         conn_func.close()
 
         if not df_func_cad.empty:
@@ -207,4 +242,52 @@ def renderizar_aba_admin(
                     f_nome = dados_func["nome"]
                     f_empresa = dados_func["empresa"]
                     f_cpf = dados_func["cpf"]
-                    f_
+                    f_email = str(dados_func["email"]) if pd.notna(dados_func["email"]) else ""
+                    f_celular = str(dados_func["celular"]) if pd.notna(dados_func["celular"]) else ""
+
+                    if f_cpf and m_senha:
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        cursor = conn.cursor()
+                        try:
+                            cursor.execute(
+                                """INSERT OR REPLACE INTO usuarios_sistema 
+                                   (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
+                                   VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?)""",
+                                (
+                                    f_nome,
+                                    f_cpf,
+                                    f_empresa,
+                                    f_email,
+                                    f_celular,
+                                    m_senha,
+                                    m_nivel,
+                                ),
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.session_state["msg_sucesso"] = f"✅ Acesso ativado com sucesso para {f_nome}!"
+                            registrar_log_func("Administrador", f_empresa, f"Restaurou/Criou acesso via funcionário para {f_nome}")
+                            st.rerun()
+                        except Exception as e:
+                            conn.close()
+                            st.error(f"Erro ao salvar usuário: {e}")
+                    else:
+                        st.warning("⚠️ O funcionário selecionado precisa ter um CPF válido e você deve definir uma senha.")
+        else:
+            st.info("ℹ️ Nenhum funcionário cadastrado no sistema para puxar os dados.")
+
+        st.markdown("---")
+        st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        try:
+            df_logs = pd.read_sql("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", conn)
+        except Exception:
+            df_logs = pd.DataFrame()
+        conn.close()
+        
+        if not df_logs.empty:
+            df_logs_exib = df_logs.rename(columns={"data_hora": "Data / Hora", "usuario": "Nome do Usuário", "empresa": "Empresa", "acao": "Ação / Evento"})
+            df_logs_exib = adicionar_numeracao_func(df_logs_exib)
+            st.dataframe(df_logs_exib, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum log registrado até o momento.")
