@@ -30,8 +30,11 @@ def renderizar_aba_admin(
             df_func_cad = pd.DataFrame()
         conn_func.close()
         
-        email_salvo = df_cfg_mail.iloc[0]["email"] if not df_cfg_mail.empty and pd.notna(df_cfg_mail.iloc[0]["email"]) else ""
-        senha_salva = df_cfg_mail.iloc[0]["senha_app"] if not df_cfg_mail.empty and pd.notna(df_cfg_mail.iloc[0]["senha_app"]) else ""
+        val_email = df_cfg_mail.iloc[0]["email"] if not df_cfg_mail.empty else ""
+        email_salvo = str(val_email) if val_email is not None and str(val_email).lower() != "nan" else ""
+        
+        val_senha = df_cfg_mail.iloc[0]["senha_app"] if not df_cfg_mail.empty else ""
+        senha_salva = str(val_senha) if val_senha is not None and str(val_senha).lower() != "nan" else ""
         
         with st.form("form_config_email"):
             c_em1, c_em2 = st.columns(2)
