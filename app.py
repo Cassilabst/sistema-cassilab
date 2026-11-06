@@ -13,9 +13,8 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- LIGAÇÃO AO NEON COM DIAGNÓSTICO DE ERRO ---
-DB_URL = "postgresql+psycopg://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
-
+# --- LIGAÇÃO OFICIAL AO NEON COM A NOVA SENHA ---
+DB_URL = "postgresql+psycopg://neondb_owner:npg_X5nPbDoaQ0BN@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
 try:
     engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=3600)
 except Exception as e:
