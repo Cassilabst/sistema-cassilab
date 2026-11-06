@@ -494,7 +494,6 @@ def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
-    # Criar tabelas principais com segurança
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -531,6 +530,7 @@ def init_db():
     
     conn.commit()
     conn.close()
+    
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
                 id SERIAL PRIMARY KEY,
