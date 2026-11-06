@@ -446,7 +446,7 @@ def atualizar_validade_treinamentos_para_meses():
       numeros = "".join(filter(str.isdigit, val_str))
       anos = int(numeros) if numeros else 1
       meses = anos * 12
-      nova_val = {meses} meses"
+      nova_val = f"{meses} meses"
       novo_prox = calcular_proximo_treinamento(dt_real, nova_val)
       cursor.execute(
           """
