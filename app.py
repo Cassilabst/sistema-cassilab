@@ -507,7 +507,7 @@ def init_db():
     conn.close()
 
     # Criar tabelas principais com segurança
-        cursor.execute("""
+    cursor.execute("""
             CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
                 cnae TEXT PRIMARY KEY,
                 descricao TEXT,
