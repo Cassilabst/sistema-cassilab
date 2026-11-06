@@ -2561,6 +2561,7 @@ if st.session_state.get("is_admin", False):
       "Controle de Absenteísmo",
       "Controle de EPIs",
       "Controle de Documentos",
+      "Alterar Senha",
       "Serviços Realizados",
       "Administração",
       "Relatórios Consolidados",
