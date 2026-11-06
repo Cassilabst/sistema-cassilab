@@ -1,9 +1,7 @@
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
-import sys, re
-import sqlite3 as real_sqlite3  # Guarda o sqlite3 real antes de mockar
-import pandas as pd
+import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
 DB_NAME = "cassilab_gestao.db"
@@ -22,24 +20,18 @@ try:
 except Exception as e:
     USAR_SUPABASE = False
 
-# --- TRADUTOR PERFEITO PARA O PANDAS (SEM CONFLITOS) ---
+# --- TRADUTOR INTELIGENTE PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
     pd._original_read_sql = pd.read_sql
     def _patched_read_sql(sql, con, *args, **kwargs):
-        global engine, USAR_SUPABASE
-        if USAR_SUPABASE and engine is not None:
-            # Pandas adora receber o motor SQLAlchemy diretamente para o Postgres!
-            return pd._original_read_sql(sql, engine, *args, **kwargs)
-        else:
-            # Se for local, usa uma conexão real do sqlite3
-            local_conn = real_sqlite3.connect(DB_NAME)
-            try:
-                return pd._original_read_sql(sql, local_conn, *args, **kwargs)
-            finally:
-                local_conn.close()
+        if hasattr(con, 'eng'):
+            con = con.eng
+        elif hasattr(con, '_conn'):
+            con = con._conn
+        return pd._original_read_sql(sql, con, *args, **kwargs)
     pd.read_sql = _patched_read_sql
 
-# --- CAMADA INTELIGENTE DE COMPATIBILIDADE ---
+# --- CAMADA DE COMPATIBILIDADE SQLITE -> POSTGRES ---
 class PostgresCursorWrapper:
     def __init__(self, connection):
         self.conn = connection
@@ -126,16 +118,16 @@ class PostgresConnWrapper:
     def execute(self, sql, params=None):
         return self.cursor().execute(sql, params)
 
-class MockSqlite3:
-    IntegrityError = sqlalchemy.exc.IntegrityError
-    OperationalError = Exception
-    def connect(self, database, timeout=10.0):
-        if USAR_SUPABASE and engine:
-            return PostgresConnWrapper(engine)
-        else:
-            return real_sqlite3.connect(database, timeout=timeout)
+# Intercepta o connect do sqlite3 nativo de forma transparente
+_original_sqlite_connect = sqlite3.connect
 
-sys.modules['sqlite3'] = MockSqlite3()
+def _patched_sqlite_connect(database, *args, **kwargs):
+    if USAR_SUPABASE and engine is not None:
+        return PostgresConnWrapper(engine)
+    else:
+        return _original_sqlite_connect(database, *args, **kwargs)
+
+sqlite3.connect = _patched_sqlite_connect
 
 # ==========================================
 # A PARTIR DAQUI, COLE O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
