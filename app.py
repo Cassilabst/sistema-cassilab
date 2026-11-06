@@ -551,11 +551,11 @@ def migrar_sqlite_para_neon():
             for tabela in tabelas:
                 try:
                     sqlite_conn_tab = sqlite_original.connect(DB_NAME)
-                    df_tab = pd.read_sql(f"SELECT * FROM {tabela}", sqlite_conn_tab)
+                    # Usa _original_read_sql para ler diretamente do SQLite do GitHub
+                    df_tab = pd._original_read_sql(f"SELECT * FROM {tabela}", sqlite_conn_tab)
                     sqlite_conn_tab.close()
 
                     if not df_tab.empty:
-                        # Remove coluna id para o PostgreSQL autogerar via SERIAL e evitar conflitos
                         if 'id' in df_tab.columns:
                             df_tab = df_tab.drop(columns=['id'])
 
@@ -563,7 +563,6 @@ def migrar_sqlite_para_neon():
                             try:
                                 df_tab.to_sql(tabela, pg_conn, if_exists='append', index=False, method='multi')
                             except Exception:
-                                # Se a tabela não existir no Postgres, cria automaticamente
                                 df_tab.to_sql(tabela, pg_conn, if_exists='replace', index=False, method='multi')
                 except Exception as ex:
                     pass
