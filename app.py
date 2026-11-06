@@ -35,7 +35,7 @@ DB_NAME = "cassilab_gestao.db"
 if not hasattr(pd, "_original_read_sql"):
   pd._original_read_sql = pd.read_sql
 
-  from sqlalchemy import create_engine
+from sqlalchemy import create_engine
 
 # Obter a URL do Neon configurada nos Secrets do Streamlit
 try:
