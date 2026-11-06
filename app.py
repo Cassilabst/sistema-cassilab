@@ -37,19 +37,10 @@ if not hasattr(pd, "_original_read_sql"):
 
 
   def _patched_read_sql(sql, con, *args, **kwargs):
-    # Se estivermos a usar o Supabase, a conexão (con) já é o wrapper ou engine correto
-    if USAR_SUPABASE and engine is not None and not isinstance(con, sqlite3.Connection):
-      return pd._original_read_sql(sql, engine, *args, **kwargs)
-    
-    # Caso contrário, mantém o comportamento local
-    local_conn = sqlite3.connect(DB_NAME)
-    try:
-      return pd._original_read_sql(sql, local_conn, *args, **kwargs)
-    finally:
-      local_conn.close()
+    # Utiliza sempre a ligação ao Neon (PostgreSQL)
+    return pd._original_read_sql(sql, engine, *args, **kwargs)
 
-
-  pd.read_sql = _patched_read_sql
+pd.read_sql = _patched_read_sql
 
 
 # --- CAMADA DE COMPATIBILIDADE SQLITE -> POSTGRES ---
