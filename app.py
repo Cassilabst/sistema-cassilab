@@ -17,7 +17,7 @@ try:
   # Tenta ler do st.secrets (suporta tanto [postgres] como [supabase])
   sec = st.secrets.get("postgres") or st.secrets.get("supabase")
   if sec:
-    db_url = f"postgresql://{sec['user']}:{sec['password']}@{sec['host']}:{sec['port']}/{sec['database']}"
+    db_url = f"postgresql://{sec['user']}:{sec['password']}@{sec['host']}:{sec['port']}/{sec['database']}?sslmode=require"
     engine = create_engine(db_url)
   else:
     USAR_SUPABASE = False
