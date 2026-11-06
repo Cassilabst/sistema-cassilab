@@ -45,7 +45,7 @@ def criar_backup_automatico():
       os.makedirs(backup_dir)
     hoje_data = datetime.now().strftime("%Y-%m-%d")
     backup_path = os.path.join(
-        backup_dir, f"cassilab_gestao_backup_{hoje_data}.db"
+        backup_dir, cassilab_gestao_backup_{hoje_data}.db"
     )
     if not os.path.exists(backup_path) and os.path.exists(DB_NAME):
       shutil.copy(DB_NAME, backup_path)
@@ -86,7 +86,7 @@ def formatar_titulo(texto):
       "ca",
       "nfes",
       "dds",
-      "wf"
+      "w
       "pemt"
   }
   palavras = str(texto).strip().split()
@@ -446,7 +446,7 @@ def atualizar_validade_treinamentos_para_meses():
       numeros = "".join(filter(str.isdigit, val_str))
       anos = int(numeros) if numeros else 1
       meses = anos * 12
-      nova_val = f"{meses} meses"
+      nova_val = {meses} meses"
       novo_prox = calcular_proximo_treinamento(dt_real, nova_val)
       cursor.execute(
           """
@@ -653,7 +653,7 @@ def init_db():
     ]:
         if col_nova not in cols_user_db:
             try:
-                cursor.execute(f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
+                cursor.execute(ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
             except Exception:
                 pass
 
@@ -935,7 +935,7 @@ def dialog_editar_funcionario(id_alvo):
       return ""
     digitos = "".join(filter(str.isdigit, str(texto)))
     if len(digitos) == 8:
-      return f"{digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
+      return {digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
     return str(texto).strip()
 
   conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -950,8 +950,8 @@ def dialog_editar_funcionario(id_alvo):
   conn.close()
   if reg_func:
     f_emp, f_mat, f_nome, f_cargo, f_setor, f_cpf, f_dt, f_st, f_nasc = reg_func
-    with st.form(f"form_edicao_func_modal_{id_alvo}"):
-      st.markdown(f"**Empresa:** {f_emp}")
+    with st.form(form_edicao_func_modal_{id_alvo}"):
+      st.markdown(**Empresa:** {f_emp}")
       novo_mat = st.text_input("Matrícula", value=str(f_mat) if f_mat else "")
       novo_nome = st.text_input("Nome do Funcionário", value=str(f_nome))
       cargos_emp_ed = get_cargos_por_empresa(f_emp)
@@ -968,7 +968,7 @@ def dialog_editar_funcionario(id_alvo):
         novo_setor = st.text_input(
             "Setor", value=str(f_setor) if f_setor else ""
         )
-      novo_cpf = st.text_input("CPF", value=str(f_cpf) if f_cpf else "")
+      novo_cpf = st.text_input("CP, value=str(f_cpf) if f_cpf else "")
       nova_data_adm = st.text_input(
           "Data Admissão", value=str(f_dt) if f_dt else ""
       )
@@ -1017,7 +1017,7 @@ def dialog_editar_funcionario(id_alvo):
         registrar_log(
             st.session_state.get("nome_usuario", "Desconhecido"),
             f_emp,
-            f"Edição do funcionário: {formatar_titulo(novo_nome)}",
+            Edição do funcionário: {formatar_titulo(novo_nome)}",
         )
         st.rerun()
 
@@ -1054,8 +1054,8 @@ def dialog_editar_treinamento(id_alvo):
         t_cargo,
         t_setor,
     ) = reg_tr
-    with st.form(f"form_edicao_trein_modal_{id_alvo}"):
-      st.markdown(f"**Empresa:** {t_emp}")
+    with st.form(form_edicao_trein_modal_{id_alvo}"):
+      st.markdown(**Empresa:** {t_emp}")
       conn = sqlite3.connect(DB_NAME, timeout=10.0)
       df_funcs_emp = pd.read_sql(
           "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios"
@@ -1178,7 +1178,7 @@ def dialog_editar_treinamento(id_alvo):
         registrar_log(
             st.session_state.get("nome_usuario", "Desconhecido"),
             t_emp,
-            f"Edição de treinamento ({novo_trein_val}) para {novo_func_sel}",
+            Edição de treinamento ({novo_trein_val}) para {novo_func_sel}",
         )
         st.rerun()
 
@@ -1206,8 +1206,8 @@ def dialog_editar_exame(id_alvo):
             ex_cargo,
             ex_setor,
         ) = reg_ex
-        with st.form(f"form_edicao_exame_modal_{id_alvo}"):
-            st.markdown(f"**Empresa:** {ex_emp}")
+        with st.form(form_edicao_exame_modal_{id_alvo}"):
+            st.markdown(**Empresa:** {ex_emp}")
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
             df_funcs_emp = pd.read_sql(
                 "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC",
@@ -1268,7 +1268,7 @@ def dialog_editar_exame(id_alvo):
                 value=proximo_calc_ed,
             )
 
-            st.info(f"📅 Próximo Exame Calculado: **{proximo_calc_ed}** | Status Automático: **{status_calc_ed}**")
+            st.info(📅 Próximo Exame Calculado: **{proximo_calc_ed}** | Status Automático: **{status_calc_ed}**")
 
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
                 novo_mat = ex_mat
@@ -1315,7 +1315,7 @@ def dialog_editar_exame(id_alvo):
                 registrar_log(
                     st.session_state.get("nome_usuario", "Desconhecido"),
                     ex_emp,
-                    f"Edição de exame ({novo_tipo_ex}) para {novo_func_sel}",
+                    Edição de exame ({novo_tipo_ex}) para {novo_func_sel}",
                 )
                 st.rerun()
 
@@ -1333,8 +1333,8 @@ def dialog_editar_epi(id_alvo):
   conn.close()
   if reg_ep:
     ep_emp, ep_func, ep_epi, ep_ca, ep_dt, ep_qtd, ep_st, ep_mat, ep_cargo, ep_setor = reg_ep
-    with st.form(f"form_edicao_epi_modal_{id_alvo}"):
-      st.markdown(f"**Empresa:** {ep_emp}")
+    with st.form(form_edicao_epi_modal_{id_alvo}"):
+      st.markdown(**Empresa:** {ep_emp}")
       conn = sqlite3.connect(DB_NAME, timeout=10.0)
       df_funcs_emp = pd.read_sql(
           "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios"
@@ -1415,7 +1415,7 @@ def dialog_editar_epi(id_alvo):
         registrar_log(
             st.session_state.get("nome_usuario", "Desconhecido"),
             ep_emp,
-            f"Edição de EPI ({novo_epi_nome}) para {novo_func_sel}",
+            Edição de EPI ({novo_epi_nome}) para {novo_func_sel}",
         )
         st.rerun()
 
@@ -1441,8 +1441,8 @@ def dialog_editar_documento(id_alvo):
   )
   if reg:
     d_emp, d_doc, d_emissao, d_vig, d_prox, d_st = reg
-    with st.form(f"form_edicao_doc_modal_{id_alvo}"):
-      st.markdown(f"**Empresa:** {d_emp}")
+    with st.form(form_edicao_doc_modal_{id_alvo}"):
+      st.markdown(**Empresa:** {d_emp}")
       if lista_serv_ed_doc:
         if d_doc in lista_serv_ed_doc:
           idx_doc = lista_serv_ed_doc.index(d_doc)
@@ -1477,7 +1477,7 @@ def dialog_editar_documento(id_alvo):
           else prox_calc_ed
       )
       st.info(
-          f"Status calculado automaticamente: **{status_calculado_ed}**"
+          Status calculado automaticamente: **{status_calculado_ed}**"
       )
 
       if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
@@ -1515,7 +1515,7 @@ def dialog_editar_documento(id_alvo):
         registrar_log(
             st.session_state.get("nome_usuario", "Desconhecido"),
             d_emp,
-            f"Edição de documento ({novo_doc})",
+            Edição de documento ({novo_doc})",
         )
         st.rerun()
 
@@ -1533,7 +1533,7 @@ def dialog_editar_servico(id_alvo):
   conn.close()
   if reg_alvo:
     e_emp, e_serv, e_data, e_resp, e_obs, e_val, e_status, e_nfes = reg_alvo
-    with st.form(f"form_edicao_servico_modal_{id_alvo}"):
+    with st.form(form_edicao_servico_modal_{id_alvo}"):
       empresas_cad = get_empresas()
       try:
         idx_emp = empresas_cad.index(e_emp)
@@ -1571,7 +1571,7 @@ def dialog_editar_servico(id_alvo):
           min_value=0.0,
           value=float_val,
           step=50.0,
-          format="%.2f",
+          format="%.2,
       )
       novo_resp = st.text_input("Responsável Técnico", value=str(e_resp))
       status_limpo_atual = limpar_status_banco(e_status)
@@ -1622,7 +1622,7 @@ def dialog_editar_servico(id_alvo):
         registrar_log(
             st.session_state.get("nome_usuario", "Desconhecido"),
             nova_empresa,
-            f"Edição de serviço ({novo_servico})",
+            Edição de serviço ({novo_servico})",
         )
         st.rerun()
 
@@ -1686,7 +1686,7 @@ def formatar_colunas_tabela(df):
       "funcionario": "Funcionário",
       "cargo": "Cargo",
       "setor": "Setor",
-      "cpf": "CPF",
+      "cp: "CP,
       "data_admissao": "Data Admissão",
       "status": "Status",
       "empresa": "Empresa",
@@ -1784,7 +1784,7 @@ def formatar_cpf(val):
     return ""
   numeros = re.sub(r"\D", "", str(val))
   if len(numeros) == 11:
-    return f"{numeros[:3]}.{numeros[3:6]}.{numeros[6:9]}-{numeros[9:]}"
+    return {numeros[:3]}.{numeros[3:6]}.{numeros[6:9]}-{numeros[9:]}"
   return str(val).strip()
 
 
@@ -1794,7 +1794,7 @@ def formatar_cnpj(val):
   numeros = re.sub(r"\D", "", str(val))
   if len(numeros) == 14:
     return (
-        f"{numeros[:2]}.{numeros[2:5]}.{numeros[5:8]}/{numeros[8:12]}-{numeros[12:]}"
+        {numeros[:2]}.{numeros[2:5]}.{numeros[5:8]}/{numeros[8:12]}-{numeros[12:]}"
     )
   return str(val).strip()
 
@@ -1804,7 +1804,7 @@ def normalizar_cnae(cnae_input):
     return ""
   digitos = "".join(filter(str.isdigit, str(cnae_input)))
   if len(digitos) >= 5:
-    return f"{digitos[0:2]}.{digitos[2:4]}-{digitos[4]}"
+    return {digitos[0:2]}.{digitos[2:4]}-{digitos[4]}"
   return str(cnae_input)
 
 
@@ -1828,7 +1828,7 @@ def consultar_cep(cep_str):
   cep_limpo = re.sub(r"\D", "", str(cep_str))
   if len(cep_limpo) == 8:
     try:
-      url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
+      url = https://viacep.com.br/ws/{cep_limpo}/json/"
       response = requests.get(url, timeout=3)
       if response.status_code == 200:
         dados = response.json()
@@ -1837,9 +1837,9 @@ def consultar_cep(cep_str):
               "logradouro": formatar_titulo(dados.get("logradouro", "")),
               "bairro": formatar_titulo(dados.get("bairro", "")),
               "cidade": (
-                  f"{formatar_titulo(dados.get('localidade', ''))} -"
-                  f" {dados.get('uf', '').upper()}"
-                  if dados.get("uf")
+                  {formatar_titulo(dados.get('localidade', ''))} -"
+                   {dados.get('uf', '').upper()}"
+                  if dados.get("u)
                   else formatar_titulo(dados.get("localidade", ""))
               ),
           }
@@ -1854,14 +1854,14 @@ def consultar_cnpj(cnpj_str):
     lista_cnaes = []
     cnae_principal = ""
     try:
-      url = f"https://minhareceita.org/{cnpj_limpo}"
+      url = https://minhareceita.org/{cnpj_limpo}"
       response = requests.get(url, timeout=5)
       if response.status_code == 200:
         dados = response.json()
         cidade_uf = (
-            f"{formatar_titulo(dados.get('municipio', ''))} -"
-            f" {dados.get('uf', '').upper()}"
-            if dados.get("uf")
+            {formatar_titulo(dados.get('municipio', ''))} -"
+             {dados.get('uf', '').upper()}"
+            if dados.get("u)
             else formatar_titulo(dados.get("municipio", ""))
         )
         logradouro = dados.get("logradouro", "")
@@ -1869,9 +1869,9 @@ def consultar_cnpj(cnpj_str):
         complemento = dados.get("complemento", "")
         end_completo = formatar_titulo(logradouro)
         if numero:
-          end_completo += f", {numero}"
+          end_completo += , {numero}"
         if complemento:
-          end_completo += f" - {complemento}"
+          end_completo +=  - {complemento}"
         cnae_fiscal = dados.get("cnae_fiscal", "")
         cnae_principal = normalizar_cnae(cnae_fiscal)
         
@@ -1879,14 +1879,14 @@ def consultar_cnpj(cnpj_str):
 
         if cnae_principal:
           lista_cnaes.append(
-              f"{cnae_principal} - {dados.get('cnae_fiscal_descricao', '')}"
+              {cnae_principal} - {dados.get('cnae_fiscal_descricao', '')}"
               " (Principal)"
           )
         for sec in dados.get("cnaes_secundarios", []):
           c_sec = normalizar_cnae(str(sec.get("codigo", "")))
           if c_sec:
             lista_cnaes.append(
-                f"{c_sec} - {sec.get('descricao', '')} (Secundário)"
+                {c_sec} - {sec.get('descricao', '')} (Secundário)"
             )
         grau_risco = consultar_grau_risco_por_cnae(cnae_fiscal)
         return {
@@ -1908,14 +1908,14 @@ def consultar_cnpj(cnpj_str):
       pass
 
     try:
-      url = f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
+      url = https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
       response = requests.get(url, timeout=5)
       if response.status_code == 200:
         dados = response.json()
         cidade_uf = (
-            f"{formatar_titulo(dados.get('municipio', ''))} -"
-            f" {dados.get('uf', '').upper()}"
-            if dados.get("uf")
+            {formatar_titulo(dados.get('municipio', ''))} -"
+             {dados.get('uf', '').upper()}"
+            if dados.get("u)
             else formatar_titulo(dados.get("municipio", ""))
         )
         logradouro = dados.get("logradouro", "")
@@ -1923,9 +1923,9 @@ def consultar_cnpj(cnpj_str):
         complemento = dados.get("complemento", "")
         end_completo = formatar_titulo(logradouro)
         if numero:
-          end_completo += f", {numero}"
+          end_completo += , {numero}"
         if complemento:
-          end_completo += f" - {complemento}"
+          end_completo +=  - {complemento}"
         cnae_fiscal = dados.get("cnae_fiscal", "")
         cnae_principal = normalizar_cnae(cnae_fiscal)
         
@@ -1933,14 +1933,14 @@ def consultar_cnpj(cnpj_str):
 
         if cnae_principal:
           lista_cnaes.append(
-              f"{cnae_principal} - {dados.get('cnae_fiscal_descricao', '')}"
+              {cnae_principal} - {dados.get('cnae_fiscal_descricao', '')}"
               " (Principal)"
           )
         for sec in dados.get("cnaes_secundarios", []):
           c_sec = normalizar_cnae(str(sec.get("codigo", "")))
           if c_sec:
             lista_cnaes.append(
-                f"{c_sec} - {sec.get('descricao', '')} (Secundário)"
+                {c_sec} - {sec.get('descricao', '')} (Secundário)"
             )
         grau_risco = consultar_grau_risco_por_cnae(cnae_fiscal)
         return {
@@ -1993,7 +1993,7 @@ def formatar_valor_brasileiro(valor):
       texto = texto.replace(".", "").replace(",", ".")
     numero = float(texto)
     return (
-        f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        {numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     )
   except (ValueError, TypeError):
     return "0,00"
@@ -2019,30 +2019,30 @@ def formatar_status_visual(val, tipo):
   v_low = v.lower()
   if tipo == "func":
     if "afastado" in v_low:
-      return f"🟠 {v}"
+      return 🟠 {v}"
     if "desligado" in v_low:
-      return f"🔴 {v}"
-    return f"🟢 {v}"
+      return 🔴 {v}"
+    return 🟢 {v}"
   elif tipo == "trein" or tipo == "ex" or tipo == "doc":
     if "vencido" in v_low:
-      return f"🔴 {v}"
+      return 🔴 {v}"
     if "a vencer" in v_low or "vencer" in v_low:
-      return f"🟠 {v}"
-    return f"🟢 {v}"
+      return 🟠 {v}"
+    return 🟢 {v}"
   elif tipo == "epi":
     if "devolvido" in v_low:
-      return f"🟠 {v}"
+      return 🟠 {v}"
     if "substituído" in v_low or "substituido" in v_low:
-      return f"🟡 {v}"
-    return f"🟢 {v}"
+      return 🟡 {v}"
+    return 🟢 {v}"
   else:
     if "andamento" in v_low:
-      return f"🟠 {v}"
+      return 🟠 {v}"
     if "agendado" in v_low:
-      return f"🟡 {v}"
+      return 🟡 {v}"
     if "cancelado" in v_low:
-      return f"🔴 {v}"
-    return f"🟢 {v}"
+      return 🔴 {v}"
+    return 🟢 {v}"
 
 
 def limpar_status_banco(val):
@@ -2145,12 +2145,12 @@ def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
 
   for emp in empresas_unicas:
     with st.container():
-      st.markdown(f"#### 🏢 {emp}")
+      st.markdown(#### 🏢 {emp}")
       funcs_emp = df_aniv[df_aniv["empresa"] == emp]
 
       for _, f in funcs_emp.iterrows():
-        cargo_txt = f" — *{f['cargo']}*" if f["cargo"] else ""
-        st.markdown(f"* **{f['data'][:5]}** — **{f['funcionario']}**{cargo_txt}")
+        cargo_txt =  — *{f['cargo']}*" if f["cargo"] else ""
+        st.markdown(* **{f['data'][:5]}** — **{f['funcionario']}**{cargo_txt}")
       st.markdown("")
 
 
@@ -2262,7 +2262,7 @@ if not st.session_state["autenticado"]:
                   else "Somente Visualizar"
               )
               registrar_log(user_db[1], user_db[3], "Login no Sistema")
-              st.success(f"Bem-vindo(a), {user_db[1]}!")
+              st.success(Bem-vindo(a), {user_db[1]}!")
               st.rerun()
             elif len(users_ativos) > 1:
               st.session_state["usuarios_multiplos"] = users_ativos
@@ -2280,8 +2280,8 @@ if not st.session_state["autenticado"]:
       )
       with st.form("form_selecionar_empresa_multipla"):
         opcoes_empresas_map = {
-            f"{u[3]} (Permissão:"
-            f" {u[8] if len(u) > 8 and u[8] else 'Somente Visualizar'})": u
+            {u[3]} (Permissão:"
+             {u[8] if len(u) > 8 and u[8] else 'Somente Visualizar'})": u
             for u in st.session_state["usuarios_multiplos"]
         }
         escolha_emp_mult = st.selectbox(
@@ -2307,7 +2307,7 @@ if not st.session_state["autenticado"]:
               user_db[3],
               "Login no Sistema (Múltiplas Empresas)",
           )
-          st.success(f"Bem-vindo(a) à empresa {user_db[3]}!")
+          st.success(Bem-vindo(a) à empresa {user_db[3]}!")
           st.rerun()
 
     with aba_cadastro:
@@ -2315,16 +2315,16 @@ if not st.session_state["autenticado"]:
         st.markdown("### 📝 Solicitar Cadastro de Acesso")
         st.markdown("Preencha os seus dados para solicitar acesso ao sistema vinculado à sua empresa.")
         
-        cad_nome = st.text_input("Nome Completo", value="", autocomplete="off")
+        cad_nome = st.text_input("Nome Completo", value="", autocomplete="of)
         cad_cpf = st.text_input(
-            "CPF (com ou sem pontuação)", value="", autocomplete="off"
+            "CPF (com ou sem pontuação)", value="", autocomplete="of
         )
-        cad_email = st.text_input("E-mail", value="", autocomplete="off")
+        cad_email = st.text_input("E-mail", value="", autocomplete="of)
         cad_celular = st.text_input(
-            "Celular / WhatsApp", value="", autocomplete="off"
+            "Celular / WhatsApp", value="", autocomplete="of
         )
         cad_empresa_busca = st.text_input(
-            "Nome da Empresa", value="", autocomplete="off"
+            "Nome da Empresa", value="", autocomplete="of
         )
         cad_senha = st.text_input(
             "Crie uma Senha", value="", type="password", autocomplete="new-password"
@@ -2350,7 +2350,7 @@ if not st.session_state["autenticado"]:
             # Procura a empresa correspondente
             cursor.execute(
                 "SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1",
-                (f"%{cad_empresa_busca.strip()}%",),
+                (%{cad_empresa_busca.strip()}%",),
             )
             emp_encontrada = cursor.fetchone()
             
@@ -2368,8 +2368,8 @@ if not st.session_state["autenticado"]:
                 status_atual = reg_existente[0]
                 if status_atual == "Pendente":
                   st.warning(
-                      f"⏳ **Aviso:** Já existe um pedido de cadastro pendente para o CPF `{cpf_formatado}` "
-                      f"na empresa **{empresa_final}**. O administrador já foi notificado e irá aprovar em breve."
+                      ⏳ **Aviso:** Já existe um pedido de cadastro pendente para o CPF `{cpf_formatado}` "
+                      na empresa **{empresa_final}**. O administrador já foi notificado e irá aprovar em breve."
                   )
                 elif status_atual == "Bloqueado":
                   st.error(
@@ -2378,7 +2378,7 @@ if not st.session_state["autenticado"]:
                   )
                 else:
                   st.info(
-                      f"ℹ️ **Conta Ativa:** Já possui um acesso ativo para a empresa **{empresa_final}**! "
+                      ℹ️ **Conta Ativa:** Já possui um acesso ativo para a empresa **{empresa_final}**! "
                       "Pode utilizar a aba **'🔑 Entrar'** para iniciar sessão diretamente."
                   )
               else:
@@ -2407,7 +2407,7 @@ if not st.session_state["autenticado"]:
                     if cfg_mail and cfg_mail[0]:
                       email_admin = cfg_mail[0]
                       assunto_adm = "🔔 Novo Cadastro Pendente de Aprovação - Sistema Cassilab SST"
-                      corpo_adm = f"""Olá Administrador,
+                      corpo_adm = ""Olá Administrador,
 
 Um novo usuário realizou o cadastro de acesso no sistema e está aguardando a sua aprovação:
 
@@ -2427,11 +2427,11 @@ Sistema Cassilab SST"""
                   # -------------------------------------------------------
 
                   st.success(
-                      f"✅ Cadastro realizado com sucesso para a empresa **{empresa_final}**! "
+                      ✅ Cadastro realizado com sucesso para a empresa **{empresa_final}**! "
                       "O seu pedido foi enviado ao administrador e será liberado brevemente."
                   )
                 except Exception as e:
-                  st.error(f"Erro ao realizar cadastro: {e}")
+                  st.error(Erro ao realizar cadastro: {e}")
             else:
               st.error("⚠️ Nenhuma empresa encontrada com esse nome. Verifique a grafia e tente novamente.")
             conn.close()
@@ -2443,7 +2443,7 @@ Sistema Cassilab SST"""
         rec_cpf = st.text_input(
             "Digite seu CPF cadastrado (com ou sem pontuação)",
             value="",
-            autocomplete="off",
+            autocomplete="of,
         )
         btn_rec_enviar = st.form_submit_button(
             "Enviar Instruções por E-mail", use_container_width=True
@@ -2465,7 +2465,7 @@ Sistema Cassilab SST"""
               nome_u, email_u, celular_u, empresa_u, senha_u = res_user
               if email_u and "@" in email_u:
                 assunto = "Recuperação de Acesso - Sistema Cassilab SST"
-                corpo = f"""Prezado(a) {nome_u},
+                corpo = ""Prezado(a) {nome_u},
 
 Recebemos uma solicitação de recuperação de senha vinculada ao seu CPF para o acesso ao Sistema de Gestão Integrada Cassilab SST.
 
@@ -2481,8 +2481,8 @@ st.title("Cassilab Consultoria e Treinamentos em SST")
                 sucesso, msg_ret = enviar_email_smtp(email_u, assunto, corpo)
                 if sucesso:
                   st.success(
-                      f"As instruções de recuperação de senha foram enviadas"
-                      f" para o e-mail {email_u}."
+                      As instruções de recuperação de senha foram enviadas"
+                       para o e-mail {email_u}."
                   )
                   registrar_log(
                       nome_u,
@@ -2490,7 +2490,7 @@ st.title("Cassilab Consultoria e Treinamentos em SST")
                       "Solicitou recuperação de senha por e-mail",
                   )
                 else:
-                  st.error(f"Erro ao enviar o e-mail: {msg_ret}")
+                  st.error("Erro ao enviar o e-mail: " + str(msg_ret))
               else:
                 st.error(
                     "Este usuário não possui um e-mail válido cadastrado no"
