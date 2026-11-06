@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 # --- CONEXÃO COM O SUPABASE VIA STREAMLIT SECRETS ---
 try:
     pg = st.secrets["postgres"]
-    DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}"
+    DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
     engine = create_engine(DATABASE_URL)
 except Exception as e:
     st.error(f"Erro ao ligar ao Supabase via Secrets: {e}")
