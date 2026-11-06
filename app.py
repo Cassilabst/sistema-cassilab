@@ -1957,6 +1957,10 @@ def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
         return
 
     df_aniv = pd.DataFrame(aniversariantes)
+    
+    # 👇 ADICIONE ESTAS DUAS LINHAS AQUI PARA REMOVER AS DUPLICAÇÕES 👇
+    if not df_aniv.empty:
+        df_aniv = df_aniv.drop_duplicates(subset=['funcionario', 'data'], keep='first')
 
     if not is_admin:
         df_aniv = df_aniv[
