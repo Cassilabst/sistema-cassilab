@@ -4,15 +4,15 @@ from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
-# --- TRADUTOR BLINDADO PARA O PANDAS (RESOLVE TODAS AS ABAS) ---
+# --- TRADUTOR DEFINITIVO PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
     pd._original_read_sql = pd.read_sql
     def _patched_read_sql(sql, con, *args, **kwargs):
-        if hasattr(con, 'eng'):
-            with con.eng.connect() as db_conn:
-                return pd._original_read_sql(sql, db_conn, *args, **kwargs)
-        elif hasattr(con, '_conn'):
-            return pd._original_read_sql(sql, con._conn, *args, **kwargs)
+        # Desembrulha o nosso objeto para o Pandas aceitar a conexão do SQLAlchemy
+        if type(con).__name__ == 'PostgresConnWrapper' or hasattr(con, '_conn'):
+            con = con._conn
+        elif hasattr(con, 'eng'):
+            con = con.eng
         return pd._original_read_sql(sql, con, *args, **kwargs)
     pd.read_sql = _patched_read_sql
 
