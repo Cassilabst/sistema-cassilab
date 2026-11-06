@@ -643,7 +643,7 @@ def init_db():
         )
     """)
   cursor.execute("PRAGMA table_info(usuarios_sistema);")
-    cols_user_db = [col[1] for col in cursor.fetchall()]
+  cols_user_db = [col[1] for col in cursor.fetchall()]
     for col_nova, tipo_col in [
         ("email", "TEXT"),
         ("celular", "TEXT"),
