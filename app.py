@@ -2851,50 +2851,50 @@ if menu == "Dashboard / Visão Geral":
   st.markdown("---")
 
   if is_admin:
-        st.markdown(
-            "### ⚠️ Painel de Alertas (Vencidos e a vencer em até 30 dias) - Acesso Restrito Admin"
-        )
-        col_v1, col_v2, col_v3 = st.columns(3)
+      st.markdown(
+          "### ⚠️ Painel de Alertas (Vencidos e a vencer em até 30 dias) - Acesso Restrito Admin"
+      )
+      col_v1, col_v2, col_v3 = st.columns(3)
         
-        with col_v1:
-            st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
-            df_ex_alertas = filtrar_vencidos_e_proximos(
-                df_ex_all, "proximo_exame", "status"
-            )
-            if not df_ex_alertas.empty:
-                res_ex = df_ex_alertas[
-                    ["empresa", "funcionario", "tipo_exame", "proximo_exame"]
-                ].drop_duplicates()
-                for _, row in res_ex.iterrows():
-                    st.warning(
-                        "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + 
-                        " (" + str(row['tipo_exame']) + ") - Vencimento: " + str(row['proximo_exame'])
-                    )
-            else:
-                st.success("Nenhum exame vencido ou próximo.")
+      with col_v1:
+          st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
+          df_ex_alertas = filtrar_vencidos_e_proximos(
+              df_ex_all, "proximo_exame", "status"
+          )
+          if not df_ex_alertas.empty:
+              res_ex = df_ex_alertas[
+                  ["empresa", "funcionario", "tipo_exame", "proximo_exame"]
+              ].drop_duplicates()
+              for _, row in res_ex.iterrows():
+                  st.warning(
+                      "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + 
+                      " (" + str(row['tipo_exame']) + ") - Vencimento: " + str(row['proximo_exame'])
+                  )
+          else:
+              st.success("Nenhum exame vencido ou próximo.")
                 
-        with col_v2:
-            st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
-            df_tr_alertas = filtrar_vencidos_e_proximos(
-                df_tr_all, "proximo_treinamento", "status"
-            )
-            if not df_tr_alertas.empty:
-                res_tr = df_tr_alertas[
-                    ["empresa", "funcionario", "treinamento", "proximo_treinamento"]
-                ].drop_duplicates()
-                for _, row in res_tr.iterrows():
-                    st.error(
-                        "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + 
-                        " (" + str(row['treinamento']) + ") - Vencimento: " + str(row['proximo_treinamento'])
-                    )
-            else:
-                st.success("Nenhum treinamento vencido ou próximo.")
+      with col_v2:
+          st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
+          df_tr_alertas = filtrar_vencidos_e_proximos(
+              df_tr_all, "proximo_treinamento", "status"
+          )
+          if not df_tr_alertas.empty:
+              res_tr = df_tr_alertas[
+                  ["empresa", "funcionario", "treinamento", "proximo_treinamento"]
+              ].drop_duplicates()
+              for _, row in res_tr.iterrows():
+                  st.error(
+                      "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + 
+                      " (" + str(row['treinamento']) + ") - Vencimento: " + str(row['proximo_treinamento'])
+                  )
+          else:
+              st.success("Nenhum treinamento vencido ou próximo.")
                 
-        with col_v3:
-            st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
-            df_docs_alertas = filtrar_vencidos_e_proximos(
-                df_docs_all, "proxima_renovacao", "status"
-            )
+      with col_v3:
+          st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
+          df_docs_alertas = filtrar_vencidos_e_proximos(
+              df_docs_all, "proxima_renovacao", "status"
+          )
             if not df_docs_alertas.empty:
                 res_doc = df_docs_alertas[
                     ["empresa", "documento", "proxima_renovacao"]
