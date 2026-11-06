@@ -3054,10 +3054,8 @@ if menu == "Dashboard / Visão Geral":
                   (emp, tipo_t, id_t, dt_t, hoje_str),
               )
             conn_m.commit()
-            relatorio_envios.append(
-                f"**{emp}** ({email_emp}):\n"
-                + "".join([f" * {item}\n" for item in itens_empresa_texto])
-            )
+            texto_itens = "".join([f" * {item}\n" for item in itens_empresa_texto])
+            relatorio_envios.append(f"**{emp}** ({email_emp}):\n" + texto_itens)
           else:
             erros += 1
         else:
