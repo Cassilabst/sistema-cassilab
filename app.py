@@ -1,7 +1,9 @@
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
-import sys, re, sqlite3, pandas as pd
+import sys, re
+import sqlite3 as real_sqlite3
+import pandas as pd
 from datetime import datetime, date
 
 DB_NAME = "cassilab_gestao.db"
@@ -20,15 +22,19 @@ try:
 except Exception as e:
     USAR_SUPABASE = False
 
-# --- TRADUTOR INTELIGENTE PARA O PANDAS ---
+# --- TRADUTOR DEFINITIVO PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
     pd._original_read_sql = pd.read_sql
     def _patched_read_sql(sql, con, *args, **kwargs):
-        if hasattr(con, 'eng'):
-            con = con.eng
-        elif hasattr(con, '_conn'):
-            con = con._conn
-        return pd._original_read_sql(sql, con, *args, **kwargs)
+        global engine, USAR_SUPABASE
+        if USAR_SUPABASE and engine is not None:
+            return pd._original_read_sql(sql, engine, *args, **kwargs)
+        else:
+            local_conn = real_sqlite3.connect(DB_NAME)
+            try:
+                return pd._original_read_sql(sql, local_conn, *args, **kwargs)
+            finally:
+                local_conn.close()
     pd.read_sql = _patched_read_sql
 
 # --- CAMADA DE COMPATIBILIDADE SQLITE -> POSTGRES ---
@@ -118,16 +124,18 @@ class PostgresConnWrapper:
     def execute(self, sql, params=None):
         return self.cursor().execute(sql, params)
 
-# Intercepta o connect do sqlite3 nativo de forma transparente
-_original_sqlite_connect = sqlite3.connect
-
 def _patched_sqlite_connect(database, *args, **kwargs):
     if USAR_SUPABASE and engine is not None:
         return PostgresConnWrapper(engine)
     else:
-        return _original_sqlite_connect(database, *args, **kwargs)
+        return real_sqlite3.connect(database, *args, **kwargs)
 
-sqlite3.connect = _patched_sqlite_connect
+sys.modules['sqlite3'] = type('MockModule', (), {
+    'connect': _patched_sqlite_connect,
+    'IntegrityError': sqlalchemy.exc.IntegrityError,
+    'OperationalError': Exception,
+    'Connection': real_sqlite3.Connection
+})()
 
 # ==========================================
 # A PARTIR DAQUI, COLE O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
