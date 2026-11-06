@@ -494,43 +494,43 @@ def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
-    # ── [Criação e verificação de tabelas principais] ──
+    # Criar tabelas principais com segurança
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT
         )
     """)
-    # (mantenha aqui o restante código de criação de tabelas que já tinha no seu init_db)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
+            cnae TEXT PRIMARY KEY,
+            descricao TEXT,
+            grau_risco TEXT
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS configuracoes_email (
+            id SERIAL PRIMARY KEY,
+            email TEXT,
+            senha_app TEXT
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS alertas_envolto (
+            id SERIAL PRIMARY KEY,
+            empresa TEXT,
+            tipo_item TEXT,
+            item_id INTEGER,
+            data_vencimento TEXT,
+            data_envio TEXT
+        )
+    """)
     
     conn.commit()
     conn.close()
-
-    # Criar tabelas principais com segurança
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
-                cnae TEXT PRIMARY KEY,
-                descricao TEXT,
-                grau_risco TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS configuracoes_email (
-                id SERIAL PRIMARY KEY,
-                email TEXT,
-                senha_app TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS alertas_enviados (
-                id SERIAL PRIMARY KEY,
-                empresa TEXT,
-                tipo_item TEXT,
-                item_id INTEGER,
-                data_vencimento TEXT,
-                data_envio TEXT
-            )
-        """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
                 id SERIAL PRIMARY KEY,
