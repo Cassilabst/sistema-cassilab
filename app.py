@@ -463,24 +463,25 @@ def atualizar_validade_treinamentos_para_meses():
 
 
 def init_db():
-  conn = sqlite3.connect(DB_NAME, timeout=10.0)
-  conn.execute("PRAGMA journal_mode=WAL;")
-  cursor = conn.cursor()
-  cursor.execute("""
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
             cnae TEXT PRIMARY KEY,
             descricao TEXT,
             grau_risco TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS configuracoes_email (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT,
             senha_app TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS alertas_enviados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -490,7 +491,7 @@ def init_db():
             data_envio TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -503,7 +504,7 @@ def init_db():
             UNIQUE(empresa, treinamento)
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS matriz_treinamentos_status (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -513,7 +514,7 @@ def init_db():
             UNIQUE(empresa, funcionario, treinamento)
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS absenteismo (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -536,26 +537,27 @@ def init_db():
             mes TEXT
         )
     """)
-  cursor.execute("SELECT COUNT(*) FROM grau_risco_nr04;")
-  if cursor.fetchone()[0] == 0:
-    try:
-      if os.path.exists("anexo_i_nr04.csv"):
-        with open("anexo_i_nr04.csv", "r", encoding="utf-8") as f:
-          reader = csv.reader(f)
-          next(reader, None)
-          for row in reader:
-            if len(row) >= 3:
-              cnae = row[0].strip()
-              grau = row[-1].strip()
-              desc = ",".join(row[1:-1]).strip()
-              cursor.execute(
-                  "INSERT OR REPLACE INTO grau_risco_nr04 (cnae, descricao,"
-                  " grau_risco) VALUES (?, ?, ?)",
-                  (cnae, desc, grau),
-              )
-    except:
-      pass
-  cursor.execute("""
+    
+    cursor.execute("SELECT COUNT(*) FROM grau_risco_nr04;")
+    if cursor.fetchone()[0] == 0:
+        try:
+            if os.path.exists("anexo_i_nr04.csv"):
+                with open("anexo_i_nr04.csv", "r", encoding="utf-8") as f:
+                    reader = csv.reader(f)
+                    next(reader, None)
+                    for row in reader:
+                        if len(row) >= 3:
+                            cnae = row[0].strip()
+                            grau = row[-1].strip()
+                            desc = ",".join(row[1:-1]).strip()
+                            cursor.execute(
+                                "INSERT OR REPLACE INTO grau_risco_nr04 (cnae, descricao, grau_risco) VALUES (?, ?, ?)",
+                                (cnae, desc, grau),
+                            )
+        except:
+            pass
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             data_registro TEXT,
@@ -574,38 +576,38 @@ def init_db():
             porte TEXT
         )
     """)
-  try:
+    try:
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_empresas_cnpj ON empresas(cnpj) WHERE cnpj IS NOT NULL AND cnpj != '';"
+        )
+    except:
+        pass
+        
+    cursor.execute("PRAGMA table_info(empresas);")
+    cols_emp_db = [col[1] for col in cursor.fetchall()]
+    if "data_registro" not in cols_emp_db:
+        try:
+            cursor.execute("ALTER TABLE empresas ADD COLUMN data_registro TEXT;")
+        except:
+            pass
+    if "cnae" not in cols_emp_db:
+        try:
+            cursor.execute("ALTER TABLE empresas ADD COLUMN cnae TEXT;")
+        except:
+            pass
+    if "porte" not in cols_emp_db:
+        try:
+            cursor.execute("ALTER TABLE empresas ADD COLUMN porte TEXT;")
+        except:
+            pass
+            
+    data_hoje = datetime.now().strftime("%d/%m/%Y")
     cursor.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_empresas_cnpj ON empresas(cnpj)"
-        " WHERE cnpj IS NOT NULL AND cnpj != '';"
+        "UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR data_registro = '' OR data_registro = 'nan'",
+        (data_hoje,),
     )
-  except:
-    pass
-  cursor.execute("PRAGMA table_info(empresas);")
-  cols_emp_db = [col[1] for col in cursor.fetchall()]
-  if "data_registro" not in cols_emp_db:
-    try:
-      cursor.execute("ALTER TABLE empresas ADD COLUMN data_registro TEXT;")
-    except:
-      pass
-  if "cnae" not in cols_emp_db:
-    try:
-      cursor.execute("ALTER TABLE empresas ADD COLUMN cnae TEXT;")
-    except:
-      pass
-  if "porte" not in cols_emp_db:
-    try:
-      cursor.execute("ALTER TABLE empresas ADD COLUMN porte TEXT;")
-    except:
-      pass
-  data_hoje = datetime.now().strftime("%d/%m/%Y")
-  cursor.execute(
-      "UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR"
-      " data_registro = '' OR data_registro = 'nan'",
-      (data_hoje,),
-  )
 
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             matricula TEXT,
@@ -619,17 +621,15 @@ def init_db():
             data_nascimento TEXT
         )
     """)
-  cursor.execute("PRAGMA table_info(base_funcionarios);")
-  cols_func_db = [col[1] for col in cursor.fetchall()]
-  if "data_nascimento" not in cols_func_db:
-    try:
-      cursor.execute(
-          "ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;"
-      )
-    except:
-      pass
+    cursor.execute("PRAGMA table_info(base_funcionarios);")
+    cols_func_db = [col[1] for col in cursor.fetchall()]
+    if "data_nascimento" not in cols_func_db:
+        try:
+            cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;")
+        except:
+            pass
 
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_sistema (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT,
@@ -663,7 +663,7 @@ def init_db():
     except Exception:
         pass
 
-    # Bloco de segurança contra reboots
+    # --- BLOCO DE SEGURANÇA CONTRA REBOOTS ---
     try:
         cursor.execute("SELECT COUNT(*) FROM usuarios_sistema WHERE nivel_permissao = 'Fazer Tudo'")
         if cursor.fetchone()[0] == 0:
@@ -674,29 +674,9 @@ def init_db():
             conn.commit()
     except Exception:
         pass
+    # ------------------------------------------
 
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS exames (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                empresa TEXT,
-                matricula TEXT,
-                funcionario TEXT,
-                cargo TEXT,
-                data_exame TEXT,
-                tipo_exame TEXT,
-                medico TEXT,
-                resultado TEXT,
-                observacoes TEXT
-            )
-        """)
-    except Exception:
-        pass
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS exames (  
-  except:
-    pass
-  cursor.execute("""
         CREATE TABLE IF NOT EXISTS exames (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -711,14 +691,15 @@ def init_db():
             status TEXT
         )
     """)
-  cursor.execute("PRAGMA table_info(exames);")
-  cols_ex_db = [col[1] for col in cursor.fetchall()]
-  if "periodicidade" not in cols_ex_db:
-    try:
-      cursor.execute("ALTER TABLE exames ADD COLUMN periodicidade TEXT;")
-    except:
-      pass
-  cursor.execute("""
+    cursor.execute("PRAGMA table_info(exames);")
+    cols_ex_db = [col[1] for col in cursor.fetchall()]
+    if "periodicidade" not in cols_ex_db:
+        try:
+            cursor.execute("ALTER TABLE exames ADD COLUMN periodicidade TEXT;")
+        except:
+            pass
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS treinamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -735,26 +716,25 @@ def init_db():
             status TEXT
         )
     """)
-  cursor.execute("PRAGMA table_info(treinamentos);")
-  cols_tr_db = [col[1] for col in cursor.fetchall()]
-  if "pessoas_treinadas" not in cols_tr_db:
-    try:
-      cursor.execute("ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;")
-    except:
-      pass
-  if "validade" not in cols_tr_db:
-    try:
-      cursor.execute("ALTER TABLE treinamentos ADD COLUMN validade TEXT;")
-    except:
-      pass
-  if "proximo_treinamento" not in cols_tr_db:
-    try:
-      cursor.execute(
-          "ALTER TABLE treinamentos ADD COLUMN proximo_treinamento TEXT;"
-      )
-    except:
-      pass
-  cursor.execute("""
+    cursor.execute("PRAGMA table_info(treinamentos);")
+    cols_tr_db = [col[1] for col in cursor.fetchall()]
+    if "pessoas_treinadas" not in cols_tr_db:
+        try:
+            cursor.execute("ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;")
+        except:
+            pass
+    if "validade" not in cols_tr_db:
+        try:
+            cursor.execute("ALTER TABLE treinamentos ADD COLUMN validade TEXT;")
+        except:
+            pass
+    if "proximo_treinamento" not in cols_tr_db:
+        try:
+            cursor.execute("ALTER TABLE treinamentos ADD COLUMN proximo_treinamento TEXT;")
+        except:
+            pass
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -769,7 +749,7 @@ def init_db():
             status TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS servicos_realizados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -782,21 +762,20 @@ def init_db():
             nfes TEXT
         )
     """)
-  cursor.execute("PRAGMA table_info(servicos_realizados);")
-  cols_srv_db = [col[1] for col in cursor.fetchall()]
-  if "valor" not in cols_srv_db:
-    try:
-      cursor.execute(
-          "ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;"
-      )
-    except:
-      pass
-  if "nfes" not in cols_srv_db:
-    try:
-      cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN nfes TEXT;")
-    except:
-      pass
-  cursor.execute("""
+    cursor.execute("PRAGMA table_info(servicos_realizados);")
+    cols_srv_db = [col[1] for col in cursor.fetchall()]
+    if "valor" not in cols_srv_db:
+        try:
+            cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;")
+        except:
+            pass
+    if "nfes" not in cols_srv_db:
+        try:
+            cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN nfes TEXT;")
+        except:
+            pass
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS documentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -807,23 +786,20 @@ def init_db():
             status TEXT
         )
     """)
-  cursor.execute("PRAGMA table_info(documentos);")
-  cols_doc_db = [col[1] for col in cursor.fetchall()]
-  if "validade" in cols_doc_db and "vigencia" not in cols_doc_db:
-    try:
-      cursor.execute(
-          "ALTER TABLE documentos RENAME COLUMN validade TO vigencia;"
-      )
-    except:
-      pass
-  if "proxima_renovacao" not in cols_doc_db:
-    try:
-      cursor.execute(
-          "ALTER TABLE documentos ADD COLUMN proxima_renovacao TEXT;"
-      )
-    except:
-      pass
-  cursor.execute("""
+    cursor.execute("PRAGMA table_info(documentos);")
+    cols_doc_db = [col[1] for col in cursor.fetchall()]
+    if "validade" in cols_doc_db and "vigencia" not in cols_doc_db:
+        try:
+            cursor.execute("ALTER TABLE documentos RENAME COLUMN validade TO vigencia;")
+        except:
+            pass
+    if "proxima_renovacao" not in cols_doc_db:
+        try:
+            cursor.execute("ALTER TABLE documentos ADD COLUMN proxima_renovacao TEXT;")
+        except:
+            pass
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs_sistema (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             data_hora TEXT,
@@ -832,21 +808,21 @@ def init_db():
             acao TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_cargos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             cargo TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_setores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             setor TEXT
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -855,30 +831,28 @@ def init_db():
             UNIQUE(empresa, epi)
         )
     """)
-  cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_treinamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             treinamento TEXT UNIQUE,
             carga_horaria TEXT
         )
     """)
-  cursor.execute("PRAGMA table_info(cad_treinamentos);")
-  cols_cad_tr = [col[1] for col in cursor.fetchall()]
-  if "carga_horaria" not in cols_cad_tr:
-    try:
-      cursor.execute(
-          "ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;"
-      )
-    except:
-      pass
-  cursor.execute("""
+    cursor.execute("PRAGMA table_info(cad_treinamentos);")
+    cols_cad_tr = [col[1] for col in cursor.fetchall()]
+    if "carga_horaria" not in cols_cad_tr:
+        try:
+            cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;")
+        except:
+            pass
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_servicos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             servico TEXT UNIQUE
         )
     """)
-  conn.commit()
-  conn.close()
+    conn.commit()
+    conn.close()
 
 
 init_db()
