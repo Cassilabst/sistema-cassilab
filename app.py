@@ -3,6 +3,7 @@ import csv
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from modulo_senha import renderizar_aba_alterar_senha
 import os
 import re
 import shutil
@@ -11,6 +12,7 @@ import sqlite3
 import pandas as pd
 import requests
 import streamlit as st
+
 
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
 from modulo_absenteismo import renderizar_aba_absenteismo
