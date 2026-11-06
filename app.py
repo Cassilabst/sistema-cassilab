@@ -29,7 +29,6 @@ except Exception:
     db_url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}?sslmode=require"
 
 engine = create_engine(db_url)
-
 USAR_SUPABASE = True
 
 DB_NAME = "cassilab_gestao.db"
