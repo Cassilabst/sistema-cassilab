@@ -2329,15 +2329,12 @@ except:
 
 if not st.session_state["is_admin"]:
     st.sidebar.info(
-        f"👤 **Perfil:** Colaborador
-🏢 **Empresa:**"
-        f" {st.session_state['empresa_usuario']}
-🔑 **Acesso:**"
-        f" {st.session_state['nivel_permissao']}"
+        f"👤 **Perfil:** Colaborador\n"
+        f"🏢 **Empresa:** {st.session_state['empresa_usuario']}\n"
+        f"🔑 **Acesso:** {st.session_state['nivel_permissao']}"
     )
 else:
-    st.sidebar.info("👤 **Perfil:** Administrador
-🔑 **Acesso:** Fazer Tudo")
+    st.sidebar.info("👤 **Perfil:** Administrador\n🔑 **Acesso:** Fazer Tudo")
 
 if st.session_state.get("is_admin", False):
     query_params = st.query_params
@@ -2683,8 +2680,7 @@ if menu == "Dashboard / Visão Geral":
                     ["empresa", "funcionario", "tipo_exame", "proximo_exame"]
                 ].drop_duplicates()
                 for _, row in res_ex.iterrows():
-                    msg_ex = "**" + str(row['empresa']) + "**
-- " + str(row['funcionario']) + " (" + str(row['tipo_exame']) + ") - Vencimento: " + str(row['proximo_exame'])
+                    msg_ex = f"**{row['empresa']}**\n- {row['funcionario']} ({row['tipo_exame']}) - Vencimento: {row['proximo_exame']}"
                     st.warning(msg_ex)
             else:
                 st.success("Nenhum exame vencido ou próximo.")
@@ -2699,8 +2695,7 @@ if menu == "Dashboard / Visão Geral":
                     ["empresa", "funcionario", "treinamento", "proximo_treinamento"]
                 ].drop_duplicates()
                 for _, row in res_tr.iterrows():
-                    msg_tr = "**" + str(row['empresa']) + "**
-- " + str(row['funcionario']) + " (" + str(row['treinamento']) + ") - Vencimento: " + str(row['proximo_treinamento'])
+                    msg_tr = f"**{row['empresa']}**\n- {row['funcionario']} ({row['treinamento']}) - Vencimento: {row['proximo_treinamento']}"
                     st.error(msg_tr)
             else:
                 st.success("Nenhum treinamento vencido ou próximo.")
@@ -2715,11 +2710,7 @@ if menu == "Dashboard / Visão Geral":
                     ["empresa", "documento", "proxima_renovacao"]
                 ].drop_duplicates()
                 for _, row in res_doc.iterrows():
-                    st.error(
-                        "**" + str(row['empresa']) + "**
-- " + str(row['documento']) + 
-                        " - Renovação: " + str(row['proxima_renovacao'])
-                    )
+                    st.error(f"**{row['empresa']}**\n- {row['documento']} - Renovação: {row['proxima_renovacao']}")
             else:
                 st.success("Nenhum documento vencido ou próximo.")
         
@@ -2809,39 +2800,20 @@ if menu == "Dashboard / Visão Geral":
                 email_emp = res_emp_email[0] if res_emp_email and res_emp_email[0] else None
 
                 if email_emp and "@" in email_emp:
-                    corpo_msg = "Prezados(as) da empresa " + emp + ",
-
-Identificamos em nosso sistema de Gestão SST (Cassilab) itens vencidos ou próximos do vencimento (prazo de 30 dias) que exigem atenção:
-
-"
+                    corpo_msg = f"Prezados(as) da empresa {emp},\n\nIdentificamos em nosso sistema de Gestão SST (Cassilab) itens vencidos ou próximos do vencimento (prazo de 30 dias) que exigem atenção:\n\n"
                     
                     itens_empresa_texto = []
                     if dados_emp["exames"]:
-                        corpo_msg += "Exames Ocupacionais:
-" + "
-".join(["- " + i for i in dados_emp["exames"]]) + "
-
-"
+                        corpo_msg += "Exames Ocupacionais:\n" + "\n".join(["- " + i for i in dados_emp["exames"]]) + "\n\n"
                         itens_empresa_texto.extend(dados_emp["exames"])
                     if dados_emp["treinamentos"]:
-                        corpo_msg += "Treinamentos:
-" + "
-".join(["- " + i for i in dados_emp["treinamentos"]]) + "
-
-"
+                        corpo_msg += "Treinamentos:\n" + "\n".join(["- " + i for i in dados_emp["treinamentos"]]) + "\n\n"
                         itens_empresa_texto.extend(dados_emp["treinamentos"])
                     if dados_emp["documentos"]:
-                        corpo_msg += "Documentos:
-" + "
-".join(["- " + i for i in dados_emp["documentos"]]) + "
-
-"
+                        corpo_msg += "Documentos:\n" + "\n".join(["- " + i for i in dados_emp["documentos"]]) + "\n\n"
                         itens_empresa_texto.extend(dados_emp["documentos"])
                     
-                    corpo_msg += "Por favor, entre em contato conosco ou regularize as pendências.
-
-Atenciosamente,
-Cassilab Consultoria e Treinamentos em SST"
+                    corpo_msg += "Por favor, entre em contato conosco ou regularize as pendências.\n\nAtenciosamente,\nCassilab Consultoria e Treinamentos em SST"
                     
                     sucesso, msg_ret = enviar_email_smtp(email_emp, "⚠️ Alerta de Vencimentos (30 dias) - Gestão SST Cassilab", corpo_msg)
                     if sucesso:
@@ -2853,10 +2825,8 @@ Cassilab Consultoria e Treinamentos em SST"
                             )
                         conn_m.commit()
                         
-                        texto_itens = "".join([" * " + str(item) + "
-" for item in itens_empresa_texto])
-                        relatorio_envios.append("**" + emp + "** (" + str(email_emp) + "):
-" + texto_itens)
+                        texto_itens = "".join([f" * {item}\n" for item in itens_empresa_texto])
+                        relatorio_envios.append(f"**{emp}** ({email_emp}):\n{texto_itens}")
                     else:
                         erros += 1
                 else:
