@@ -60,7 +60,7 @@ def _patched_read_sql(sql, con, *args, **kwargs):
     return pd._original_read_sql(sql, engine, *args, **kwargs)
 
 pd.read_sql = _patched_read_sql
-  def execute(self, sql, params=None):
+def execute(self, sql, params=None):
     if "PRAGMA" in sql.upper():
       return self
     if params and isinstance(params, (list, tuple)):
