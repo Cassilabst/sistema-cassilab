@@ -642,8 +642,9 @@ def init_db():
             nivel_permissao TEXT DEFAULT 'Somente Visualizar'
         )
     """)
-  cursor.execute("PRAGMA table_info(usuarios_sistema);")
-  cols_user_db = [col[1] for col in cursor.fetchall()]
+
+    cursor.execute("PRAGMA table_info(usuarios_sistema);")
+    cols_user_db = [col[1] for col in cursor.fetchall()]
     for col_nova, tipo_col in [
         ("email", "TEXT"),
         ("celular", "TEXT"),
