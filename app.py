@@ -2629,7 +2629,9 @@ if st.session_state.get("msg_sucesso"):
       unsafe_allow_html=True,
   )
   st.session_state["msg_sucesso"] = ""
-
+if menu == "Alterar Senha":
+    renderizar_aba_alterar_senha(DB_NAME, st.session_state.get("nome_usuario", ""))
+    
 # ==========================================
 # 0. DASHBOARD
 # ==========================================
