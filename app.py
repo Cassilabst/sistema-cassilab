@@ -666,6 +666,43 @@ def init_db():
         "UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar'"
         " WHERE nivel_permissao IS NULL OR nivel_permissao = '';"
     )
+    except Exception:
+        pass
+except Exception:
+        pass
+
+    # --- BLOCO DE SEGURANÇA CONTRA REBOOTS ---
+    try:
+        cursor.execute("SELECT COUNT(*) FROM usuarios_sistema WHERE nivel_permissao = 'Fazer Tudo'")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('''
+                INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao)
+                VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
+            ''')
+            conn.commit()
+    except Exception:
+        pass
+    # ------------------------------------------
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exames (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                empresa TEXT,
+                matricula TEXT,
+                funcionario TEXT,
+                cargo TEXT,
+                data_exame TEXT,
+                tipo_exame TEXT,
+                medico TEXT,
+                resultado TEXT,
+                observacoes TEXT
+            )
+        """)
+    except Exception:
+        pass
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exames (  
   except:
     pass
   cursor.execute("""
