@@ -935,7 +935,7 @@ def dialog_editar_funcionario(id_alvo):
       return ""
     digitos = "".join(filter(str.isdigit, str(texto)))
     if len(digitos) == 8:
-      return {digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
+      return f"{digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
     return str(texto).strip()
 
   conn = sqlite3.connect(DB_NAME, timeout=10.0)
