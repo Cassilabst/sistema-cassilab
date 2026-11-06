@@ -22,9 +22,12 @@ def renderizar_aba_admin(
         st.subheader("📧 Configuração de E-mail (Gmail - Senha de App)")
         st.markdown("Insira o seu e-mail do Gmail e a **Senha de Aplicativo** gerada na sua conta Google para habilitar o envio de e-mails.")
         
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        df_cfg_mail = pd.read_sql("SELECT email, senha_app FROM configuracoes_email LIMIT 1", conn)
-        conn.close()
+        conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
+        try:
+            df_func_cad = pd.read_sql("SELECT id, nome, empresa, cpf, email, celular FROM funcionarios ORDER BY nome ASC", conn_func)
+        except Exception:
+            df_func_cad = pd.DataFrame()
+        conn_func.close()
         
         email_salvo = df_cfg_mail.iloc[0]["email"] if not df_cfg_mail.empty and pd.notna(df_cfg_mail.iloc[0]["email"]) else ""
         senha_salva = df_cfg_mail.iloc[0]["senha_app"] if not df_cfg_mail.empty and pd.notna(df_cfg_mail.iloc[0]["senha_app"]) else ""
