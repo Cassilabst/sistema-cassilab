@@ -3,16 +3,24 @@ import sqlalchemy
 from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
 
-# --- CONEXÃO COM O SUPABASE (CORRIGIDA) ---
-try:
-    pg = st.secrets["postgres"]
-    DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
-    engine = create_engine(DATABASE_URL)
-except Exception as e:
-    st.error(f"Erro ao ligar ao Supabase: {e}")
-    st.stop()
+DB_NAME = "cassilab_gestao.db"
 
-# --- CAMADA QUE TRADUZ AUTOMATICAMENTE O SQLITE PARA O SUPABASE ---
+# --- TENTA LIGAR AO SUPABASE, MAS USA SQLite LOCAL SE FALHAR ---
+USAR_SUPABASE = False
+engine = None
+
+try:
+    if "postgres" in st.secrets:
+        pg = st.secrets["postgres"]
+        DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
+        engine = create_engine(DATABASE_URL, connect_args={'connect_timeout': 5})
+        # Teste rápido de conexão
+        with engine.connect() as conn:
+            USAR_SUPABASE = True
+except Exception as e:
+    USAR_SUPABASE = False
+
+# --- CAMADA INTELIGENTE DE COMPATIBILIDADE ---
 class PostgresCursorWrapper:
     def __init__(self, connection):
         self.conn = connection
@@ -21,23 +29,22 @@ class PostgresCursorWrapper:
     def execute(self, sql, params=None):
         if "PRAGMA" in sql.upper():
             return self
-        if params:
-            if isinstance(params, (list, tuple)):
-                param_dict = {}
-                new_sql_parts = []
-                parts = sql.split('?')
-                for i, part in enumerate(parts[:-1]):
-                    param_name = f"arg{i}"
-                    new_sql_parts.append(part)
-                    new_sql_parts.append(f":{param_name}")
-                    param_dict[param_name] = params[i]
-                new_sql_parts.append(parts[-1])
-                sql = "".join(new_sql_parts)
-                params = param_dict
+        if params and isinstance(params, (list, tuple)):
+            param_dict = {}
+            new_sql_parts = []
+            parts = sql.split('?')
+            for i, part in enumerate(parts[:-1]):
+                param_name = f"arg{i}"
+                new_sql_parts.append(part)
+                new_sql_parts.append(f":{param_name}")
+                param_dict[param_name] = params[i]
+            new_sql_parts.append(parts[-1])
+            sql = "".join(new_sql_parts)
+            params = param_dict
         else:
-            params = {}
+            if not params:
+                params = {}
         
-        # Converte automaticamente AUTOINCREMENT para funcionar no Postgres sem alterar o seu código
         sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
         sql = sql.replace("integer primary key autoincrement", "SERIAL PRIMARY KEY")
 
@@ -48,16 +55,10 @@ class PostgresCursorWrapper:
         return self
 
     def fetchone(self):
-        if self.last_result:
-            row = self.last_result.fetchone()
-            return row if row else None
-        return None
+        return self.last_result.fetchone() if self.last_result else None
 
     def fetchall(self):
-        if self.last_result:
-            rows = self.last_result.fetchall()
-            return rows if rows else []
-        return []
+        return self.last_result.fetchall() if self.last_result else []
 
     @property
     def rowcount(self):
@@ -104,17 +105,22 @@ class PostgresConnWrapper:
         self.close()
 
     def execute(self, sql, params=None):
-        cur = self.cursor()
-        return cur.execute(sql, params)
+        return self.cursor().execute(sql, params)
 
 class MockSqlite3:
     IntegrityError = sqlalchemy.exc.IntegrityError
     OperationalError = Exception
     def connect(self, database, timeout=10.0):
-        return PostgresConnWrapper(engine)
+        if USAR_SUPABASE and engine:
+            return PostgresConnWrapper(engine)
+        else:
+            return sqlite3.connect(DB_NAME, timeout=timeout)
 
 sys.modules['sqlite3'] = MockSqlite3()
 
+# ==========================================
+# A PARTIR DAQUI, COLE O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
+# ==========================================
 # ==========================================
 # A PARTIR DAQUI, COLE TODO O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
 # ==========================================
