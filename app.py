@@ -951,7 +951,7 @@ def dialog_editar_funcionario(id_alvo):
   if reg_func:
     f_emp, f_mat, f_nome, f_cargo, f_setor, f_cpf, f_dt, f_st, f_nasc = reg_func
     with st.form(f"form_edicao_func_modal_{id_alvo}"):
-      st.markdown(**Empresa:** {f_emp}")
+      st.markdown(f"**Empresa:** {f_emp}")
       novo_mat = st.text_input("Matrícula", value=str(f_mat) if f_mat else "")
       novo_nome = st.text_input("Nome do Funcionário", value=str(f_nome))
       cargos_emp_ed = get_cargos_por_empresa(f_emp)
