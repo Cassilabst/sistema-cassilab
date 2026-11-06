@@ -213,20 +213,23 @@ def renderizar_aba_admin(
             st.info("Nenhum usuário cadastrado no sistema.")
 
         st.markdown("---")
-        st.subheader("➕ Cadastrar ou Restaurar Acesso Puxando dos Funcionários")
+        st.subheader("➕ Cadastrar ou Restaurar Acesso Puxando da Base de Funcionários")
         st.markdown("Selecione um funcionário já cadastrado no sistema para recriar o acesso dele de forma rápida e com status **Ativo**.")
 
         conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
         try:
-            df_func_cad = pd.read_sql("SELECT id, funcionario as nome, empresa, cpf, celular FROM base_funcionarios ORDER BY funcionario ASC", conn_func)
+            # Lê diretamente da tabela correta 'base_funcionarios' com as colunas reais
+            query_func = "SELECT id, funcionario, empresa, cpf, celular FROM base_funcionarios"
+            df_func_cad = pd.read_sql(query_func, conn_func)
             if "email" not in df_func_cad.columns:
                 df_func_cad["email"] = ""
         except Exception:
             df_func_cad = pd.DataFrame()
         conn_func.close()
 
-        if not df_func_cad.empty:
-            df_func_cad["rotulo"] = df_func_cad["nome"] + " (" + df_func_cad["empresa"] + " - CPF: " + df_func_cad["cpf"].fillna("") + ")"
+        if not df_func_cad.empty and "funcionario" in df_func_cad.columns:
+            df_func_cad = df_func_cad.sort_values(by="funcionario", key=lambda x: x.astype(str).str.lower())
+            df_func_cad["rotulo"] = df_func_cad["funcionario"].astype(str) + " (" + df_func_cad["empresa"].astype(str) + " - CPF: " + df_func_cad["cpf"].fillna("N/A").astype(str) + ")"
             lista_funcs_opcoes = df_func_cad["rotulo"].tolist()
 
             with st.form("form_cad_usuario_via_funcionario"):
@@ -241,9 +244,9 @@ def renderizar_aba_admin(
                 if btn_salvar_via_func:
                     dados_func = df_func_cad[df_func_cad["rotulo"] == func_selecionado_rotulo].iloc[0]
                     
-                    f_nome = dados_func["nome"]
-                    f_empresa = dados_func["empresa"]
-                    f_cpf = dados_func["cpf"]
+                    f_nome = str(dados_func["funcionario"])
+                    f_empresa = str(dados_func["empresa"])
+                    f_cpf = str(dados_func["cpf"]) if pd.notna(dados_func["cpf"]) else ""
                     f_email = str(dados_func["email"]) if "email" in dados_func and pd.notna(dados_func["email"]) else ""
                     f_celular = str(dados_func["celular"]) if "celular" in dados_func and pd.notna(dados_func["celular"]) else ""
 
@@ -276,7 +279,7 @@ def renderizar_aba_admin(
                     else:
                         st.warning("⚠️ O funcionário selecionado precisa ter um CPF válido e você deve definir uma senha.")
         else:
-            st.info("ℹ️ Nenhum funcionário cadastrado no sistema para puxar os dados.")
+            st.info("ℹ️ Nenhum funcionário cadastrado na base de dados para puxar os dados.")
 
         st.markdown("---")
         st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
