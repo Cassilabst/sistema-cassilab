@@ -1,46 +1,20 @@
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
-import sys, re
-import sqlite3 as sqlite_original
-import pandas as pd
+import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
 DB_NAME = "cassilab_gestao.db"
 
-# --- TENTA LIGAR AO SUPABASE E MOSTRA O MOTIVO SE FALHAR ---
-USAR_SUPABASE = False
-engine = None
-detalhe_erro_supabase = ""
-
-try:
-    if "postgres" in st.secrets:
-        pg = st.secrets["postgres"]
-        DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
-        engine = create_engine(DATABASE_URL, connect_args={'connect_timeout': 5})
-        with engine.connect() as conn:
-            USAR_SUPABASE = True
-except Exception as e:
-    USAR_SUPABASE = False
-    detalhe_erro_supabase = str(e)
-
-if not USAR_SUPABASE:
-    st.error(f"🚨 **O Supabase recusou a conexão:** {detalhe_erro_supabase}")
-    st.warning("💡 **Verifique no painel do Supabase:** O seu projeto pode estar **pausado** por inatividade (muito comum no plano gratuito). Se estiver, basta clicar em 'Restore project' no site do Supabase.")
-
-# --- TRADUTOR DEFINITIVO PARA O PANDAS ---
+# --- TRADUTOR PERFEITO PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
     pd._original_read_sql = pd.read_sql
     def _patched_read_sql(sql, con, *args, **kwargs):
-        global engine, USAR_SUPABASE
-        if USAR_SUPABASE and engine is not None:
-            return pd._original_read_sql(sql, engine, *args, **kwargs)
-        else:
-            local_conn = sqlite_original.connect(DB_NAME)
-            try:
-                return pd._original_read_sql(sql, local_conn, *args, **kwargs)
-            finally:
-                local_conn.close()
+        local_conn = sqlite3.connect(DB_NAME)
+        try:
+            return pd._original_read_sql(sql, local_conn, *args, **kwargs)
+        finally:
+            local_conn.close()
     pd.read_sql = _patched_read_sql
 
 # --- CAMADA DE COMPATIBILIDADE SQLITE -> POSTGRES ---
