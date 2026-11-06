@@ -653,7 +653,7 @@ def init_db():
     ]:
         if col_nova not in cols_user_db:
             try:
-                cursor.execute(ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
+                cursor.execute(f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
             except Exception:
                 pass
 
