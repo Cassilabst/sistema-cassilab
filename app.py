@@ -471,6 +471,7 @@ def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
+    # Criar tabelas principais
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
             cnae TEXT PRIMARY KEY,
@@ -542,25 +543,6 @@ def init_db():
         )
     """)
     
-    cursor.execute("SELECT COUNT(*) FROM grau_risco_nr04;")
-    if cursor.fetchone()[0] == 0:
-        try:
-            if os.path.exists("anexo_i_nr04.csv"):
-                with open("anexo_i_nr04.csv", "r", encoding="utf-8") as f:
-                    reader = csv.reader(f)
-                    next(reader, None)
-                    for row in reader:
-                        if len(row) >= 3:
-                            cnae = row[0].strip()
-                            grau = row[-1].strip()
-                            desc = ",".join(row[1:-1]).strip()
-                            cursor.execute(
-                                "INSERT INTO grau_risco_nr04 (cnae, descricao, grau_risco) VALUES (?, ?, ?)",
-                                (cnae, desc, grau),
-                            )
-        except:
-            pass
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresas (
             id SERIAL PRIMARY KEY,
@@ -580,27 +562,9 @@ def init_db():
             porte TEXT
         )
     """)
-    
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'empresas'")
-    cols_emp_db = [col[0] for col in cursor.fetchall()]
-    if "data_registro" not in cols_emp_db:
-        try:
-            cursor.execute("ALTER TABLE empresas ADD COLUMN data_registro TEXT;")
-        except:
-            pass
-    if "cnae" not in cols_emp_db:
-        try:
-            cursor.execute("ALTER TABLE empresas ADD COLUMN cnae TEXT;")
-        except:
-            pass
-    if "porte" not in cols_emp_db:
-        try:
-            cursor.execute("ALTER TABLE empresas ADD COLUMN porte TEXT;")
-        except:
-            pass
-            
-    data_hoje = datetime.now().strftime("%d/%m/%Y")
-    cursor.execute("UPDATE empresas SET data_registro = ? WHERE data_registro IS NULL OR data_registro = '' OR data_registro = 'nan'", (data_hoje,))
+    cursor.execute("ALTER TABLE empresas ADD COLUMN IF NOT EXISTS data_registro TEXT;")
+    cursor.execute("ALTER TABLE empresas ADD COLUMN IF NOT EXISTS cnae TEXT;")
+    cursor.execute("ALTER TABLE empresas ADD COLUMN IF NOT EXISTS porte TEXT;")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
@@ -616,13 +580,7 @@ def init_db():
             data_nascimento TEXT
         )
     """)
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'base_funcionarios'")
-    cols_func_db = [col[0] for col in cursor.fetchall()]
-    if "data_nascimento" not in cols_func_db:
-        try:
-            cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;")
-        except:
-            pass
+    cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN IF NOT EXISTS data_nascimento TEXT;")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_sistema (
@@ -637,25 +595,15 @@ def init_db():
             nivel_permissao TEXT DEFAULT 'Somente Visualizar'
         )
     """)
-
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'usuarios_sistema'")
-    cols_user_db = [col[0] for col in cursor.fetchall()]
-    for col_nova, tipo_col in [
-        ("email", "TEXT"),
-        ("celular", "TEXT"),
-        ("status", "TEXT"),
-        ("nivel_permissao", "TEXT")
-    ]:
-        if col_nova not in cols_user_db:
-            try:
-                cursor.execute(f"ALTER TABLE usuarios_sistema ADD COLUMN {col_nova} {tipo_col};")
-            except Exception:
-                pass
+    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS email TEXT;")
+    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS celular TEXT;")
+    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS status TEXT;")
+    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS nivel_permissao TEXT;")
 
     try:
         cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
         cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
-    except Exception:
+    except:
         pass
 
     try:
@@ -665,8 +613,7 @@ def init_db():
                 INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao)
                 VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
             ''')
-            conn.commit()
-    except Exception:
+    except:
         pass
 
     cursor.execute("""
@@ -684,13 +631,7 @@ def init_db():
             status TEXT
         )
     """)
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'exames'")
-    cols_ex_db = [col[0] for col in cursor.fetchall()]
-    if "periodicidade" not in cols_ex_db:
-        try:
-            cursor.execute("ALTER TABLE exames ADD COLUMN periodicidade TEXT;")
-        except:
-            pass
+    cursor.execute("ALTER TABLE exames ADD COLUMN IF NOT EXISTS periodicidade TEXT;")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS treinamentos (
@@ -709,23 +650,9 @@ def init_db():
             status TEXT
         )
     """)
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'treinamentos'")
-    cols_tr_db = [col[0] for col in cursor.fetchall()]
-    if "pessoas_treinadas" not in cols_tr_db:
-        try:
-            cursor.execute("ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;")
-        except:
-            pass
-    if "validade" not in cols_tr_db:
-        try:
-            cursor.execute("ALTER TABLE treinamentos ADD COLUMN validade TEXT;")
-        except:
-            pass
-    if "proximo_treinamento" not in cols_tr_db:
-        try:
-            cursor.execute("ALTER TABLE treinamentos ADD COLUMN proximo_treinamento TEXT;")
-        except:
-            pass
+    cursor.execute("ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS pessoas_treinadas TEXT;")
+    cursor.execute("ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS validade TEXT;")
+    cursor.execute("ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS proximo_treinamento TEXT;")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS epis (
@@ -755,18 +682,8 @@ def init_db():
             nfes TEXT
         )
     """)
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'servicos_realizados'")
-    cols_srv_db = [col[0] for col in cursor.fetchall()]
-    if "valor" not in cols_srv_db:
-        try:
-            cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;")
-        except:
-            pass
-    if "nfes" not in cols_srv_db:
-        try:
-            cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN nfes TEXT;")
-        except:
-            pass
+    cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS valor REAL DEFAULT 0;")
+    cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS nfes TEXT;")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documentos (
@@ -779,13 +696,7 @@ def init_db():
             status TEXT
         )
     """)
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'documentos'")
-    cols_doc_db = [col[0] for col in cursor.fetchall()]
-    if "proxima_renovacao" not in cols_doc_db:
-        try:
-            cursor.execute("ALTER TABLE documentos ADD COLUMN proxima_renovacao TEXT;")
-        except:
-            pass
+    cursor.execute("ALTER TABLE documentos ADD COLUMN IF NOT EXISTS proxima_renovacao TEXT;")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs_sistema (
@@ -826,13 +737,8 @@ def init_db():
             carga_horaria TEXT
         )
     """)
-    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'cad_treinamentos'")
-    cols_cad_tr = [col[0] for col in cursor.fetchall()]
-    if "carga_horaria" not in cols_cad_tr:
-        try:
-            cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;")
-        except:
-            pass
+    cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN IF NOT EXISTS carga_horaria TEXT;")
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cad_servicos (
             id SERIAL PRIMARY KEY,
