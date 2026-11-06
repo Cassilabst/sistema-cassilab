@@ -13,10 +13,10 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- LIGAÇÃO ÚNICA E SEGURA AO NEON ---
-DB_URL = "postgresql+psycopg2://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
+# --- LIGAÇÃO ÚNICA E SEGURA AO NEON (Com psycopg v3 para Python 3.14) ---
+DB_URL = "postgresql+psycopg://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
 
-# Cria uma única engine global com pool reutilizável para evitar estourar o limite
+# Cria uma única engine global com pool reutilizável
 engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=3600)
 
 DB_NAME = "cassilab_gestao.db"
@@ -59,7 +59,6 @@ class PostgresConnWrapper:
             pass
 
     def close(self):
-        # Não fecha a conexão partilhada para evitar reconexões excessivas
         pass
 
     def __enter__(self):
