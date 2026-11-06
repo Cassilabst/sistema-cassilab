@@ -1,6 +1,11 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import re
 import sys
+import calendar
+import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
@@ -9,34 +14,7 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- CONFIGURAÇÃO DA LIGAÇÃO AO SUPABASE / POSTGRES ---
-USAR_SUPABASE = True
-engine = None
-
-try:
-  # Tenta ler do st.secrets (suporta tanto [postgres] como [supabase])
-  sec = st.secrets.get("postgres") or st.secrets.get("supabase")
-  if sec:
-    db_url = f"postgresql://{sec['user']}:{sec['password']}@{sec['host']}:{sec['port']}/{sec['database']}?sslmode=disable"
-    engine = create_engine(db_url)
-  else:
-    USAR_SUPABASE = False
-except Exception as e:
-  USAR_SUPABASE = False
-  engine = None
-  st.warning(
-      f"Aviso: Não foi possível ligar ao Supabase ({e}). A usar SQLite local."
-  )
-
-DB_NAME = "cassilab_gestao.db"
-
-
-# --- TRADUTOR PERFEITO PARA O PANDAS ---
-if not hasattr(pd, "_original_read_sql"):
-  pd._original_read_sql = pd.read_sql
-
-from sqlalchemy import create_engine
-
+# --- CONFIGURAÇÃO DA LIGAÇÃO AO NEON / POSTGRES ---
 try:
     db_url = st.secrets["postgres"]["url"]
 except Exception:
@@ -48,7 +26,11 @@ except Exception:
     db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}?sslmode=require"
 
 engine = create_engine(db_url)
+USAR_SUPABASE = True
 
+DB_NAME = "cassilab_gestao.db"
+
+# --- TRADUTOR PERFEITO PARA O PANDAS ---
 if not hasattr(pd, "_original_read_sql"):
     pd._original_read_sql = pd.read_sql
 
@@ -56,105 +38,106 @@ def _patched_read_sql(sql, con, *args, **kwargs):
     return pd._original_read_sql(sql, engine, *args, **kwargs)
 
 pd.read_sql = _patched_read_sql
-def _patched_read_sql(sql, con, *args, **kwargs):
-    return pd._original_read_sql(sql, engine, *args, **kwargs)
 
-pd.read_sql = _patched_read_sql
-def execute(self, sql, params=None):
-    if "PRAGMA" in sql.upper():
-      return self
-    if params and isinstance(params, (list, tuple)):
-      param_dict = {}
-      new_sql_parts = []
-      parts = sql.split("?")
-      for i, part in enumerate(parts[:-1]):
-        param_name = f"arg{i}"
-        new_sql_parts.append(part)
-        new_sql_parts.append(f":{param_name}")
-        param_dict[param_name] = params[i]
-      new_sql_parts.append(parts[-1])
-      sql = "".join(new_sql_parts)
-      params = param_dict
-    else:
-      if not params:
-        params = {}
+# --- WRAPPERS PARA COMPATIBILIDADE COM SQLITE/POSTGRES ---
+class PostgresCursorWrapper:
+    def __init__(self, conn):
+        self.conn = conn
+        self.last_result = None
 
-    sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-    sql = sql.replace("integer primary key autoincrement", "SERIAL PRIMARY KEY")
+    def execute(self, sql, params=None):
+        if "PRAGMA" in sql.upper():
+            return self
+        if params and isinstance(params, (list, tuple)):
+            param_dict = {}
+            new_sql_parts = []
+            parts = sql.split("?")
+            for i, part in enumerate(parts[:-1]):
+                param_name = f"arg{i}"
+                new_sql_parts.append(part)
+                new_sql_parts.append(f":{param_name}")
+                param_dict[param_name] = params[i]
+            new_sql_parts.append(parts[-1])
+            sql = "".join(new_sql_parts)
+            params = param_dict
+        else:
+            if not params:
+                params = {}
 
-    try:
-      self.last_result = self.conn.execute(text(sql), params)
-    except Exception as e:
-      raise e
-    return self
+        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        sql = sql.replace("integer primary key autoincrement", "SERIAL PRIMARY KEY")
 
-  def fetchone(self):
-    return self.last_result.fetchone() if self.last_result else None
+        try:
+            self.last_result = self.conn.execute(text(sql), params)
+        except Exception as e:
+            raise e
+        return self
 
-  def fetchall(self):
-    return self.last_result.fetchall() if self.last_result else []
+    def fetchone(self):
+        return self.last_result.fetchone() if self.last_result else None
 
-  @property
-  def rowcount(self):
-    return self.last_result.rowcount if self.last_result else 0
+    def fetchall(self):
+        return self.last_result.fetchall() if self.last_result else []
+
+    @property
+    def rowcount(self):
+        return self.last_result.rowcount if self.last_result else 0
 
 
 class PostgresConnWrapper:
+    def __init__(self, eng):
+        self.eng = eng
+        self._conn = eng.connect()
+        self._trans = self._conn.begin()
 
-  def __init__(self, eng):
-    self.eng = eng
-    self._conn = eng.connect()
-    self._trans = self._conn.begin()
+    def cursor(self):
+        return PostgresCursorWrapper(self._conn)
 
-  def cursor(self):
-    return PostgresCursorWrapper(self._conn)
+    def commit(self):
+        self._trans.commit()
+        self._trans = self._conn.begin()
 
-  def commit(self):
-    self._trans.commit()
-    self._trans = self._conn.begin()
+    def rollback(self):
+        self._trans.rollback()
+        self._trans = self._conn.begin()
 
-  def rollback(self):
-    self._trans.rollback()
-    self._trans = self._conn.begin()
+    def close(self):
+        try:
+            self._trans.commit()
+        except:
+            pass
+        self._conn.close()
 
-  def close(self):
-    try:
-      self._trans.commit()
-    except:
-      pass
-    self._conn.close()
+    def __enter__(self):
+        return self
 
-  def __enter__(self):
-    return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
 
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    if exc_type:
-      self.rollback()
-    else:
-      self.commit()
-    self.close()
-
-  def execute(self, sql, params=None):
-    return self.cursor().execute(sql, params)
+    def execute(self, sql, params=None):
+        return self.cursor().execute(sql, params)
 
 
 class MockSqliteModule:
-  IntegrityError = sqlalchemy.exc.IntegrityError
-  OperationalError = sqlite_original.OperationalError
-  Error = sqlite_original.Error
-  DatabaseError = sqlite_original.DatabaseError
-  DataError = sqlite_original.DataError
-  ProgrammingError = sqlite_original.ProgrammingError
-  NotSupportedError = sqlite_original.NotSupportedError
-  Connection = sqlite_original.Connection
-  Cursor = sqlite_original.Cursor
+    IntegrityError = sqlalchemy.exc.IntegrityError
+    OperationalError = sqlite_original.OperationalError
+    Error = sqlite_original.Error
+    DatabaseError = sqlite_original.DatabaseError
+    DataError = sqlite_original.DataError
+    ProgrammingError = sqlite_original.ProgrammingError
+    NotSupportedError = sqlite_original.NotSupportedError
+    Connection = sqlite_original.Connection
+    Cursor = sqlite_original.Cursor
 
-  def connect(self, database, *args, **kwargs):
-    if USAR_SUPABASE and engine is not None:
-      return PostgresConnWrapper(engine)
-    else:
-      return sqlite_original.connect(database, *args, **kwargs)
-
+    def connect(self, database, *args, **kwargs):
+        if USAR_SUPABASE and engine is not None:
+            return PostgresConnWrapper(engine)
+        else:
+            return sqlite_original.connect(database, *args, **kwargs)
 
 sys.modules["sqlite3"] = MockSqliteModule()
 import sqlite3
