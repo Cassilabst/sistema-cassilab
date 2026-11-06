@@ -2915,9 +2915,9 @@ if menu == "Dashboard / Visão Geral":
         
         if not df_ex_alertas.empty:
             for _, row in df_ex_alertas.iterrows():
-                emp = row["empresa"]
+                emp = str(row["empresa"])
                 item_id = row["id"]
-                dt_venc = row["proximo_exame"]
+                dt_venc = str(row["proximo_exame"])
                 cursor_m.execute(
                     "SELECT id FROM alertas_enviados WHERE empresa = ? AND tipo_item = 'exame' AND item_id = ? AND data_vencimento = ?",
                     (emp, item_id, dt_venc),
@@ -2930,16 +2930,15 @@ if menu == "Dashboard / Visão Geral":
                             "documentos": [],
                             "tracking": [],
                         }
-                    alertas_por_empresa[emp]["exames"].append(
-                        "Exame: " + str(row['funcionario']) + " (" + str(row['tipo_exame']) + ") - Vencimento: " + str(dt_venc)
-                    )
+                    texto_ex = "Exame: " + str(row['funcionario']) + " (" + str(row['tipo_exame']) + ") - Vencimento: " + dt_venc
+                    alertas_por_empresa[emp]["exames"].append(texto_ex)
                     alertas_por_empresa[emp]["tracking"].append(("exame", item_id, dt_venc))
 
         if not df_tr_alertas.empty:
             for _, row in df_tr_alertas.iterrows():
-                emp = row["empresa"]
+                emp = str(row["empresa"])
                 item_id = row["id"]
-                dt_venc = row["proximo_treinamento"]
+                dt_venc = str(row["proximo_treinamento"])
                 cursor_m.execute(
                     "SELECT id FROM alertas_enviados WHERE empresa = ? AND tipo_item = 'treinamento' AND item_id = ? AND data_vencimento = ?",
                     (emp, item_id, dt_venc),
@@ -2952,16 +2951,15 @@ if menu == "Dashboard / Visão Geral":
                             "documentos": [],
                             "tracking": [],
                         }
-                    alertas_por_empresa[emp]["treinamentos"].append(
-                        "Treinamento: " + str(row['funcionario']) + " (" + str(row['treinamento']) + ") - Vencimento: " + str(dt_venc)
-                    )
+                    texto_tr = "Treinamento: " + str(row['funcionario']) + " (" + str(row['treinamento']) + ") - Vencimento: " + dt_venc
+                    alertas_por_empresa[emp]["treinamentos"].append(texto_tr)
                     alertas_por_empresa[emp]["tracking"].append(("treinamento", item_id, dt_venc))
 
         if not df_docs_alertas.empty:
             for _, row in df_docs_alertas.iterrows():
-                emp = row["empresa"]
+                emp = str(row["empresa"])
                 item_id = row["id"]
-                dt_venc = row["proxima_renovacao"]
+                dt_venc = str(row["proxima_renovacao"])
                 cursor_m.execute(
                     "SELECT id FROM alertas_enviados WHERE empresa = ? AND tipo_item = 'documento' AND item_id = ? AND data_vencimento = ?",
                     (emp, item_id, dt_venc),
@@ -2974,9 +2972,8 @@ if menu == "Dashboard / Visão Geral":
                             "documentos": [],
                             "tracking": [],
                         }
-                    alertas_por_empresa[emp]["documentos"].append(
-                        "Documento: " + str(row['documento']) + " - Renovação: " + str(dt_venc)
-                    )
+                    texto_doc = "Documento: " + str(row['documento']) + " - Renovação: " + dt_venc
+                    alertas_por_empresa[emp]["documentos"].append(texto_doc)
                     alertas_por_empresa[emp]["tracking"].append(("documento", item_id, dt_venc))
 
         enviados = 0
@@ -2992,17 +2989,17 @@ if menu == "Dashboard / Visão Geral":
             email_emp = res_emp_email[0] if res_emp_email and res_emp_email[0] else None
 
             if email_emp and "@" in email_emp:
-                corpo_msg = "Prezados(as) da empresa " + str(emp) + ",\n\nIdentificamos em nosso sistema de Gestão SST (Cassilab) itens vencidos ou próximos do vencimento (prazo de 30 dias) que exigem atenção:\n\n"
+                corpo_msg = "Prezados(as) da empresa " + emp + ",\n\nIdentificamos em nosso sistema de Gestão SST (Cassilab) itens vencidos ou próximos do vencimento (prazo de 30 dias) que exigem atenção:\n\n"
                 
                 itens_empresa_texto = []
                 if dados_emp["exames"]:
-                    corpo_msg += "Exames Ocupacionais:\n" + "\n".join(["- " + str(i) for i in dados_emp["exames"]]) + "\n\n"
+                    corpo_msg += "Exames Ocupacionais:\n" + "\n".join(["- " + i for i in dados_emp["exames"]]) + "\n\n"
                     itens_empresa_texto.extend(dados_emp["exames"])
                 if dados_emp["treinamentos"]:
-                    corpo_msg += "Treinamentos:\n" + "\n".join(["- " + str(i) for i in dados_emp["treinamentos"]]) + "\n\n"
+                    corpo_msg += "Treinamentos:\n" + "\n".join(["- " + i for i in dados_emp["treinamentos"]]) + "\n\n"
                     itens_empresa_texto.extend(dados_emp["treinamentos"])
                 if dados_emp["documentos"]:
-                    corpo_msg += "Documentos:\n" + "\n".join(["- " + str(i) for i in dados_emp["documentos"]]) + "\n\n"
+                    corpo_msg += "Documentos:\n" + "\n".join(["- " + i for i in dados_emp["documentos"]]) + "\n\n"
                     itens_empresa_texto.extend(dados_emp["documentos"])
                 
                 corpo_msg += "Por favor, entre em contato conosco ou regularize as pendências.\n\nAtenciosamente,\nCassilab Consultoria e Treinamentos em SST"
@@ -3018,7 +3015,7 @@ if menu == "Dashboard / Visão Geral":
                     conn_m.commit()
                     
                     texto_itens = "".join([" * " + str(item) + "\n" for item in itens_empresa_texto])
-                    relatorio_envios.append("**" + str(emp) + "** (" + str(email_emp) + "):\n" + texto_itens)
+                    relatorio_envios.append("**" + emp + "** (" + str(email_emp) + "):\n" + texto_itens)
                 else:
                     erros += 1
             else:
