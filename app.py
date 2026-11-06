@@ -37,7 +37,6 @@ if not hasattr(pd, "_original_read_sql"):
 
 from sqlalchemy import create_engine
 
-# Obter a URL do Neon configurada nos Secrets do Streamlit
 try:
     db_url = st.secrets["postgres"]["url"]
 except Exception:
@@ -53,6 +52,10 @@ engine = create_engine(db_url)
 if not hasattr(pd, "_original_read_sql"):
     pd._original_read_sql = pd.read_sql
 
+def _patched_read_sql(sql, con, *args, **kwargs):
+    return pd._original_read_sql(sql, engine, *args, **kwargs)
+
+pd.read_sql = _patched_read_sql
 def _patched_read_sql(sql, con, *args, **kwargs):
     return pd._original_read_sql(sql, engine, *args, **kwargs)
 
