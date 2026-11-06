@@ -8,9 +8,10 @@ from datetime import datetime, date
 
 DB_NAME = "cassilab_gestao.db"
 
-# --- TENTA LIGAR AO SUPABASE ---
+# --- TENTA LIGAR AO SUPABASE E MOSTRA O MOTIVO SE FALHAR ---
 USAR_SUPABASE = False
 engine = None
+detalhe_erro_supabase = ""
 
 try:
     if "postgres" in st.secrets:
@@ -21,6 +22,11 @@ try:
             USAR_SUPABASE = True
 except Exception as e:
     USAR_SUPABASE = False
+    detalhe_erro_supabase = str(e)
+
+if not USAR_SUPABASE:
+    st.error(f"🚨 **O Supabase recusou a conexão:** {detalhe_erro_supabase}")
+    st.warning("💡 **Verifique no painel do Supabase:** O seu projeto pode estar **pausado** por inatividade (muito comum no plano gratuito). Se estiver, basta clicar em 'Restore project' no site do Supabase.")
 
 # --- TRADUTOR DEFINITIVO PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
