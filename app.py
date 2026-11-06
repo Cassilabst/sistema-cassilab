@@ -4,20 +4,32 @@ from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
-# --- TRADUTOR AUTOMÁTICO PARA O PANDAS (RESOLVE O ERRO NAS ABAS) ---
-_original_read_sql = pd.read_sql
-def _patched_read_sql(sql, con, *args, **kwargs):
-    if hasattr(con, '_conn'):
-        con = con._conn
-    elif hasattr(con, 'eng'):
-        con = con.eng
-    return _original_read_sql(sql, con, *args, **kwargs)
-pd.read_sql = _patched_read_sql
+# --- TRADUTOR SEGURO PARA O PANDAS (SEM LOOP) ---
+if not hasattr(pd, '_original_read_sql'):
+    pd._original_read_sql = pd.read_sql
+    def _patched_read_sql(sql, con, *args, **kwargs):
+        if hasattr(con, 'eng'):
+            con = con.eng
+        elif hasattr(con, '_conn'):
+            con = con._conn
+        return pd._original_read_sql(sql, con, *args, **kwargs)
+    pd.read_sql = _patched_read_sql
 
 DB_NAME = "cassilab_gestao.db"
 
 # --- TENTA LIGAR AO SUPABASE, MAS USA SQLite LOCAL SE FALHAR ---
 USAR_SUPABASE = False
+engine = None
+
+try:
+    if "postgres" in st.secrets:
+        pg = st.secrets["postgres"]
+        DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
+        engine = create_engine(DATABASE_URL, connect_args={'connect_timeout': 5})
+        with engine.connect() as conn:
+            USAR_SUPABASE = True
+except Exception as e:
+    USAR_SUPABASE = False
 engine = None
 
 try:
