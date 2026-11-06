@@ -4,14 +4,12 @@ from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
-# --- TRADUTOR SEGURO PARA O PANDAS (SEM LOOP) ---
+# --- TRADUTOR PERFEITO PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
     pd._original_read_sql = pd.read_sql
     def _patched_read_sql(sql, con, *args, **kwargs):
         if hasattr(con, 'eng'):
             con = con.eng
-        elif hasattr(con, '_conn'):
-            con = con._conn
         return pd._original_read_sql(sql, con, *args, **kwargs)
     pd.read_sql = _patched_read_sql
 
