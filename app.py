@@ -2896,10 +2896,10 @@ if menu == "Dashboard / Visão Geral":
                 ["empresa", "documento", "proxima_renovacao"]
             ].drop_duplicates()
             for _, row in res_doc.iterrows():
-                msg_doc = "**" + str(row['empresa']) + "**\n- " + str(row['documento']) + " - Renovação: " + str(row['proxima_renovacao'])
-                st.error(msg_doc)
-        else:
-            st.success("Nenhum documento vencido ou próximo.")
+                    msg_erro = "- " + str(row['documento']) + " - Renovação: " + str(row['proxima_renovacao'])
+                    st.error(msg_erro)
+            else:
+                st.success("Nenhum documento vencido ou próximo.")
     
     st.markdown("---")
 
