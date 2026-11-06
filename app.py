@@ -866,7 +866,18 @@ def atualizar_filtro_empresa(empresa_nome):
   st.session_state["filtro_ep_emp"] = empresa_nome
   st.session_state["filtro_doc_emp"] = empresa_nome
   st.session_state["filtro_srv_emp_trad"] = empresa_nome
-
+  
+  # Sincronização automática para os Cadastros Gerais (Cargos, EPIs, etc.)
+  if empresa_nome and empresa_nome != "Todas":
+    st.session_state["sel_emp_cargo"] = empresa_nome
+    st.session_state["filtro_cargo_emp_view"] = empresa_nome
+    st.session_state["sel_emp_epi_geral"] = empresa_nome
+    st.session_state["filtro_epi_geral_emp_view"] = empresa_nome
+  else:
+    st.session_state["sel_emp_cargo"] = "Nenhuma"
+    st.session_state["filtro_cargo_emp_view"] = "Todas as Empresas"
+    st.session_state["sel_emp_epi_geral"] = "Nenhuma"
+    st.session_state["filtro_epi_geral_emp_view"] = "Todas as Empresas"
 
 def reset_func_selection():
   if "editor_selecao_funcionarios" in st.session_state:
