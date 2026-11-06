@@ -218,11 +218,11 @@ def renderizar_aba_admin(
 
         conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
         try:
-            # Lê diretamente da tabela correta 'base_funcionarios' com as colunas reais
-            query_func = "SELECT id, funcionario, empresa, cpf, celular FROM base_funcionarios"
+            # Lê apenas as colunas que existem na tabela base_funcionarios
+            query_func = "SELECT id, funcionario, empresa, cpf FROM base_funcionarios"
             df_func_cad = pd.read_sql(query_func, conn_func)
-            if "email" not in df_func_cad.columns:
-                df_func_cad["email"] = ""
+            df_func_cad["email"] = ""
+            df_func_cad["celular"] = ""
         except Exception:
             df_func_cad = pd.DataFrame()
         conn_func.close()
@@ -247,8 +247,8 @@ def renderizar_aba_admin(
                     f_nome = str(dados_func["funcionario"])
                     f_empresa = str(dados_func["empresa"])
                     f_cpf = str(dados_func["cpf"]) if pd.notna(dados_func["cpf"]) else ""
-                    f_email = str(dados_func["email"]) if "email" in dados_func and pd.notna(dados_func["email"]) else ""
-                    f_celular = str(dados_func["celular"]) if "celular" in dados_func and pd.notna(dados_func["celular"]) else ""
+                    f_email = ""
+                    f_celular = ""
 
                     if f_cpf and m_senha:
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
