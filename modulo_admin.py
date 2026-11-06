@@ -218,7 +218,9 @@ def renderizar_aba_admin(
 
         conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
         try:
-            df_func_cad = pd.read_sql("SELECT id, nome, empresa, cpf, email, celular FROM funcionarios ORDER BY nome ASC", conn_func)
+            df_func_cad = pd.read_sql("SELECT id, funcionario as nome, empresa, cpf, celular FROM base_funcionarios ORDER BY funcionario ASC", conn_func)
+            if "email" not in df_func_cad.columns:
+                df_func_cad["email"] = ""
         except Exception:
             df_func_cad = pd.DataFrame()
         conn_func.close()
@@ -242,8 +244,8 @@ def renderizar_aba_admin(
                     f_nome = dados_func["nome"]
                     f_empresa = dados_func["empresa"]
                     f_cpf = dados_func["cpf"]
-                    f_email = str(dados_func["email"]) if pd.notna(dados_func["email"]) else ""
-                    f_celular = str(dados_func["celular"]) if pd.notna(dados_func["celular"]) else ""
+                    f_email = str(dados_func["email"]) if "email" in dados_func and pd.notna(dados_func["email"]) else ""
+                    f_celular = str(dados_func["celular"]) if "celular" in dados_func and pd.notna(dados_func["celular"]) else ""
 
                     if f_cpf and m_senha:
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
