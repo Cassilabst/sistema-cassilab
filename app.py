@@ -2656,14 +2656,8 @@ pode_excluir = is_admin or nivel_permissao == "Fazer Tudo"
 
 if st.session_state.get("msg_sucesso"):
     msg = st.session_state["msg_sucesso"]
-    st.markdown(
-        f"""
-        <div style="background-color: #d4edda; color: #155724; padding: 15px 25px; border-radius: 10px; border: 2px solid #28a745; text-align: center; font-weight: bold; font-size: 18px; margin-bottom: 20px; box-shadow: 0 6px 12px rgba(0,0,0,0.1);">
-            {msg}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div style="background-color: #d4edda; color: #155724; padding: 15px 25px; border-radius: 10px; border: 2px solid #28a745; text-align: center; font-weight: bold; font-size: 18px; margin-bottom: 20px;">{msg}</div>', unsafe_allow_html=True)
+    st.session_state["msg_sucesso"] = ""
     st.session_state["msg_sucesso"] = ""
 if menu == "Alterar Senha":
     renderizar_aba_alterar_senha(DB_NAME, st.session_state.get("nome_usuario", ""))
