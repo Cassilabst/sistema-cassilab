@@ -4,16 +4,21 @@ from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
 from datetime import datetime, date
 
-# --- TRADUTOR DEFINITIVO PARA O PANDAS ---
+# --- TRADUTOR NATIVO PERFEITO PARA O PANDAS ---
 if not hasattr(pd, '_original_read_sql'):
     pd._original_read_sql = pd.read_sql
     def _patched_read_sql(sql, con, *args, **kwargs):
-        # Desembrulha o nosso objeto para o Pandas aceitar a conexão do SQLAlchemy
-        if type(con).__name__ == 'PostgresConnWrapper' or hasattr(con, '_conn'):
-            con = con._conn
-        elif hasattr(con, 'eng'):
-            con = con.eng
-        return pd._original_read_sql(sql, con, *args, **kwargs)
+        global engine, USAR_SUPABASE
+        # Se estamos no Supabase, entrega o motor SQLAlchemy diretamente ao Pandas (que ele adora!)
+        if USAR_SUPABASE and engine is not None:
+            return pd._original_read_sql(sql, engine, *args, **kwargs)
+        else:
+            # Se for local, usa uma conexão nativa do SQLite
+            local_conn = sqlite3.connect(DB_NAME)
+            try:
+                return pd._original_read_sql(sql, local_conn, *args, **kwargs)
+            finally:
+                local_conn.close()
     pd.read_sql = _patched_read_sql
 
 DB_NAME = "cassilab_gestao.db"
