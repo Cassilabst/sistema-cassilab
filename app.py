@@ -13,22 +13,18 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- CONFIGURAÇÃO DA LIGAÇÃO AO NEON ---
+# --- CONFIGURAÇÃO BLINDADA DA LIGAÇÃO AO NEON ---
 try:
-    db_url = st.secrets["postgres"]["url"]
-    # Remove parâmetros que o psycopg2 não suporta (como channel_binding)
-    if "channel_binding" in db_url:
-        db_url = db_url.split("&channel_binding=")[0].split("?channel_binding=")[0]
-    
-    if "postgresql://" in db_url and not "psycopg2" in db_url:
-        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
-except Exception:
+    # Força a utilização das credenciais individuais diretas para evitar parâmetros inválidos no psycopg2
     user = st.secrets.get("user", "neondb_owner")
-    password = st.secrets.get("password", "")
-    host = st.secrets.get("host", "")
+    password = st.secrets.get("password", "npg_56CY0nhVldKF")
+    host = st.secrets.get("host", "ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech")
     database = st.secrets.get("database", "neondb")
     port = st.secrets.get("port", "5432")
+    
     db_url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}?sslmode=require"
+except Exception as e:
+    db_url = "postgresql+psycopg2://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech:5432/neondb?sslmode=require"
 
 engine = create_engine(db_url)
 
