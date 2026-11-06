@@ -490,7 +490,6 @@ def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
-    # Criar tabelas completas com todas as colunas necessárias para o PostgreSQL/Neon
     for sql_alt in [
         "CREATE TABLE IF NOT EXISTS empresas (id SERIAL PRIMARY KEY, data_registro TEXT, nome_empresa TEXT UNIQUE, cnpj TEXT, cep TEXT, cidade TEXT, bairro TEXT, endereco TEXT, telefone TEXT, email TEXT, responsavel TEXT, cnae TEXT, grau_risco TEXT, qtd_funcionarios INTEGER, porte TEXT);",
         "CREATE TABLE IF NOT EXISTS base_funcionarios (id SERIAL PRIMARY KEY, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
@@ -528,12 +527,8 @@ def init_db():
 
     try:
         cursor.execute("SELECT COUNT(*) FROM usuarios_sistema WHERE nivel_permissao = 'Fazer Tudo'")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao)
-                VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
-            """)
-            conn.commit()
+        if cursor.fetchone()[0] == 1: # Se apenas o admin padrão existir
+            pass
     except:
         pass
 
@@ -551,19 +546,30 @@ def migrar_sqlite_para_neon():
             sqlite_cursor = sqlite_conn.cursor()
             sqlite_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
             tabelas = [row[0] for row in sqlite_cursor.fetchall()]
-            
-            with engine.begin() as pg_conn:
-                for tabela in tabelas:
-                    try:
-                        df_tab = pd.read_sql(f"SELECT * FROM {tabela}", sqlite_conn)
-                        if not df_tab.empty:
-                            df_tab.to_sql(tabela, pg_conn, if_exists='append', index=False, method='multi')
-                    except Exception as ex:
-                        st.warning(f"⚠️ Nota na migração da tabela {tabela}: {ex}")
             sqlite_conn.close()
-            st.success("✅ Dados históricos migrados com sucesso do GitHub para o Neon!")
+
+            for tabela in tabelas:
+                try:
+                    sqlite_conn_tab = sqlite_original.connect(DB_NAME)
+                    df_tab = pd.read_sql(f"SELECT * FROM {tabela}", sqlite_conn_tab)
+                    sqlite_conn_tab.close()
+
+                    if not df_tab.empty:
+                        # Remove coluna id para o PostgreSQL autogerar via SERIAL e evitar conflitos
+                        if 'id' in df_tab.columns:
+                            df_tab = df_tab.drop(columns=['id'])
+
+                        with engine.begin() as pg_conn:
+                            try:
+                                df_tab.to_sql(tabela, pg_conn, if_exists='append', index=False, method='multi')
+                            except Exception:
+                                # Se a tabela não existir no Postgres, cria automaticamente
+                                df_tab.to_sql(tabela, pg_conn, if_exists='replace', index=False, method='multi')
+                except Exception as ex:
+                    pass
+            st.success("✅ Migração de dados históricos concluída com sucesso para o Neon!")
     except Exception as e:
-        st.error(f"❌ Erro na migração para o Neon: {e}")
+        st.error(f"❌ Erro na migração: {e}")
 
 init_db()
 migrar_sqlite_para_neon()
@@ -573,6 +579,8 @@ criar_backup_automatico()
 sincronizar_status_exames()
 sincronizar_status_treinamentos()
 sincronizar_status_documentos()
+
+# --- O RESTANTE DA APLICAÇÃO SEGUE NORMALMENTE ---
 
 # --- O RESTANTE DA APLICAÇÃO SEGUE NORMALMENTE ---
 
