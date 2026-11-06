@@ -2,6 +2,7 @@ import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
 import sys, re, sqlite3, pandas as pd
+from datetime import datetime, date
 
 DB_NAME = "cassilab_gestao.db"
 
