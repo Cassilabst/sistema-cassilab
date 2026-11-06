@@ -45,7 +45,7 @@ def criar_backup_automatico():
       os.makedirs(backup_dir)
     hoje_data = datetime.now().strftime("%Y-%m-%d")
     backup_path = os.path.join(
-        backup_dir, cassilab_gestao_backup_{hoje_data}.db"
+        backup_dir, f"cassilab_gestao_backup_{hoje_data}.db"
     )
     if not os.path.exists(backup_path) and os.path.exists(DB_NAME):
       shutil.copy(DB_NAME, backup_path)
