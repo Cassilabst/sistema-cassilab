@@ -86,7 +86,7 @@ def formatar_titulo(texto):
       "ca",
       "nfes",
       "dds",
-      "w
+      "w"
       "pemt"
   }
   palavras = str(texto).strip().split()
