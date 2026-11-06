@@ -471,138 +471,155 @@ def init_db():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
-    # Criar tabelas principais
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
-            cnae TEXT PRIMARY KEY,
-            descricao TEXT,
-            grau_risco TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS configuracoes_email (
-            id SERIAL PRIMARY KEY,
-            email TEXT,
-            senha_app TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS alertas_enviados (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            tipo_item TEXT,
-            item_id INTEGER,
-            data_vencimento TEXT,
-            data_envio TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            treinamento TEXT,
-            carga_horaria TEXT,
-            validade TEXT,
-            modalidade TEXT,
-            disponibilidade TEXT,
-            valor REAL DEFAULT 0,
-            UNIQUE(empresa, treinamento)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS matriz_treinamentos_status (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            funcionario TEXT,
-            treinamento TEXT,
-            obrigatoriedade TEXT,
-            UNIQUE(empresa, funcionario, treinamento)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS absenteismo (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            nome TEXT,
-            turno TEXT,
-            funcao TEXT,
-            setor TEXT,
-            tipo_atestado TEXT,
-            horas_perdidas REAL,
-            horas_previstas REAL,
-            dias_perdidos REAL,
-            inicio_afastamento TEXT,
-            fim_afastamento TEXT,
-            local_atendimento TEXT,
-            cid TEXT,
-            conselho TEXT,
-            dt_adm TEXT,
-            dt_nasc TEXT,
-            sexo TEXT,
-            mes TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS empresas (
-            id SERIAL PRIMARY KEY,
-            data_registro TEXT,
-            nome_empresa TEXT UNIQUE,
-            cnpj TEXT,
-            cep TEXT,
-            cidade TEXT,
-            bairro TEXT,
-            endereco TEXT,
-            telefone TEXT,
-            email TEXT,
-            responsavel TEXT,
-            cnae TEXT,
-            grau_risco TEXT,
-            qtd_funcionarios INTEGER,
-            porte TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE empresas ADD COLUMN IF NOT EXISTS data_registro TEXT;")
-    cursor.execute("ALTER TABLE empresas ADD COLUMN IF NOT EXISTS cnae TEXT;")
-    cursor.execute("ALTER TABLE empresas ADD COLUMN IF NOT EXISTS porte TEXT;")
+    # Criar tabelas principais com segurança
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
+                cnae TEXT PRIMARY KEY,
+                descricao TEXT,
+                grau_risco TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS configuracoes_email (
+                id SERIAL PRIMARY KEY,
+                email TEXT,
+                senha_app TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alertas_enviados (
+                id SERIAL PRIMARY KEY,
+                empresa TEXT,
+                tipo_item TEXT,
+                item_id INTEGER,
+                data_vencimento TEXT,
+                data_envio TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
+                id SERIAL PRIMARY KEY,
+                empresa TEXT,
+                treinamento TEXT,
+                carga_horaria TEXT,
+                validade TEXT,
+                modalidade TEXT,
+                disponibilidade TEXT,
+                valor REAL DEFAULT 0,
+                UNIQUE(empresa, treinamento)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS matriz_treinamentos_status (
+                id SERIAL PRIMARY KEY,
+                empresa TEXT,
+                funcionario TEXT,
+                treinamento TEXT,
+                obrigatoriedade TEXT,
+                UNIQUE(empresa, funcionario, treinamento)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS absenteismo (
+                id SERIAL PRIMARY KEY,
+                empresa TEXT,
+                nome TEXT,
+                turno TEXT,
+                funcao TEXT,
+                setor TEXT,
+                tipo_atestado TEXT,
+                horas_perdidas REAL,
+                horas_previstas REAL,
+                dias_perdidos REAL,
+                inicio_afastamento TEXT,
+                fim_afastamento TEXT,
+                local_atendimento TEXT,
+                cid TEXT,
+                conselho TEXT,
+                dt_adm TEXT,
+                dt_nasc TEXT,
+                sexo TEXT,
+                mes TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS empresas (
+                id SERIAL PRIMARY KEY,
+                data_registro TEXT,
+                nome_empresa TEXT UNIQUE,
+                cnpj TEXT,
+                cep TEXT,
+                cidade TEXT,
+                bairro TEXT,
+                endereco TEXT,
+                telefone TEXT,
+                email TEXT,
+                responsavel TEXT,
+                cnae TEXT,
+                grau_risco TEXT,
+                qtd_funcionarios INTEGER,
+                porte TEXT
+            )
+        """)
+    except:
+        pass
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS base_funcionarios (
-            id SERIAL PRIMARY KEY,
-            matricula TEXT,
-            funcionario TEXT,
-            cargo TEXT,
-            setor TEXT,
-            cpf TEXT,
-            data_admissao TEXT,
-            status TEXT,
-            empresa TEXT,
-            data_nascimento TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN IF NOT EXISTS data_nascimento TEXT;")
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios_sistema (
-            id SERIAL PRIMARY KEY,
-            nome TEXT,
-            cpf TEXT,
-            empresa TEXT,
-            email TEXT,
-            celular TEXT,
-            senha TEXT,
-            status TEXT DEFAULT 'Pendente',
-            nivel_permissao TEXT DEFAULT 'Somente Visualizar'
-        )
-    """)
-    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS email TEXT;")
-    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS celular TEXT;")
-    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS status TEXT;")
-    cursor.execute("ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS nivel_permissao TEXT;")
+    # Alterações de colunas blindadas individualmente
+    for sql_alt in [
+        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS data_registro TEXT;",
+        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS cnae TEXT;",
+        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS porte TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS base_funcionarios (id SERIAL PRIMARY KEY, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
+        "ALTER TABLE base_funcionarios ADD COLUMN IF NOT EXISTS data_nascimento TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS usuarios_sistema (id SERIAL PRIMARY KEY, nome TEXT, cpf TEXT, empresa TEXT, email TEXT, celular TEXT, senha TEXT, status TEXT DEFAULT 'Pendente', nivel_permissao TEXT DEFAULT 'Somente Visualizar');",
+        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS email TEXT;",
+        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS celular TEXT;",
+        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS status TEXT;",
+        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS nivel_permissao TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS exames (id SERIAL PRIMARY KEY, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, ultimo_exame TEXT, periodicidade TEXT, tipo_exame TEXT, proximo_exame TEXT, status TEXT);",
+        "ALTER TABLE exames ADD COLUMN IF NOT EXISTS periodicidade TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS treinamentos (id SERIAL PRIMARY KEY, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, treinamento TEXT, carga_horaria TEXT, pessoas_treinadas TEXT, data_realizacao TEXT, validade TEXT, proximo_treinamento TEXT, status TEXT);",
+        "ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS pessoas_treinadas TEXT;",
+        "ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS validade TEXT;",
+        "ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS proximo_treinamento TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS epis (id SERIAL PRIMARY KEY, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, epi TEXT, ca TEXT, data_entrega TEXT, quantidade INTEGER, status TEXT);",
+        
+        "CREATE TABLE IF NOT EXISTS servicos_realizados (id SERIAL PRIMARY KEY, empresa TEXT, servico TEXT, data_realizacao TEXT, responsavel TEXT, observacoes TEXT, valor REAL DEFAULT 0, status TEXT, nfes TEXT);",
+        "ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS valor REAL DEFAULT 0;",
+        "ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS nfes TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS documentos (id SERIAL PRIMARY KEY, empresa TEXT, documento TEXT, data_emissao TEXT, vigencia TEXT, proxima_renovacao TEXT, status TEXT);",
+        "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS proxima_renovacao TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS logs_sistema (id SERIAL PRIMARY KEY, data_hora TEXT, usuario TEXT, empresa TEXT, acao TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_cargos (id SERIAL PRIMARY KEY, empresa TEXT, cargo TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_setores (id SERIAL PRIMARY KEY, empresa TEXT, setor TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_epis (id SERIAL PRIMARY KEY, empresa TEXT, epi TEXT, ca TEXT, UNIQUE(empresa, epi));",
+        
+        "CREATE TABLE IF NOT EXISTS cad_treinamentos (id SERIAL PRIMARY KEY, treinamento TEXT UNIQUE, carga_horaria TEXT);",
+        "ALTER TABLE cad_treinamentos ADD COLUMN IF NOT EXISTS carga_horaria TEXT;",
+        
+        "CREATE TABLE IF NOT EXISTS cad_servicos (id SERIAL PRIMARY KEY, servico TEXT UNIQUE);"
+    ]:
+        try:
+            cursor.execute(sql_alt)
+            conn.commit()
+        except:
+            try:
+                conn.rollback()
+            except:
+                pass
 
     try:
         cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
         cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
+        conn.commit()
     except:
         pass
 
@@ -613,139 +630,10 @@ def init_db():
                 INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao)
                 VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
             ''')
+            conn.commit()
     except:
         pass
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS exames (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            matricula TEXT,
-            funcionario TEXT,
-            cargo TEXT,
-            setor TEXT,
-            ultimo_exame TEXT,
-            periodicidade TEXT,
-            tipo_exame TEXT,
-            proximo_exame TEXT,
-            status TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE exames ADD COLUMN IF NOT EXISTS periodicidade TEXT;")
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS treinamentos (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            matricula TEXT,
-            funcionario TEXT,
-            cargo TEXT,
-            setor TEXT,
-            treinamento TEXT,
-            carga_horaria TEXT,
-            pessoas_treinadas TEXT,
-            data_realizacao TEXT,
-            validade TEXT,
-            proximo_treinamento TEXT,
-            status TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS pessoas_treinadas TEXT;")
-    cursor.execute("ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS validade TEXT;")
-    cursor.execute("ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS proximo_treinamento TEXT;")
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS epis (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            matricula TEXT,
-            funcionario TEXT,
-            cargo TEXT,
-            setor TEXT,
-            epi TEXT,
-            ca TEXT,
-            data_entrega TEXT,
-            quantidade INTEGER,
-            status TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS servicos_realizados (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            servico TEXT,
-            data_realizacao TEXT,
-            responsavel TEXT,
-            observacoes TEXT,
-            valor REAL DEFAULT 0,
-            status TEXT,
-            nfes TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS valor REAL DEFAULT 0;")
-    cursor.execute("ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS nfes TEXT;")
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS documentos (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            documento TEXT,
-            data_emissao TEXT,
-            vigencia TEXT,
-            proxima_renovacao TEXT,
-            status TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE documentos ADD COLUMN IF NOT EXISTS proxima_renovacao TEXT;")
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS logs_sistema (
-            id SERIAL PRIMARY KEY,
-            data_hora TEXT,
-            usuario TEXT,
-            empresa TEXT,
-            acao TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_cargos (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            cargo TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_setores (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            setor TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_epis (
-            id SERIAL PRIMARY KEY,
-            empresa TEXT,
-            epi TEXT,
-            ca TEXT,
-            UNIQUE(empresa, epi)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_treinamentos (
-            id SERIAL PRIMARY KEY,
-            treinamento TEXT UNIQUE,
-            carga_horaria TEXT
-        )
-    """)
-    cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN IF NOT EXISTS carga_horaria TEXT;")
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_servicos (
-            id SERIAL PRIMARY KEY,
-            servico TEXT UNIQUE
-        )
-    """)
-    conn.commit()
     conn.close()
 
 init_db()
