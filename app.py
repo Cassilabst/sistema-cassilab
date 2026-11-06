@@ -2896,20 +2896,22 @@ if menu == "Dashboard / Visão Geral":
                 ["empresa", "documento", "proxima_renovacao"]
             ].drop_duplicates()
             for _, row in res_doc.iterrows():
-                    msg_erro = "- " + str(row['documento']) + " - Renovação: " + str(row['proxima_renovacao'])
-                    st.error(msg_erro)
-            else:
-                st.success("Nenhum documento vencido ou próximo.")
+                st.error(
+                    "**" + str(row['empresa']) + "**\n- " + str(row['documento']) + 
+                    " - Renovação: " + str(row['proxima_renovacao'])
+                )
+        else:
+            st.success("Nenhum documento vencido ou próximo.")
     
     st.markdown("---")
 
     if st.button(
-            "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
-            use_container_width=True,
-        ):
-            conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
-            cursor_m = conn_m.cursor()
-            alertas_por_empresa = {}
+        "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
+        use_container_width=True,
+    ):
+        conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
+        cursor_m = conn_m.cursor()
+        alertas_por_empresa = {}
         
         if not df_ex_alertas.empty:
             for _, row in df_ex_alertas.iterrows():
