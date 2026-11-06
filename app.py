@@ -35,21 +35,28 @@ DB_NAME = "cassilab_gestao.db"
 if not hasattr(pd, "_original_read_sql"):
   pd._original_read_sql = pd.read_sql
 
+  from sqlalchemy import create_engine
 
-  def _patched_read_sql(sql, con, *args, **kwargs):
-    # Utiliza sempre a ligação ao Neon (PostgreSQL)
+# Obter a URL do Neon configurada nos Secrets do Streamlit
+try:
+    db_url = st.secrets["postgres"]["url"]
+except Exception:
+    user = st.secrets.get("user", "neondb_owner")
+    password = st.secrets.get("password", "")
+    host = st.secrets.get("host", "")
+    database = st.secrets.get("database", "neondb")
+    port = st.secrets.get("port", "5432")
+    db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}?sslmode=require"
+
+engine = create_engine(db_url)
+
+if not hasattr(pd, "_original_read_sql"):
+    pd._original_read_sql = pd.read_sql
+
+def _patched_read_sql(sql, con, *args, **kwargs):
     return pd._original_read_sql(sql, engine, *args, **kwargs)
 
 pd.read_sql = _patched_read_sql
-
-
-# --- CAMADA DE COMPATIBILIDADE SQLITE -> POSTGRES ---
-class PostgresCursorWrapper:
-
-  def __init__(self, connection):
-    self.conn = connection
-    self.last_result = None
-
   def execute(self, sql, params=None):
     if "PRAGMA" in sql.upper():
       return self
