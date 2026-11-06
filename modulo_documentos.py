@@ -152,9 +152,11 @@ def renderizar_aba_documentos(
         lambda x: formatar_status_visual_func(x, "doc")
     )
     df_doc["_id_banco"] = df_doc["id"]
+    
     if is_admin or pode_editar:
       if "sel_id_doc" not in st.session_state:
         st.session_state["sel_id_doc"] = None
+      
       df_doc["Selecionar"] = df_doc["_id_banco"] == st.session_state["sel_id_doc"]
       cols_doc_ord = [
           "Selecionar",
@@ -185,9 +187,12 @@ def renderizar_aba_documentos(
           },
       )
 
-      linhas_marcadas = editado_doc[editado_doc["Selecionار"] == True][
+      # Tratamento blindado para o nome da coluna de seleção
+      col_sel_nome = "Selecionar" if "Selecionar" in editado_doc.columns else editado_doc.columns[0]
+
+      linhas_marcadas = editado_doc[editado_doc[col_sel_nome] == True][
           "_id_banco"
-      ].tolist() if "Selecionar" in editado_doc.columns else []
+      ].tolist() if "_id_banco" in editado_doc.columns else []
       
       # Atualiza apenas a seleção atual
       if linhas_marcadas:
