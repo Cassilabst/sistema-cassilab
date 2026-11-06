@@ -2,7 +2,7 @@ import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
 import sys, re
-import sqlite3 as real_sqlite3
+import sqlite3 as sqlite_original
 import pandas as pd
 from datetime import datetime, date
 
@@ -30,7 +30,7 @@ if not hasattr(pd, '_original_read_sql'):
         if USAR_SUPABASE and engine is not None:
             return pd._original_read_sql(sql, engine, *args, **kwargs)
         else:
-            local_conn = real_sqlite3.connect(DB_NAME)
+            local_conn = sqlite_original.connect(DB_NAME)
             try:
                 return pd._original_read_sql(sql, local_conn, *args, **kwargs)
             finally:
@@ -124,18 +124,19 @@ class PostgresConnWrapper:
     def execute(self, sql, params=None):
         return self.cursor().execute(sql, params)
 
-def _patched_sqlite_connect(database, *args, **kwargs):
-    if USAR_SUPABASE and engine is not None:
-        return PostgresConnWrapper(engine)
-    else:
-        return real_sqlite3.connect(database, *args, **kwargs)
+class MockSqliteModule:
+    IntegrityError = sqlalchemy.exc.IntegrityError
+    OperationalError = Exception
+    Connection = sqlite_original.Connection
 
-sys.modules['sqlite3'] = type('MockModule', (), {
-    'connect': _patched_sqlite_connect,
-    'IntegrityError': sqlalchemy.exc.IntegrityError,
-    'OperationalError': Exception,
-    'Connection': real_sqlite3.Connection
-})()
+    def connect(self, database, *args, **kwargs):
+        if USAR_SUPABASE and engine is not None:
+            return PostgresConnWrapper(engine)
+        else:
+            return sqlite_original.connect(database, *args, **kwargs)
+
+sys.modules['sqlite3'] = MockSqliteModule()
+import sqlite3
 
 # ==========================================
 # A PARTIR DAQUI, COLE O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
