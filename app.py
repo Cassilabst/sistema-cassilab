@@ -1551,7 +1551,7 @@ def formatar_colunas_tabela(df):
     return df.rename(columns=rename_dict)
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def get_empresas():
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     empresas_set = set()
@@ -1570,7 +1570,7 @@ def get_empresas():
     return sorted(list(empresas_set))
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def get_cargos_por_empresa(empresa_nome):
     if not empresa_nome or empresa_nome == "Nenhuma":
         return []
@@ -1593,7 +1593,7 @@ def get_cargos_por_empresa(empresa_nome):
     return []
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def get_setores_por_empresa(empresa_nome):
     if not empresa_nome or empresa_nome == "Nenhuma":
         return []
@@ -1916,7 +1916,7 @@ def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     try:
         df = pd.read_sql(
-            "SELECT funcionario, empresa, data_nascimento, cargo FROM"
+            "SELECT DISTINCT funcionario, empresa, data_nascimento, cargo FROM"
             " base_funcionarios",
             conn,
         )
@@ -1957,8 +1957,6 @@ def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
         return
 
     df_aniv = pd.DataFrame(aniversariantes)
-    
-    # 👇 ADICIONE ESTAS DUAS LINHAS AQUI PARA REMOVER AS DUPLICAÇÕES 👇
     if not df_aniv.empty:
         df_aniv = df_aniv.drop_duplicates(subset=['funcionario', 'data'], keep='first')
 
