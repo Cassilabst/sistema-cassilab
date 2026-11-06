@@ -2851,71 +2851,65 @@ if menu == "Dashboard / Visão Geral":
   st.markdown("---")
 
   if is_admin:
-      st.markdown(
-          "### ⚠️ Painel de Alertas (Vencidos e a vencer em até 30 dias) - Acesso Restrito Admin"
-      )
-      col_v1, col_v2, col_v3 = st.columns(3)
-        
-      with col_v1:
-          st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
-          df_ex_alertas = filtrar_vencidos_e_proximos(
-              df_ex_all, "proximo_exame", "status"
-          )
-          if not df_ex_alertas.empty:
-              res_ex = df_ex_alertas[
-                  ["empresa", "funcionario", "tipo_exame", "proximo_exame"]
-              ].drop_duplicates()
-              for _, row in res_ex.iterrows():
-                  st.warning(
-                      "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + 
-                      " (" + str(row['tipo_exame']) + ") - Vencimento: " + str(row['proximo_exame'])
-                  )
-          else:
-              st.success("Nenhum exame vencido ou próximo.")
-                
-      with col_v2:
-          st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
-          df_tr_alertas = filtrar_vencidos_e_proximos(
-              df_tr_all, "proximo_treinamento", "status"
-          )
-          if not df_tr_alertas.empty:
-              res_tr = df_tr_alertas[
-                  ["empresa", "funcionario", "treinamento", "proximo_treinamento"]
-              ].drop_duplicates()
-              for _, row in res_tr.iterrows():
-                  st.error(
-                      "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + 
-                      " (" + str(row['treinamento']) + ") - Vencimento: " + str(row['proximo_treinamento'])
-                  )
-          else:
-              st.success("Nenhum treinamento vencido ou próximo.")
-                
-      with col_v3:
-          st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
-          df_docs_alertas = filtrar_vencidos_e_proximos(
-              df_docs_all, "proxima_renovacao", "status"
-          )
-            if not df_docs_alertas.empty:
-                res_doc = df_docs_alertas[
-                    ["empresa", "documento", "proxima_renovacao"]
-                ].drop_duplicates()
-                for _, row in res_doc.iterrows():
-                    st.error(
-                        "**" + str(row['empresa']) + "**\n- " + str(row['documento']) + 
-                        " - Renovação: " + str(row['proxima_renovacao'])
-                    )
-            else:
-                st.success("Nenhum documento vencido ou próximo.")
-        
-        st.markdown("---")
+    st.markdown(
+        "### ⚠️ Painel de Alertas (Vencidos e a vencer em até 30 dias) - Acesso Restrito Admin"
+    )
+    col_v1, col_v2, col_v3 = st.columns(3)
+    
+    with col_v1:
+        st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
+        df_ex_alertas = filtrar_vencidos_e_proximos(
+            df_ex_all, "proximo_exame", "status"
+        )
+        if not df_ex_alertas.empty:
+            res_ex = df_ex_alertas[
+                ["empresa", "funcionario", "tipo_exame", "proximo_exame"]
+            ].drop_duplicates()
+            for _, row in res_ex.iterrows():
+                msg_ex = "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + " (" + str(row['tipo_exame']) + ") - Vencimento: " + str(row['proximo_exame'])
+                st.warning(msg_ex)
+        else:
+            st.success("Nenhum exame vencido ou próximo.")
+            
+    with col_v2:
+        st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
+        df_tr_alertas = filtrar_vencidos_e_proximos(
+            df_tr_all, "proximo_treinamento", "status"
+        )
+        if not df_tr_alertas.empty:
+            res_tr = df_tr_alertas[
+                ["empresa", "funcionario", "treinamento", "proximo_treinamento"]
+            ].drop_duplicates()
+            for _, row in res_tr.iterrows():
+                msg_tr = "**" + str(row['empresa']) + "**\n- " + str(row['funcionario']) + " (" + str(row['treinamento']) + ") - Vencimento: " + str(row['proximo_treinamento'])
+                st.error(msg_tr)
+        else:
+            st.success("Nenhum treinamento vencido ou próximo.")
+            
+    with col_v3:
+        st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
+        df_docs_alertas = filtrar_vencidos_e_proximos(
+            df_docs_all, "proxima_renovacao", "status"
+        )
+        if not df_docs_alertas.empty:
+            res_doc = df_docs_alertas[
+                ["empresa", "documento", "proxima_renovacao"]
+            ].drop_duplicates()
+            for _, row in res_doc.iterrows():
+                msg_doc = "**" + str(row['empresa']) + "**\n- " + str(row['documento']) + " - Renovação: " + str(row['proxima_renovacao'])
+                st.error(msg_doc)
+        else:
+            st.success("Nenhum documento vencido ou próximo.")
+    
+    st.markdown("---")
 
-        if st.button(
-            "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
-            use_container_width=True,
-        ):
-            conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
-            cursor_m = conn_m.cursor()
-            alertas_por_empresa = {}
+    if st.button(
+        "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
+        use_container_width=True,
+    ):
+        conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
+        cursor_m = conn_m.cursor()
+        alertas_por_empresa = {}
         
         if not df_ex_alertas.empty:
             for _, row in df_ex_alertas.iterrows():
