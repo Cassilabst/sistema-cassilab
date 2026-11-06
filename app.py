@@ -1,28 +1,18 @@
-import calendar
-import csv
-from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import os
-import re
-import shutil
-import sys
-import pandas as pd
-import requests
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
+import sys, re, sqlite3, pandas as pd
 
-# --- CONEXÃO COM O SUPABASE VIA STREAMLIT SECRETS ---
+# --- CONEXÃO COM O SUPABASE (CORRIGIDA) ---
 try:
     pg = st.secrets["postgres"]
     DATABASE_URL = f"postgresql+psycopg2://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}?sslmode=require"
     engine = create_engine(DATABASE_URL)
 except Exception as e:
-    st.error(f"Erro ao ligar ao Supabase via Secrets: {e}")
+    st.error(f"Erro ao ligar ao Supabase: {e}")
     st.stop()
 
-# --- CAMADA DE COMPATIBILIDADE (MOCK DO SQLITE PARA POSTGRESQL) ---
+# --- CAMADA QUE TRADUZ AUTOMATICAMENTE O SQLITE PARA O SUPABASE ---
 class PostgresCursorWrapper:
     def __init__(self, connection):
         self.conn = connection
@@ -31,14 +21,6 @@ class PostgresCursorWrapper:
     def execute(self, sql, params=None):
         if "PRAGMA" in sql.upper():
             return self
-        
-        if "PRAGMA table_info" in sql:
-            match = re.search(r"table_info\((.*?)\)", sql)
-            if match:
-                tbl = match.group(1).strip()
-                sql = "SELECT column_name FROM information_schema.columns WHERE table_name = :tbl"
-                params = {"tbl": tbl}
-
         if params:
             if isinstance(params, (list, tuple)):
                 param_dict = {}
@@ -52,10 +34,12 @@ class PostgresCursorWrapper:
                 new_sql_parts.append(parts[-1])
                 sql = "".join(new_sql_parts)
                 params = param_dict
-            elif isinstance(params, dict):
-                pass
         else:
             params = {}
+        
+        # Converte automaticamente AUTOINCREMENT para funcionar no Postgres sem alterar o seu código
+        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        sql = sql.replace("integer primary key autoincrement", "SERIAL PRIMARY KEY")
 
         try:
             self.last_result = self.conn.execute(text(sql), params)
@@ -92,14 +76,14 @@ class PostgresConnWrapper:
         try:
             self._trans.commit()
             self._trans = self._conn.begin()
-        except Exception:
+        except:
             pass
 
     def rollback(self):
         try:
             self._trans.rollback()
             self._trans = self._conn.begin()
-        except Exception:
+        except:
             pass
 
     def close(self):
@@ -126,13 +110,14 @@ class PostgresConnWrapper:
 class MockSqlite3:
     IntegrityError = sqlalchemy.exc.IntegrityError
     OperationalError = Exception
-
     def connect(self, database, timeout=10.0):
         return PostgresConnWrapper(engine)
 
-# Substitui globalmente o sqlite3 pelo wrapper do Supabase
 sys.modules['sqlite3'] = MockSqlite3()
-import sqlite3
+
+# ==========================================
+# A PARTIR DAQUI, COLE TODO O RESTO DO SEU CÓDIGO ORIGINAL (AS SUAS 3000 LINHAS)
+# ==========================================
 
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
 from modulo_absenteismo import renderizar_aba_absenteismo
