@@ -13,20 +13,11 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- CONFIGURAÇÃO BLINDADA DA LIGAÇÃO AO NEON ---
-try:
-    # Força a utilização das credenciais individuais diretas para evitar parâmetros inválidos no psycopg2
-    user = st.secrets.get("user", "neondb_owner")
-    password = st.secrets.get("password", "npg_56CY0nhVldKF")
-    host = st.secrets.get("host", "ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech")
-    database = st.secrets.get("database", "neondb")
-    port = st.secrets.get("port", "5432")
-    
-    db_url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}?sslmode=require"
-except Exception as e:
-    db_url = "postgresql+psycopg2://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech:5432/neondb?sslmode=require"
+# --- LIGAÇÃO ÚNICA E SEGURA AO NEON ---
+DB_URL = "postgresql+psycopg2://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
 
-engine = create_engine(db_url)
+# Cria uma única engine global com pool reutilizável para evitar estourar o limite
+engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=3600)
 
 DB_NAME = "cassilab_gestao.db"
 
@@ -39,7 +30,50 @@ def _patched_read_sql(sql, con, *args, **kwargs):
 
 pd.read_sql = _patched_read_sql
 
-# --- WRAPPER PARA COMPATIBILIDADE SQLITE/POSTGRES ---
+# --- WRAPPER DE CONEXÃO REUTILIZÁVEL ---
+class PostgresConnWrapper:
+    _shared_conn = None
+
+    def __init__(self, eng):
+        self.eng = eng
+        if PostgresConnWrapper._shared_conn is None or PostgresConnWrapper._shared_conn.closed:
+            PostgresConnWrapper._shared_conn = eng.connect()
+        self._conn = PostgresConnWrapper._shared_conn
+        self._trans = self._conn.begin()
+
+    def cursor(self):
+        return PostgresCursorWrapper(self._conn)
+
+    def commit(self):
+        try:
+            self._trans.commit()
+            self._trans = self._conn.begin()
+        except:
+            pass
+
+    def rollback(self):
+        try:
+            self._trans.rollback()
+            self._trans = self._conn.begin()
+        except:
+            pass
+
+    def close(self):
+        # Não fecha a conexão partilhada para evitar reconexões excessivas
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+
+    def execute(self, sql, params=None):
+        return self.cursor().execute(sql, params)
+
 class PostgresCursorWrapper:
     def __init__(self, conn):
         self.conn = conn
@@ -82,44 +116,6 @@ class PostgresCursorWrapper:
     @property
     def rowcount(self):
         return self.last_result.rowcount if self.last_result else 0
-
-
-class PostgresConnWrapper:
-    def __init__(self, eng):
-        self.eng = eng
-        self._conn = eng.connect()
-        self._trans = self._conn.begin()
-
-    def cursor(self):
-        return PostgresCursorWrapper(self._conn)
-
-    def commit(self):
-        self._trans.commit()
-        self._trans = self._conn.begin()
-
-    def rollback(self):
-        self._trans.rollback()
-        self._trans = self._conn.begin()
-
-    def close(self):
-        try:
-            self._trans.commit()
-        except:
-            pass
-        self._conn.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self.rollback()
-        else:
-            self.commit()
-        self.close()
-
-    def execute(self, sql, params=None):
-        return self.cursor().execute(sql, params)
 
 
 class MockSqliteModule:
