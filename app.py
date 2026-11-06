@@ -13,11 +13,13 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- LIGAÇÃO ÚNICA E SEGURA AO NEON (Com psycopg v3 para Python 3.14) ---
+# --- LIGAÇÃO AO NEON COM DIAGNÓSTICO DE ERRO ---
 DB_URL = "postgresql+psycopg://neondb_owner:npg_56CY0nhVldKF@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
 
-# Cria uma única engine global com pool reutilizável
-engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=3600)
+try:
+    engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=3600)
+except Exception as e:
+    st.error(f"Erro ao inicializar o motor do SQLAlchemy: {e}")
 
 DB_NAME = "cassilab_gestao.db"
 
@@ -30,14 +32,18 @@ def _patched_read_sql(sql, con, *args, **kwargs):
 
 pd.read_sql = _patched_read_sql
 
-# --- WRAPPER DE CONEXÃO REUTILIZÁVEL ---
+# --- WRAPPER DE CONEXÃO COM CAPTURA DE FALHAS ---
 class PostgresConnWrapper:
     _shared_conn = None
 
     def __init__(self, eng):
         self.eng = eng
-        if PostgresConnWrapper._shared_conn is None or PostgresConnWrapper._shared_conn.closed:
-            PostgresConnWrapper._shared_conn = eng.connect()
+        if PostgresConnWrapper._shared_conn is None:
+            try:
+                PostgresConnWrapper._shared_conn = eng.connect()
+            except Exception as e:
+                st.error(f"❌ Falha detalhada na conexão com o Neon: {e}")
+                raise e
         self._conn = PostgresConnWrapper._shared_conn
         self._trans = self._conn.begin()
 
