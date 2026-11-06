@@ -16,8 +16,12 @@ import pandas as pd
 # --- CONFIGURAÇÃO DA LIGAÇÃO AO NEON ---
 try:
     db_url = st.secrets["postgres"]["url"]
+    # Remove parâmetros que o psycopg2 não suporta (como channel_binding)
+    if "channel_binding" in db_url:
+        db_url = db_url.split("&channel_binding=")[0].split("?channel_binding=")[0]
+    
     if "postgresql://" in db_url and not "psycopg2" in db_url:
-        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://")
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 except Exception:
     user = st.secrets.get("user", "neondb_owner")
     password = st.secrets.get("password", "")
