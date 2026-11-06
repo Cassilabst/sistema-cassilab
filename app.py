@@ -126,8 +126,14 @@ class PostgresConnWrapper:
 
 class MockSqliteModule:
     IntegrityError = sqlalchemy.exc.IntegrityError
-    OperationalError = Exception
+    OperationalError = sqlite_original.OperationalError
+    Error = sqlite_original.Error
+    DatabaseError = sqlite_original.DatabaseError
+    DataError = sqlite_original.DataError
+    ProgrammingError = sqlite_original.ProgrammingError
+    NotSupportedError = sqlite_original.NotSupportedError
     Connection = sqlite_original.Connection
+    Cursor = sqlite_original.Cursor
 
     def connect(self, database, *args, **kwargs):
         if USAR_SUPABASE and engine is not None:
