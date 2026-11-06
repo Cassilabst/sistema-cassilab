@@ -109,18 +109,12 @@ class PostgresConnWrapper:
     return PostgresCursorWrapper(self._conn)
 
   def commit(self):
-    try:
-      self._trans.commit()
-      self._trans = self._conn.begin()
-    except:
-      pass
+    self._trans.commit()
+    self._trans = self._conn.begin()
 
   def rollback(self):
-    try:
-      self._trans.rollback()
-      self._trans = self._conn.begin()
-    except:
-      pass
+    self._trans.rollback()
+    self._trans = self._conn.begin()
 
   def close(self):
     try:
