@@ -533,12 +533,8 @@ def migrar_sqlite_para_neon():
     except Exception as e:
         pass
 
-
-# --- EXECUÇÃO EM SEQUÊNCIA (FORA DAS FUNÇÕES) ---
-init_db()
+# Execução logo após o init_db existente:
 migrar_sqlite_para_neon()
-atualizar_cargo_setor_treinamentos_antigos()
-atualizar_validade_treinamentos_para_meses()
 
     # Criar tabelas principais com segurança
     try:
