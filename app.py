@@ -2306,6 +2306,9 @@ if not st.session_state["autenticado"]:
 
     with aba_cadastro:
       with st.form("form_novo_usuario"):
+        st.markdown("### 📝 Solicitar Cadastro de Acesso")
+        st.markdown("Preencha os seus dados para solicitar acesso ao sistema vinculado à sua empresa.")
+        
         cad_nome = st.text_input("Nome Completo", value="", autocomplete="off")
         cad_cpf = st.text_input(
             "CPF (com ou sem pontuação)", value="", autocomplete="off"
@@ -2320,8 +2323,9 @@ if not st.session_state["autenticado"]:
         cad_senha = st.text_input(
             "Crie uma Senha", value="", type="password", autocomplete="new-password"
         )
+        
         btn_cad_usuario = st.form_submit_button(
-            "Cadastrar Acesso", use_container_width=True
+            "Solicitar Cadastro", use_container_width=True
         )
         
         if btn_cad_usuario:
@@ -2337,6 +2341,7 @@ if not st.session_state["autenticado"]:
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
             cursor = conn.cursor()
             
+            # Procura a empresa correspondente
             cursor.execute(
                 "SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1",
                 (f"%{cad_empresa_busca.strip()}%",),
@@ -2345,14 +2350,31 @@ if not st.session_state["autenticado"]:
             
             if emp_encontrada:
               empresa_final = emp_encontrada[0]
+              
+              # Verifica se já existe registo para este CPF nesta empresa e qual o status
               cursor.execute(
-                  "SELECT id FROM usuarios_sistema WHERE cpf = ? AND empresa = ?",
+                  "SELECT status FROM usuarios_sistema WHERE cpf = ? AND empresa = ?",
                   (cpf_formatado, empresa_final),
               )
-              ja_existe_vinculo = cursor.fetchone()
+              reg_existente = cursor.fetchone()
               
-              if ja_existe_vinculo:
-                st.error("Você já possui cadastro de acesso para esta empresa.")
+              if reg_existente:
+                status_atual = reg_existente[0]
+                if status_atual == "Pendente":
+                  st.warning(
+                      f"⏳ **Aviso:** Já existe um pedido de cadastro pendente para o CPF `{cpf_formatado}` "
+                      f"na empresa **{empresa_final}**. O administrador já foi notificado e irá aprovar em breve."
+                  )
+                elif status_atual == "Bloqueado":
+                  st.error(
+                      "⛔ **Acesso Bloqueado:** Este acesso encontra-se atualmente bloqueado. "
+                      "Por favor, entre em contacto com o suporte da Cassilab."
+                  )
+                else:
+                  st.info(
+                      f"ℹ️ **Conta Ativa:** Já possui um acesso ativo para a empresa **{empresa_final}**! "
+                      "Pode utilizar a aba **'🔑 Entrar'** para iniciar sessão diretamente."
+                  )
               else:
                 try:
                   cursor.execute(
@@ -2399,16 +2421,16 @@ Sistema Cassilab SST"""
                   # -------------------------------------------------------
 
                   st.success(
-                      f"Cadastro realizado com sucesso para a empresa {empresa_final}! "
-                      "Aguardando liberação do administrador."
+                      f"✅ Cadastro realizado com sucesso para a empresa **{empresa_final}**! "
+                      "O seu pedido foi enviado ao administrador e será liberado brevemente."
                   )
                 except Exception as e:
                   st.error(f"Erro ao realizar cadastro: {e}")
             else:
-              st.error("Nenhuma empresa encontrada com esse nome.")
+              st.error("⚠️ Nenhuma empresa encontrada com esse nome. Verifique a grafia e tente novamente.")
             conn.close()
           else:
-            st.error("Preencha todos os campos.")
+            st.error("⚠️ Por favor, preencha todos os campos do formulário.")
 
     with aba_recuperar:
       with st.form("form_recuperar"):
