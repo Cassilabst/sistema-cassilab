@@ -2789,6 +2789,7 @@ elif menu == "Cadastro de Empresas":
 # ==========================================
 # 2. CADASTROS GERAIS (O Bloco Completo)
 # ==========================================
+
 elif menu == "Cadastros Gerais":
     col_h1, col_h2 = st.columns([0.8, 0.2])
     with col_h1:
@@ -3507,6 +3508,7 @@ elif menu == "Cadastros Gerais":
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
 # ==========================================
+
 elif menu == "Gestão de Funcionários":
     renderizar_aba_funcionarios(
         DB_NAME,
