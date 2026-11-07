@@ -3,6 +3,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import os
+from datetime import datetime  # <-- Adicione esta linha aqui
 
 def renderizar_aba_admin(
     DB_NAME,
