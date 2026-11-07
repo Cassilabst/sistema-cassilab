@@ -541,8 +541,7 @@ def init_db():
         "ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;",
         
         "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);"
-    ]:
-    ]:
+       ]:
         try:
             cursor.execute(sql_alt)
             conn.commit()
