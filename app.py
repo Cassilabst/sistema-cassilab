@@ -2875,11 +2875,14 @@ elif menu == "Cadastros Gerais":
                 conn,
             )
             conn.close()
+
+            # --- CORREÇÃO APLICADA AQUI ---
             if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
-                df_cargos_geral = df_cargos_geral[
-                    df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
-                    == str(filtro_cargo_emp).strip().lower()
-                ]
+                if "empresa" in df_cargos_geral.columns:
+                    df_cargos_geral = df_cargos_geral[
+                        df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
+                        == str(filtro_cargo_emp).strip().lower()
+                    ]
             if not df_cargos_geral.empty:
                 if "sel_id_cargo_geral" not in st.session_state:
                     st.session_state["sel_id_cargo_geral"] = None
