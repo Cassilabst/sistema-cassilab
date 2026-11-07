@@ -296,3 +296,23 @@ def renderizar_aba_admin(
             st.dataframe(df_logs_exib, use_container_width=True, hide_index=True)
         else:
             st.info("Nenhum log registrado até o momento.")
+
+            # --- ADIÇÃO DO BOTÃO DE BACKUP NA ADMINISTRAÇÃO ---
+    st.markdown("---")
+    st.subheader("💾 Cópia de Segurança (Backup do Banco de Dados)")
+    st.write("Faça o download do arquivo completo da base de dados (`.db`) para guardar no seu computador a qualquer momento.")
+
+    if os.path.exists(DB_NAME):
+        with open(DB_NAME, "rb") as f:
+            bytes_db = f.read()
+        
+        st.download_button(
+            label="📥 Baixar Banco de Dados Completo (.db)",
+            data=bytes_db,
+            file_name=f"backup_cassilab_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db",
+            mime="application/octet-stream",
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ Arquivo de banco de dados não encontrado no caminho atual.")
+
