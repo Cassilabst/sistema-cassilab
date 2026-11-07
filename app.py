@@ -2786,33 +2786,36 @@ elif menu == "Cadastro de Empresas":
         registrar_log,
     )
 
-        elif menu == "Cadastros Gerais":
-            col_h1, col_h2 = st.columns([0.8, 0.2])
-            with col_h1:
-                st.title("⚙️ Gerenciamento de Cadastros Gerais")
-            with col_h2:
-                st.write("")
-                if st.button("🔄 Atualizar Aba"):
-                    st.rerun()
+# ==========================================
+# 2. CADASTROS GERAIS (O Bloco Completo)
+# ==========================================
+elif menu == "Cadastros Gerais":
+    col_h1, col_h2 = st.columns([0.8, 0.2])
+    with col_h1:
+        st.title("⚙️ Gerenciamento de Cadastros Gerais")
+    with col_h2:
+        st.write("")
+        if st.button("🔄 Atualizar Aba"):
+            st.rerun()
 
-            if not is_admin:
-                st.warning("🔒 Área restrita ao Administrador.")
-            else:
-                empresas_cadastradas = get_empresas()
-                
-                sub_abas_nomes = ["Cargos", "Setores", "Serviços", "Treinamentos", "EPIs"]
-                sub_aba_url = st.query_params.get("sub_aba", "Cargos")
-                idx_aba_inicial = sub_abas_nomes.index(sub_aba_url) if sub_aba_url in sub_abas_nomes else 0
+    if not is_admin:
+        st.warning("🔒 Área restrita ao Administrador.")
+    else:
+        empresas_cadastradas = get_empresas()
+        
+        sub_abas_nomes = ["Cargos", "Setores", "Serviços", "Treinamentos", "EPIs"]
+        sub_aba_url = st.query_params.get("sub_aba", "Cargos")
+        idx_aba_inicial = sub_abas_nomes.index(sub_aba_url) if sub_aba_url in sub_abas_nomes else 0
 
-                aba_selecionada = st.radio(
-                    "Navegação de Cadastros",
-                    sub_abas_nomes,
-                    index=idx_aba_inicial,
-                    horizontal=True,
-                    key="radio_sub_abas_gerais"
-                )
-                st.query_params["sub_aba"] = aba_selecionada
-                st.markdown("---")
+        aba_selecionada = st.radio(
+            "Navegação de Cadastros",
+            sub_abas_nomes,
+            index=idx_aba_inicial,
+            horizontal=True,
+            key="radio_sub_abas_gerais"
+        )
+        st.query_params["sub_aba"] = aba_selecionada
+        st.markdown("---")
 
         if aba_selecionada == "Cargos":
             st.subheader("Gerenciar Cargos por Empresa")
@@ -3500,7 +3503,6 @@ elif menu == "Cadastro de Empresas":
                         st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
             else:
                 st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
-
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
