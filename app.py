@@ -3307,19 +3307,38 @@ elif menu == "Cadastros Gerais":
                     empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
                     key="sel_emp_treinamento_geral",
                 )
-                c_tr_1, c_tr_2 = st.columns([0.7, 0.3])
-                novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
-                nova_carga_horaria_geral = c_tr_2.text_input("Carga Horária (ex: 8 horas)", value="8 horas")
+                
+                # Puxa os serviços/itens já cadastrados para servirem de base de escolha
+                conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
+                try:
+                    df_serv_base = pd.read_sql("SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", conn_base)
+                except:
+                    df_serv_base = pd.DataFrame()
+                conn_base.close()
+                lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
+
+                c_tr_1, c_tr_2, c_tr_3 = st.columns([0.4, 0.4, 0.2])
+                
+                if lista_base_servicos:
+                    novo_treinamento_geral = c_tr_1.selectbox("Selecionar do Catálogo de Serviços", ["-- Digitar Novo --"] + lista_base_servicos)
+                    if novo_treinamento_geral == "-- Digitar Novo --":
+                        novo_treinamento_geral = c_tr_2.text_input("Nome do Novo Treinamento")
+                else:
+                    novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
+                
+                nova_carga_horaria_geral = c_tr_3.text_input("Carga Horária", value="8 horas")
                 btn_add_treinamento_geral = st.form_submit_button("Adicionar e Salvar Treinamento")
                 
                 if btn_add_treinamento_geral:
-                    if empresa_trein_sel != "Nenhuma" and novo_treinamento_geral.strip():
+                    # Se escolheu no selectbox mas digitou no input alternativo, trata
+                    trein_para_salvar = novo_treinamento_geral if novo_treinamento_geral != "-- Digitar Novo --" else ""
+                    
+                    if empresa_trein_sel != "Nenhuma" and str(trein_para_salvar).strip():
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
-                        trein_fmt = formatar_titulo(novo_treinamento_geral)
+                        trein_fmt = formatar_titulo(trein_para_salvar)
                         
                         try:
-                            # Garante que a coluna empresa existe na tabela de cadastros gerais
                             cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN empresa TEXT;")
                             conn.commit()
                         except:
@@ -3353,7 +3372,7 @@ elif menu == "Cadastros Gerais":
                             st.error(f"Erro ao cadastrar treinamento: {e}")
                         conn.close()
                     else:
-                        st.error("Selecione a empresa e preencha o nome do treinamento.")
+                        st.error("Selecione a empresa e preencha ou escolha o nome do treinamento.")
                         
             st.markdown("---")
             filtro_treinamento_emp = st.selectbox(
@@ -3369,7 +3388,6 @@ elif menu == "Cadastros Gerais":
                     conn,
                 )
             except:
-                # Fallback caso a tabela antiga não tenha a coluna empresa
                 try:
                     df_temp = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
                     df_temp["empresa"] = "Todas"
