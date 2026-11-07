@@ -2871,79 +2871,59 @@ elif menu == "Cadastros Gerais":
             )
             
             conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_cargos_geral = pd.read_sql(
-                "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
-                conn,
-            )
+            try:
+                df_cargos_geral = pd.read_sql(
+                    "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
+                    conn,
+                )
+            except:
+                df_temp = pd.read_sql("SELECT id, cargo FROM cad_cargos ORDER BY cargo ASC", conn)
+                df_temp["empresa"] = "Todas"
+                df_cargos_geral = df_temp[["id", "empresa", "cargo"]]
             conn.close()
 
-            # Cria uma cópia exclusiva para exibição filtrada
-            df_exibicao_cargos = df_cargos_geral.copy()
-            if filtro_cargo_emp != "Todas as Empresas" and not df_exibicao_cargos.empty:
-                if "empresa" in df_exibicao_cargos.columns:
-                    df_exibicao_cargos = df_exibicao_cargos[
-                        df_exibicao_cargos["empresa"].astype(str).str.strip().str.lower()
-                        == str(filtro_cargo_emp).strip().lower()
-                    ]
-
-            # Exibe o editor com os dados devidamente filtrados
-            edit_cargos_gerais = st.data_editor(
-                df_exibicao_cargos,
-                use_container_width=True,
-                num_rows="dynamic",
-                key="edit_cargos_gerais_tbl",
-                hide_index=True,
-                column_config={
-                    "id": st.column_config.NumberColumn("ID", disabled=True),
-                    "empresa": st.column_config.TextColumn("Empresa"),
-                    "cargo": st.column_config.TextColumn("Cargo"),
-                }
-            )
-
-            # --- CORREÇÃO APLICADA AQUI ---
+            # Aplicação rigorosa do filtro por empresa
             if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
                 if "empresa" in df_cargos_geral.columns:
                     df_cargos_geral = df_cargos_geral[
                         df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
                         == str(filtro_cargo_emp).strip().lower()
                     ]
+
             if not df_cargos_geral.empty:
                 if "sel_id_cargo_geral" not in st.session_state:
                     st.session_state["sel_id_cargo_geral"] = None
+                    
                 df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
                 df_cargos_geral["Selecionar"] = (
-                    df_cargos_geral["_id_banco"]
-                    == st.session_state["sel_id_cargo_geral"]
+                    df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
                 )
-                df_cargos_geral = df_cargos_geral[
-                    ["Selecionar", "_id_banco", "empresa", "cargo"]
-                ]
+                
+                # Reorganiza as colunas mantendo o padrão do sistema
+                df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
                 df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                 df_cargos_ex = adicionar_numeracao(df_cargos_ex)
-                edit_cargos = st.data_editor(
+                
+                edit_cargos_geral = st.data_editor(
                     df_cargos_ex,
                     hide_index=True,
                     num_rows="fixed",
-                    key="edit_cargos_tbl",
+                    key="edit_cargos_gerais_tbl",
                     use_container_width=True,
                     column_config={
-                        "Selecionar": st.column_config.CheckboxColumn(
-                            "Selecionar", required=True
-                        ),
+                        "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
                         "_id_banco": None,
                         "Nº": st.column_config.NumberColumn("Nº", disabled=True),
                     },
                 )
-                curr_c_geral = edit_cargos[edit_cargos["Selecionar"] == True][
-                    "_id_banco"
-                ].tolist()
-                new_c_geral = [
-                    uid
-                    for uid in curr_c_geral
-                    if uid != st.session_state["sel_id_cargo_geral"]
-                ]
-                if new_c_geral:
-                    st.session_state["sel_id_cargo_geral"] = new_c_geral[-1]
+                
+                curr_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]["_id_banco"].tolist()
+                new_cargo = [uid for uid in curr_cargo if uid != st.session_state["sel_id_cargo_geral"]]
+                if new_cargo:
+                    st.session_state["sel_id_cargo_geral"] = new_cargo[-1]
+                    st.rerun()
+                elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
+                    st.session_state["sel_id_cargo_geral"] = None
                     st.rerun()
                 elif not curr_c_geral and st.session_state["sel_id_cargo_geral"] is not None:
                     st.session_state["sel_id_cargo_geral"] = None
