@@ -12,29 +12,26 @@ def renderizar_aba_treinamentos(*args, **kwargs):
     emp_usuario = kwargs.get("emp_usuario") or (args[2] if len(args) > 2 else "Todas")
     formatar_titulo = kwargs.get("formatar_titulo") or (args[3] if len(args) > 3 else lambda x: x)
     
-    # --- FILTROS DE PESQUISA ANTES DA TABELA ---
-    st.markdown("### 🔍 Filtrar Registros de Treinamentos")
-    col_f1, col_f2 = st.columns(2)
+    # --- SELETOR DE ORDENAÇÃO DA TABELA ---
+    st.markdown("### 📋 Registros de Treinamentos")
     
-    filtro_nome_func = col_f1.text_input("Filtrar por Nome do Funcionário", value="", key="filtro_trein_nome")
-    filtro_nome_trein = col_f2.text_input("Filtrar por Nome do Treinamento", value="", key="filtro_trein_nome_trein")
+    tipo_ordenacao = st.selectbox(
+        "Ordenar tabela por:",
+        ["Nome do Colaborador", "Tipo de Treinamento", "Mais Recentes (ID)"],
+        key="select_ordem_treinamentos"
+    )
 
-    # Carrega os dados originais do banco dentro do módulo utilizando o sqlite3 já importado
+    if tipo_ordenacao == "Nome do Colaborador":
+        ordem_sql = "ORDER BY funcionario ASC"
+    elif tipo_ordenacao == "Tipo de Treinamento":
+        ordem_sql = "ORDER BY treinamento ASC"
+    else:
+        ordem_sql = "ORDER BY id DESC"
+
+    # Carrega os dados do banco já ordenados conforme a escolha
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    df_exibir = pd.read_sql("SELECT * FROM cad_treinamentos ORDER BY id DESC", conn)
+    df_exibir = pd.read_sql(f"SELECT * FROM cad_treinamentos {ordem_sql}", conn)
     conn.close()
-
-    # Aplica os filtros se houver algo digitado
-    if not df_exibir.empty:
-        if filtro_nome_func.strip() and "funcionario" in df_exibir.columns:
-            df_exibir = df_exibir[
-                df_exibir["funcionario"].astype(str).str.contains(filtro_nome_func.strip(), case=False, na=False)
-            ]
-            
-        if filtro_nome_trein.strip() and "treinamento" in df_exibir.columns:
-            df_exibir = df_exibir[
-                df_exibir["treinamento"].astype(str).str.contains(filtro_nome_trein.strip(), case=False, na=False)
-            ]
           
     # --- EXIBIÇÃO DA TABELA FILTRADA NO DATA EDITOR ---
     # (Substitua a variável antiga da tabela por 'df_exibir' já tratada com a formatação e numeração)
