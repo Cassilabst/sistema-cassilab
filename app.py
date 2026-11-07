@@ -3467,16 +3467,13 @@ elif menu == "Cadastros Gerais":
                 if col_trg_1.button("💾 Salvar Alterações na Tabela de Treinamentos", use_container_width=True, key="btn_salvar_tr_geral_tbl"):
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
+                    
+                    # Itera sobre o que foi editado no st.data_editor (edit_tr_geral)
                     for _, row in edit_tr_geral.iterrows():
-                        # Pega o ID com segurança de qualquer variação de nome de coluna
-                        tr_id = row.get("_id_banco")
-                        if pd.isna(tr_id):
-                            tr_id = row.get("id", row.get("ID", row.get("Id")))
-                            
-                        # Pega os valores independentemente de maiúsculas/minúsculas
+                        tr_id = row.get("id", row.get("ID", row.get("_id_banco")))
                         e_val = row.get("empresa", row.get("Empresa", ""))
                         tr_val = row.get("treinamento", row.get("Treinamento", ""))
-                        carga_val = row.get("carga_horaria", row.get("Carga Horária", row.get("carga horaria", "8 horas")))
+                        carga_val = row.get("carga_horaria", row.get("Carga Horária", "8 horas"))
                         
                         if pd.notna(tr_val) and str(tr_val).strip() and pd.notna(tr_id):
                             try:
@@ -3486,11 +3483,9 @@ elif menu == "Cadastros Gerais":
                                 )
                             except Exception as err:
                                 print(f"Erro ao atualizar ID {tr_id}: {err}")
+                                
                     conn.commit()
                     conn.close()
-                    if "edit_treinamentos_gerais_tbl" in st.session_state:
-                        del st.session_state["edit_treinamentos_gerais_tbl"]
-                    st.session_state["sel_id_tr_geral"] = None
                     st.cache_data.clear()
                     st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
                     st.rerun()
