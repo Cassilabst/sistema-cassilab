@@ -327,64 +327,64 @@ def renderizar_aba_funcionarios(
       st.markdown("")
       col_btn_ed, col_btn_ex = st.columns(2)
 
-      # BOTÃO EDITAR (Abre o Pop-up)
-      if col_btn_ed.button("✏️ Editar Funcionário Selecionado", use_container_width=True):
-        if pode_editar:
-          if len(sel_funcs) == 1:
-            id_para_editar = int(sel_funcs.iloc[0]["_id_banco"])
-            st.session_state["sel_id_func"] = None
-            if "editor_selecao_funcionarios" in st.session_state:
-              del st.session_state["editor_selecao_funcionarios"]
-            dialog_editar_funcionario(id_para_editar)
-          else:
-            st.warning("⚠️ Selecione um único funcionário marcando o quadradinho.")
-        else:
-          st.warning("🔒 Seu perfil não possui permissão para editar.")
-
       # BOTÃO EXCLUIR EM CASCATA (Direto e Seguro pelo Nome)
       if col_btn_ex.button("🗑️ Excluir Funcionário Selecionado", use_container_width=True, key="btn_excluir_func_direto"):
-        if not pode_excluir:
-          st.warning("🔒 Seu perfil não possui permissão para excluir.")
-        else:
-          id_a_apagar = None
-          
-          # 1. Tenta obter a partir do editor ativo
-          if 'editor_selecao_funcionarios' in st.session_state:
-            df_editor_atual = st.session_state['editor_selecao_funcionarios']
-            if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
-              selecionados = df_editor_atual[df_editor_atual["Selecionar"] == True]
-              if not selecionados.empty:
-                id_a_apagar = int(selecionados.iloc[0]["_id_banco"])
+          if not pode_excluir:
+              st.warning("🔒 Seu perfil não possui permissão para excluir.")
+          else:
+              id_a_apagar = None
+              
+              # 1. Tenta obter a partir do editor ativo
+              if 'editor_selecao_funcionarios' in st.session_state:
+                  df_editor_atual = st.session_state['editor_selecao_funcionarios']
+                  if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
+                      selecionados = df_editor_atual[df_editor_atual["Selecionar"] == True]
+                      if not selecionados.empty:
+                          id_a_apagar = int(selecionados.iloc[0]["_id_banco"])
 
-          # 2. Fallback para sel_funcs
-          if not id_a_apagar and not sel_funcs.empty:
-            id_a_apagar = int(sel_funcs.iloc[0]["_id_banco"])
+              # 2. Fallback para sel_funcs
+              if not id_a_apagar and not sel_funcs.empty:
+                  id_a_apagar = int(sel_funcs.iloc[0]["_id_banco"])
 
-          if id_a_apagar:
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
-            cursor = conn.cursor()
-            
-            # Resgata o nome exato do colaborador para apagar em todas as tabelas
-            cursor.execute("SELECT funcionario FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
-            row_func = cursor.fetchone()
-            nome_colaborador = row_func[0] if row_func else None
-            
-            # Executa a exclusão principal
-            cursor.execute("DELETE FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
-            
-            # Exclusão em cascata nas demais tabelas pelo nome do colaborador
-            if nome_colaborador:
-              cursor.execute("DELETE FROM exames WHERE funcionario = ?", (nome_colaborador,))
-              cursor.execute("DELETE FROM cad_treinamentos WHERE funcionario = ?", (nome_colaborador,))
-              cursor.execute("DELETE FROM cad_epis WHERE funcionario = ?", (nome_colaborador,))
-              cursor.execute("DELETE FROM absenteismo WHERE funcionario = ?", (nome_colaborador,))
-            
-            conn.commit()
-            conn.close()
+              if id_a_apagar:
+                  conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                  cursor = conn.cursor()
+                  
+                  # Resgata o nome exato do colaborador para apagar em todas as tabelas
+                  cursor.execute("SELECT funcionario FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
+                  row_func = cursor.fetchone()
+                  nome_colaborador = row_func[0] if row_func else None
+                  
+                  # Executa a exclusão principal
+                  cursor.execute("DELETE FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
+                  
+                  # Exclusão em cascata nas demais tabelas pelo nome do colaborador
+                  if nome_colaborador:
+                      cursor.execute("DELETE FROM exames WHERE funcionario = ?", (nome_colaborador,))
+                      cursor.execute("DELETE FROM cad_treinamentos WHERE funcionario = ?", (nome_colaborador,))
+                      cursor.execute("DELETE FROM cad_epis WHERE funcionario = ?", (nome_colaborador,))
+                      cursor.execute("DELETE FROM absenteismo WHERE funcionario = ?", (nome_colaborador,))
+                  
+                  conn.commit()
+                  conn.close()
 
-            if "editor_selecao_funcionarios" in st.session_state:
-              del st.session_state["editor_selecao_funcionarios"]
-            st.session_state["sel_id_func"] = None
+                  if "editor_selecao_funcionarios" in st.session_state:
+                      del st.session_state["editor_selecao_funcionarios"]
+                  st.session_state["sel_id_func"] = None
+                  
+                  registrar_log(
+                      st.session_state.get("nome_usuario", "Desconhecido"),
+                      empresa_selecionada,
+                      f"Excluiu colaborador ID {id_a_apagar} ({nome_colaborador}) em cascata",
+                  )
+                  st.success("✅ Funcionário excluído com sucesso de todo o sistema!")
+                  st.rerun()
+              else:
+                  st.warning("⚠️ Por favor, marque o quadradinho (checkbox) do funcionário que deseja excluir.")
+
+      if st.session_state.get("modal_edit_func_id"):
+          dialog_editar_funcionario(st.session_state["modal_edit_func_id"])
+          st.session_state["modal_edit_func_id"] = None
             
             registrar_log(
               st.session_state.get("nome_usuario", "Desconhecido"),
