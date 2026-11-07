@@ -202,28 +202,33 @@ def renderizar_aba_exames(
       if "sel_id_ex" not in st.session_state:
         st.session_state["sel_id_ex"] = None
 
+      # --- BOTÕES DE AÇÃO LADO A LADO ---
       col_acao1, col_acao2 = st.columns(2)
-      if pode_excluir:
-        if col_acao2.button(
-            "🗑️ Excluir Exame Selecionado",
-            use_container_width=True,
-            key="btn_del_ex",
-        ):
-          if st.session_state["sel_id_ex"] is not None:
-            st.session_state["modal_excluir_ativo"] = True
-            st.session_state["modal_excluir_tabela"] = "exames"
-            st.session_state["modal_excluir_id"] = int(
-                st.session_state["sel_id_ex"]
-            )
-            st.session_state["modal_excluir_editor_key"] = (
-                "editor_selecao_exames"
-            )
-            st.session_state["sel_id_ex"] = None
-            st.rerun()
-          else:
-            st.warning(
-                "⚠️ Selecione um exame marcando o quadradinho para excluir."
-            )
+      
+      with col_acao1:
+          if pode_editar:
+              if st.button("✏️ Editar Exame Selecionado", use_container_width=True, key="btn_edit_ex"):
+                  if st.session_state.get("sel_id_ex") is not None:
+                      id_para_editar = int(st.session_state["sel_id_ex"])
+                      st.session_state["sel_id_ex"] = None
+                      if "editor_selecao_exames" in st.session_state:
+                          del st.session_state["editor_selecao_exames"]
+                      dialog_editar_exame(id_para_editar)
+                  else:
+                      st.warning("⚠️ Selecione um exame marcando o quadradinho para editar.")
+
+      with col_acao2:
+          if pode_excluir:
+              if st.button("🗑️ Excluir Exame Selecionado", use_container_width=True, key="btn_del_ex"):
+                  if st.session_state.get("sel_id_ex") is not None:
+                      st.session_state["modal_excluir_ativo"] = True
+                      st.session_state["modal_excluir_tabela"] = "exames"
+                      st.session_state["modal_excluir_id"] = int(st.session_state["sel_id_ex"])
+                      st.session_state["modal_excluir_editor_key"] = "editor_selecao_exames"
+                      st.session_state["sel_id_ex"] = None
+                      st.rerun()
+                  else:
+                      st.warning("⚠️ Selecione um exame marcando o quadradinho para excluir.")
 
       st.write("")
 
