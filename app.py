@@ -536,7 +536,7 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS cad_setores (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, setor TEXT);",
         "CREATE TABLE IF NOT EXISTS cad_epis (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, epi TEXT, ca TEXT, UNIQUE(empresa, epi));",
         
-        "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, treinamento TEXT UNIQUE, carga_horaria TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, treinamento TEXT, carga_horaria TEXT, UNIQUE(empresa, treinamento));",
         "ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;",
         
         "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);"
