@@ -12,15 +12,22 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
 import os
+import shutil
 
+# --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
 if os.path.exists("/data"):
-    DB_NAME = "/data/cassilab_gestao.db"
+    DB_PATH_PERSISTENT = "/data/cassilab_gestao.db"
+    DB_PATH_LOCAL = "cassilab_gestao.db"
+    
+    # Se o disco persistente ainda estiver vazio, mas o arquivo veio do GitHub, copia para lá automaticamente!
+    if not os.path.exists(DB_PATH_PERSISTENT) and os.path.exists(DB_PATH_LOCAL):
+        shutil.copy(DB_PATH_LOCAL, DB_PATH_PERSISTENT)
+        
+    DB_NAME = DB_PATH_PERSISTENT
 else:
     DB_NAME = "cassilab_gestao.db"
     
-# Usamos SQLite local robusto para máxima velocidade e sem latência de rede para os seus clientes
 DB_URL = f"sqlite:///{DB_NAME}"
 
 try:
