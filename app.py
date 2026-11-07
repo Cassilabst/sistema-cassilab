@@ -2905,7 +2905,7 @@ elif menu == "Cadastros Gerais":
                     df_cargos_ex,
                     hide_index=True,
                     num_rows="fixed",
-                    key="edit_cargos_gerais_tbl",
+                    key=f"edit_cargos_gerais_tbl_{filtro_cargo_emp}",
                     use_container_width=True,
                     column_config={
                         "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
