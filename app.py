@@ -3683,4 +3683,3 @@ elif menu == "Elaboração de OS (Ordem de Serviço)":
 elif menu == "Lista de Presença":
     renderizar_aba_lista_presenca(DB_NAME, is_admin, emp_usuario, get_empresas, registrar_log)
 
-
