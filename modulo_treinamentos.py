@@ -17,18 +17,16 @@ def renderizar_aba_treinamentos(*args, **kwargs):
     
     tipo_ordenacao = st.selectbox(
         "Ordenar tabela por:",
-        ["Nome do Colaborador", "Tipo de Treinamento", "Mais Recentes (ID)"],
+        ["Nome do Treinamento (A-Z)", "Mais Recentes (ID)"],
         key="select_ordem_treinamentos"
     )
 
-    if tipo_ordenacao == "Nome do Colaborador":
-        ordem_sql = "ORDER BY funcionario ASC"
-    elif tipo_ordenacao == "Tipo de Treinamento":
+    if tipo_ordenacao == "Nome do Treinamento (A-Z)":
         ordem_sql = "ORDER BY treinamento ASC"
     else:
         ordem_sql = "ORDER BY id DESC"
 
-    # Carrega os dados do banco já ordenados conforme a escolha
+    # Carrega os dados do banco já ordenados corretamente pelas colunas existentes
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     df_exibir = pd.read_sql(f"SELECT * FROM cad_treinamentos {ordem_sql}", conn)
     conn.close()
