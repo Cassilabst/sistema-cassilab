@@ -3445,6 +3445,7 @@ elif menu == "Cadastros Gerais":
                         e_val = row.get("Empresa", row.get("empresa"))
                         tr_val = row.get("Treinamento", row.get("treinamento"))
                         carga_val = row.get("Carga Horária", row.get("carga_horaria", "8 horas"))
+                        
                         if pd.notna(tr_val) and str(tr_val).strip():
                             if pd.notna(tr_id) and str(tr_id).strip() not in ("", "nan", "None"):
                                 try:
@@ -3452,8 +3453,8 @@ elif menu == "Cadastros Gerais":
                                         "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
                                         (str(e_val).strip(), formatar_titulo(tr_val), str(carga_val).strip(), int(tr_id)),
                                     )
-                                except:
-                                    pass
+                                except Exception as err:
+                                    print(f"Erro ao atualizar: {err}")
                     conn.commit()
                     conn.close()
                     if "edit_treinamentos_gerais_tbl" in st.session_state:
