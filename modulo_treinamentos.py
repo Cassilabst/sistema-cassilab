@@ -19,8 +19,8 @@ def renderizar_aba_treinamentos(*args, **kwargs):
     filtro_nome_func = col_f1.text_input("Filtrar por Nome do Funcionário", value="", key="filtro_trein_nome")
     filtro_nome_trein = col_f2.text_input("Filtrar por Nome do Treinamento", value="", key="filtro_trein_nome_trein")
 
-    # Carrega os dados originais do banco dentro do módulo
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+    # Carrega os dados originais do banco dentro do módulo utilizando o sqlite3 já importado
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
     df_exibir = pd.read_sql("SELECT * FROM cad_treinamentos ORDER BY id DESC", conn)
     conn.close()
 
