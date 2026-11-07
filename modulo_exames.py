@@ -274,13 +274,21 @@ def renderizar_aba_exames(
           },
       )
 
-      linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
-        "_id_banco"
-    ].tolist()
-    if linhas_marcadas and pode_editar:
-        id_para_editar = int(linhas_marcadas[-1])
-        ...
-        dialog_editar_exame(id_para_editar)
+      # Atualiza a seleção no session_state com base no que foi marcado na tabela
+      linhas_marcadas = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
+      if linhas_marcadas:
+        st.session_state["sel_id_ex"] = int(linhas_marcadas[-1])
+      else:
+        st.session_state["sel_id_ex"] = None
+
+      # Botão opcional para abrir a edição do registo selecionado de forma limpa
+      if st.session_state["sel_id_ex"] is not None and pode_editar:
+        if st.button("✏️ Editar Exame Selecionado", type="secondary", use_container_width=True):
+          id_para_editar = st.session_state["sel_id_ex"]
+          st.session_state["sel_id_ex"] = None
+          if "editor_selecao_exames" in st.session_state:
+            del st.session_state["editor_selecao_exames"]
+          dialog_editar_exame(id_para_editar)
 
   with aba_novo:
     st.markdown("### ➕ Adicionar Novo Exame Ocupacional")
