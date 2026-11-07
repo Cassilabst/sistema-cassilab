@@ -279,12 +279,12 @@ def renderizar_aba_exames(
           },
       )
 
-      # Atualiza a seleção no session_state com base no que foi marcado na tabela
+      # Atualiza a seleção no session_state com base no que foi marcado na tabela de forma limpa
       linhas_marcadas = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
       if linhas_marcadas:
-        st.session_state["sel_id_ex"] = int(linhas_marcadas[-1])
+          st.session_state["sel_id_ex"] = int(linhas_marcadas[-1])
       else:
-        st.session_state["sel_id_ex"] = None
+          st.session_state["sel_id_ex"] = None
 
       # Botão opcional para abrir a edição do registo selecionado de forma limpa
       if st.session_state["sel_id_ex"] is not None and pode_editar:
