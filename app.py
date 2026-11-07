@@ -2869,12 +2869,36 @@ elif menu == "Cadastros Gerais":
                 ["Todas as Empresas"] + empresas_cadastradas,
                 key="filtro_cargo_emp_view",
             )
+            
             conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             df_cargos_geral = pd.read_sql(
                 "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
                 conn,
             )
             conn.close()
+
+            # Aplicação rigorosa do filtro por empresa
+            df_exibicao_cargos = df_cargos_geral.copy()
+            if filtro_cargo_emp != "Todas as Empresas" and not df_exibicao_cargos.empty:
+                if "empresa" in df_exibicao_cargos.columns:
+                    df_exibicao_cargos = df_exibicao_cargos[
+                        df_exibicao_cargos["empresa"].astype(str).str.strip().str.lower()
+                        == str(filtro_cargo_emp).strip().lower()
+                    ]
+
+            # Exibe o editor com os dados devidamente filtrados
+            edit_cargos_gerais = st.data_editor(
+                df_exibicao_cargos,
+                use_container_width=True,
+                num_rows="dynamic",
+                key="edit_cargos_gerais_tbl",
+                hide_index=True,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "empresa": st.column_config.TextColumn("Empresa"),
+                    "cargo": st.column_config.TextColumn("Cargo"),
+                }
+            )
 
             # --- CORREÇÃO APLICADA AQUI ---
             if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
