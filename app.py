@@ -13,130 +13,33 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 
-# --- LIGAÇÃO OFICIAL AO NEON ---
-DB_URL = "postgresql+psycopg://neondb_owner:npg_X5nPbDoaQ0BN@ep-restless-frog-b6ucp22k-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require"
+# --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
+# No Render, utilizamos uma pasta persistente em /data para que o banco SQLite não seja apagado no restart.
+import os
+if os.path.exists("/data"):
+    DB_NAME = "/data/cassilab_gestao.db"
+else:
+    DB_NAME = "cassilab_gestao.db"
+
+# Usamos SQLite local robusto para máxima velocidade e sem latência de rede para os seus clientes
+DB_URL = f"sqlite:///{DB_NAME}"
 
 try:
-    engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=3600)
+    engine = create_engine(DB_URL, connect_args={"timeout": 30}, pool_pre_ping=True)
 except Exception as e:
-    st.error(f"❌ Erro ao inicializar o motor do SQLAlchemy: {e}")
-
-DB_NAME = "cassilab_gestao.db"
+    st.error(f"❌ Erro ao inicializar o motor do SQLite: {e}")
 
 # --- TRADUTOR PARA O PANDAS ---
 if not hasattr(pd, "_original_read_sql"):
     pd._original_read_sql = pd.read_sql
 
 def _patched_read_sql(sql, con, *args, **kwargs):
+    # Se 'con' for string ou sqlite3 connection, usa sqlite nativo para máxima performance local
+    if isinstance(con, (str, sqlite_original.Connection)):
+        return pd._original_read_sql(sql, con, *args, **kwargs)
     return pd._original_read_sql(sql, engine, *args, **kwargs)
 
 pd.read_sql = _patched_read_sql
-
-# --- WRAPPER DE CONEXÃO OTIMIZADO (SEM CONFLITOS) ---
-class PostgresConnWrapper:
-    _shared_conn = None
-
-    def __init__(self, eng):
-        self.eng = eng
-        if PostgresConnWrapper._shared_conn is None or PostgresConnWrapper._shared_conn.closed:
-            try:
-                PostgresConnWrapper._shared_conn = eng.connect()
-            except Exception as e:
-                st.error(f"❌ Falha detalhada na conexão com o Neon: {e}")
-                raise e
-        self._conn = PostgresConnWrapper._shared_conn
-
-    def cursor(self):
-        return PostgresCursorWrapper(self._conn)
-
-    def commit(self):
-        try:
-            self._conn.commit()
-        except:
-            pass
-
-    def rollback(self):
-        try:
-            self._conn.rollback()
-        except:
-            pass
-
-    def close(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self.rollback()
-        else:
-            self.commit()
-
-    def execute(self, sql, params=None):
-        return self.cursor().execute(sql, params)
-
-
-class PostgresCursorWrapper:
-    def __init__(self, conn):
-        self.conn = conn
-        self.last_result = None
-
-    def execute(self, sql, params=None):
-        if "PRAGMA" in sql.upper():
-            return self
-        if params and isinstance(params, (list, tuple)):
-            param_dict = {}
-            new_sql_parts = []
-            parts = sql.split("?")
-            for i, part in enumerate(parts[:-1]):
-                param_name = f"arg{i}"
-                new_sql_parts.append(part)
-                new_sql_parts.append(f":{param_name}")
-                param_dict[param_name] = params[i]
-            new_sql_parts.append(parts[-1])
-            sql = "".join(new_sql_parts)
-            params = param_dict
-        else:
-            if not params:
-                params = {}
-
-        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-        sql = sql.replace("integer primary key autoincrement", "SERIAL PRIMARY KEY")
-
-        try:
-            self.last_result = self.conn.execute(text(sql), params)
-        except Exception as e:
-            raise e
-        return self
-
-    def fetchone(self):
-        return self.last_result.fetchone() if self.last_result else None
-
-    def fetchall(self):
-        return self.last_result.fetchall() if self.last_result else []
-
-    @property
-    def rowcount(self):
-        return self.last_result.rowcount if self.last_result else 0
-
-
-class MockSqliteModule:
-    IntegrityError = sqlalchemy.exc.IntegrityError
-    OperationalError = sqlite_original.OperationalError
-    Error = sqlite_original.Error
-    DatabaseError = sqlite_original.DatabaseError
-    DataError = sqlite_original.DataError
-    ProgrammingError = sqlite_original.ProgrammingError
-    NotSupportedError = sqlite_original.NotSupportedError
-    Connection = sqlite_original.Connection
-    Cursor = sqlite_original.Cursor
-
-    def connect(self, database, *args, **kwargs):
-        return PostgresConnWrapper(engine)
-
-sys.modules["sqlite3"] = MockSqliteModule()
-import sqlite3
 
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
 from modulo_absenteismo import renderizar_aba_absenteismo
@@ -158,8 +61,6 @@ from modulo_senha import renderizar_aba_alterar_senha
 st.set_page_config(
     page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide"
 )
-
-DB_NAME = "cassilab_gestao.db"
 
 def criar_backup_automatico():
     pass
@@ -206,7 +107,7 @@ def adicionar_numeracao(df):
 
 def registrar_log(usuario, empresa, acao):
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         cursor = conn.cursor()
         dt_atual = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
         cursor.execute(
@@ -220,7 +121,7 @@ def registrar_log(usuario, empresa, acao):
 
 def enviar_email_smtp(destinatario, assunto, corpo):
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         cursor = conn.cursor()
         cursor.execute("SELECT email, senha_app FROM configuracoes_email LIMIT 1")
         cfg = cursor.fetchone()
@@ -381,7 +282,7 @@ def calcular_status_exame(data_str):
 
 def sincronizar_status_exames():
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         df = pd.read_sql("SELECT id, proximo_exame FROM exames", conn)
         if not df.empty:
             cursor = conn.cursor()
@@ -396,7 +297,7 @@ def sincronizar_status_exames():
 
 def sincronizar_status_treinamentos():
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         df = pd.read_sql("SELECT id, proximo_treinamento FROM treinamentos", conn)
         if not df.empty:
             cursor = conn.cursor()
@@ -424,7 +325,7 @@ def sincronizar_status_treinamentos():
 
 def sincronizar_status_documentos():
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         df = pd.read_sql("SELECT id, proxima_renovacao FROM documentos", conn)
         if not df.empty:
             cursor = conn.cursor()
@@ -454,7 +355,7 @@ def sincronizar_status_documentos():
 
 def atualizar_cargo_setor_treinamentos_antigos():
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE treinamentos 
@@ -469,7 +370,7 @@ def atualizar_cargo_setor_treinamentos_antigos():
 
 def atualizar_validade_treinamentos_para_meses():
     try:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         cursor = conn.cursor()
         cursor.execute("SELECT id, validade, data_realizacao FROM treinamentos WHERE validade LIKE '%ano%'")
         rows = cursor.fetchall()
@@ -487,7 +388,7 @@ def atualizar_validade_treinamentos_para_meses():
         pass
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -507,15 +408,15 @@ def init_db():
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS configuracoes_email (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT,
             senha_app TEXT
         )
     """)
     
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS alertas_envolto (
-            id SERIAL PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS alertas_enviados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             tipo_item TEXT,
             item_id INTEGER,
@@ -526,7 +427,7 @@ def init_db():
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             treinamento TEXT,
             carga_horaria TEXT,
@@ -540,7 +441,7 @@ def init_db():
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matriz_treinamentos_status (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             funcionario TEXT,
             treinamento TEXT,
@@ -551,7 +452,7 @@ def init_db():
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS absenteismo (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
             nome TEXT,
             turno TEXT,
@@ -575,7 +476,7 @@ def init_db():
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresas (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             data_registro TEXT,
             nome_empresa TEXT UNIQUE,
             cnpj TEXT,
@@ -593,47 +494,46 @@ def init_db():
         )
     """)
     
-    # Alterações de colunas blindadas individualmente
     for sql_alt in [
-        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS data_registro TEXT;",
-        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS cnae TEXT;",
-        "ALTER TABLE empresas ADD COLUMN IF NOT EXISTS porte TEXT;",
+        "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
+        "ALTER TABLE empresas ADD COLUMN cnae TEXT;",
+        "ALTER TABLE empresas ADD COLUMN porte TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS base_funcionarios (id SERIAL PRIMARY KEY, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
-        "ALTER TABLE base_funcionarios ADD COLUMN IF NOT EXISTS data_nascimento TEXT;",
+        "CREATE TABLE IF NOT EXISTS base_funcionarios (id INTEGER PRIMARY KEY AUTOINCREMENT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
+        "ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS usuarios_sistema (id SERIAL PRIMARY KEY, nome TEXT, cpf TEXT, empresa TEXT, email TEXT, celular TEXT, senha TEXT, status TEXT DEFAULT 'Pendente', nivel_permissao TEXT DEFAULT 'Somente Visualizar');",
-        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS email TEXT;",
-        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS celular TEXT;",
-        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS status TEXT;",
-        "ALTER TABLE usuarios_sistema ADD COLUMN IF NOT EXISTS nivel_permissao TEXT;",
+        "CREATE TABLE IF NOT EXISTS usuarios_sistema (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, cpf TEXT, empresa TEXT, email TEXT, celular TEXT, senha TEXT, status TEXT DEFAULT 'Pendente', nivel_permissao TEXT DEFAULT 'Somente Visualizar');",
+        "ALTER TABLE usuarios_sistema ADD COLUMN email TEXT;",
+        "ALTER TABLE usuarios_sistema ADD COLUMN celular TEXT;",
+        "ALTER TABLE usuarios_sistema ADD COLUMN status TEXT;",
+        "ALTER TABLE usuarios_sistema ADD COLUMN nivel_permissao TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS exames (id SERIAL PRIMARY KEY, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, ultimo_exame TEXT, periodicidade TEXT, tipo_exame TEXT, proximo_exame TEXT, status TEXT);",
-        "ALTER TABLE exames ADD COLUMN IF NOT EXISTS periodicidade TEXT;",
+        "CREATE TABLE IF NOT EXISTS exames (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, ultimo_exame TEXT, periodicidade TEXT, tipo_exame TEXT, proximo_exame TEXT, status TEXT);",
+        "ALTER TABLE exames ADD COLUMN periodicidade TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS treinamentos (id SERIAL PRIMARY KEY, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, treinamento TEXT, carga_horaria TEXT, pessoas_treinadas TEXT, data_realizacao TEXT, validade TEXT, proximo_treinamento TEXT, status TEXT);",
-        "ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS pessoas_treinadas TEXT;",
-        "ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS validade TEXT;",
-        "ALTER TABLE treinamentos ADD COLUMN IF NOT EXISTS proximo_treinamento TEXT;",
+        "CREATE TABLE IF NOT EXISTS treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, treinamento TEXT, carga_horaria TEXT, pessoas_treinadas TEXT, data_realizacao TEXT, validade TEXT, proximo_treinamento TEXT, status TEXT);",
+        "ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;",
+        "ALTER TABLE treinamentos ADD COLUMN validade TEXT;",
+        "ALTER TABLE treinamentos ADD COLUMN proximo_treinamento TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS epis (id SERIAL PRIMARY KEY, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, epi TEXT, ca TEXT, data_entrega TEXT, quantidade INTEGER, status TEXT);",
+        "CREATE TABLE IF NOT EXISTS epis (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, epi TEXT, ca TEXT, data_entrega TEXT, quantidade INTEGER, status TEXT);",
         
-        "CREATE TABLE IF NOT EXISTS servicos_realizados (id SERIAL PRIMARY KEY, empresa TEXT, servico TEXT, data_realizacao TEXT, responsavel TEXT, observacoes TEXT, valor REAL DEFAULT 0, status TEXT, nfes TEXT);",
-        "ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS valor REAL DEFAULT 0;",
-        "ALTER TABLE servicos_realizados ADD COLUMN IF NOT EXISTS nfes TEXT;",
+        "CREATE TABLE IF NOT EXISTS servicos_realizados (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, servico TEXT, data_realizacao TEXT, responsavel TEXT, observacoes TEXT, valor REAL DEFAULT 0, status TEXT, nfes TEXT);",
+        "ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;",
+        "ALTER TABLE servicos_realizados ADD COLUMN nfes TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS documentos (id SERIAL PRIMARY KEY, empresa TEXT, documento TEXT, data_emissao TEXT, vigencia TEXT, proxima_renovacao TEXT, status TEXT);",
-        "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS proxima_renovacao TEXT;",
+        "CREATE TABLE IF NOT EXISTS documentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, documento TEXT, data_emissao TEXT, vigencia TEXT, proxima_renovacao TEXT, status TEXT);",
+        "ALTER TABLE documentos ADD COLUMN proxima_renovacao TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS logs_sistema (id SERIAL PRIMARY KEY, data_hora TEXT, usuario TEXT, empresa TEXT, acao TEXT);",
-        "CREATE TABLE IF NOT EXISTS cad_cargos (id SERIAL PRIMARY KEY, empresa TEXT, cargo TEXT);",
-        "CREATE TABLE IF NOT EXISTS cad_setores (id SERIAL PRIMARY KEY, empresa TEXT, setor TEXT);",
-        "CREATE TABLE IF NOT EXISTS cad_epis (id SERIAL PRIMARY KEY, empresa TEXT, epi TEXT, ca TEXT, UNIQUE(empresa, epi));",
+        "CREATE TABLE IF NOT EXISTS logs_sistema (id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora TEXT, usuario TEXT, empresa TEXT, acao TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_cargos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, cargo TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_setores (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, setor TEXT);",
+        "CREATE TABLE IF NOT EXISTS cad_epis (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, epi TEXT, ca TEXT, UNIQUE(empresa, epi));",
         
-        "CREATE TABLE IF NOT EXISTS cad_treinamentos (id SERIAL PRIMARY KEY, treinamento TEXT UNIQUE, carga_horaria TEXT);",
-        "ALTER TABLE cad_treinamentos ADD COLUMN IF NOT EXISTS carga_horaria TEXT;",
+        "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, treinamento TEXT UNIQUE, carga_horaria TEXT);",
+        "ALTER TABLE cad_treinamentos ADD COLUMN carga_horaria TEXT;",
         
-        "CREATE TABLE IF NOT EXISTS cad_servicos (id SERIAL PRIMARY KEY, servico TEXT UNIQUE);"
+        "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);"
     ]:
         try:
             cursor.execute(sql_alt)
@@ -664,31 +564,7 @@ def init_db():
 
     conn.close()
 
-def migrar_sqlite_para_neon():
-    import os
-    try:
-        with engine.connect() as conn:
-            res = conn.execute(text("SELECT COUNT(*) FROM base_funcionarios")).fetchone()
-            count_pg = res[0] if res else 0
-        if count_pg == 0 and os.path.exists(DB_NAME):
-            sqlite_conn = sqlite_original.connect(DB_NAME)
-            sqlite_cursor = sqlite_conn.cursor()
-            sqlite_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-            tabelas = [row[0] for row in sqlite_cursor.fetchall()]
-            with engine.begin() as pg_conn:
-                for tabela in tabelas:
-                    try:
-                        df_tab = pd.read_sql(f"SELECT * FROM {tabela}", sqlite_conn)
-                        if not df_tab.empty:
-                            df_tab.to_sql(tabela, pg_conn, if_exists='append', index=False, method='multi')
-                    except Exception as ex:
-                        pass
-            sqlite_conn.close()
-    except Exception as e:
-        pass
-
 init_db()
-migrar_sqlite_para_neon()
 atualizar_cargo_setor_treinamentos_antigos()
 atualizar_validade_treinamentos_para_meses()
 criar_backup_automatico()
@@ -696,8 +572,21 @@ sincronizar_status_exames()
 sincronizar_status_treinamentos()
 sincronizar_status_documentos()
 
-# --- O RESTANTE DA APLICAÇÃO SEGUE NORMALMENTE ---
-
+# --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
+from modulo_absenteismo import renderizar_aba_absenteismo
+from modulo_admin import renderizar_aba_admin
+from modulo_documentos import renderizar_aba_documentos
+from modulo_empresas import renderizar_aba_empresas
+from modulo_epis import renderizar_aba_epis
+from modulo_exames import renderizar_aba_exames
+from modulo_funcionarios import renderizar_aba_funcionarios
+from modulo_lista_presenca import renderizar_aba_lista_presenca
+from modulo_matriz import renderizar_matriz_treinamentos
+from modulo_os import renderizar_aba_os
+from modulo_relatorios import renderizar_aba_relatorios
+from modulo_servicos import renderizar_aba_servicos
+from modulo_treinamentos import renderizar_aba_treinamentos
+from modulo_senha import renderizar_aba_alterar_senha
 
 def atualizar_filtro_empresa(empresa_nome):
     st.session_state["ultima_empresa_trabalhada"] = empresa_nome
@@ -725,13 +614,11 @@ def reset_func_selection():
     st.session_state["sel_id_func"] = None
     st.session_state["modal_edit_func_id"] = None
 
-
 def reset_tr_selection():
     if "editor_selecao_treinamentos" in st.session_state:
         del st.session_state["editor_selecao_treinamentos"]
     st.session_state["sel_id_tr"] = None
     st.session_state["modal_edit_trein_id"] = None
-
 
 def reset_ex_selection():
     if "editor_selecao_exames" in st.session_state:
@@ -739,13 +626,11 @@ def reset_ex_selection():
     st.session_state["sel_id_ex"] = None
     st.session_state["modal_edit_exame_id"] = None
 
-
 def reset_epi_selection():
     if "editor_selecao_epis" in st.session_state:
         del st.session_state["editor_selecao_epis"]
     st.session_state["sel_id_epi"] = None
     st.session_state["modal_edit_epi_id"] = None
-
 
 def reset_serv_selection():
     if "editor_selecao_servicos" in st.session_state:
@@ -753,17 +638,14 @@ def reset_serv_selection():
     st.session_state["sel_id_serv"] = None
     st.session_state["modal_edit_serv_id"] = None
 
-
 def reset_doc_selection():
     if "editor_selecao_documentos" in st.session_state:
         del st.session_state["editor_selecao_documentos"]
     st.session_state["sel_id_doc"] = None
     st.session_state["modal_edit_doc_id"] = None
 
-
 @st.dialog("✏️ Editar Funcionário")
 def dialog_editar_funcionario(id_alvo):
-
     def formatar_data_flexivel_local(texto):
         if not texto:
             return ""
@@ -772,7 +654,7 @@ def dialog_editar_funcionario(id_alvo):
             return f"{digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
         return str(texto).strip()
 
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT empresa, matricula, funcionario, cargo, setor, cpf,"
@@ -824,7 +706,7 @@ def dialog_editar_funcionario(id_alvo):
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
                 dt_adm_fmt = formatar_data_flexivel_local(nova_data_adm)
                 dt_nasc_fmt = formatar_data_flexivel_local(nova_data_nasc)
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 conn.execute(
                     """
                     UPDATE base_funcionarios 
@@ -855,10 +737,9 @@ def dialog_editar_funcionario(id_alvo):
                 )
                 st.rerun()
 
-
 @st.dialog("✏️ Editar Treinamento")
 def dialog_editar_treinamento(id_alvo):
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT empresa, funcionario, treinamento, carga_horaria,"
@@ -890,7 +771,7 @@ def dialog_editar_treinamento(id_alvo):
         ) = reg_tr
         with st.form(f"form_edicao_trein_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {t_emp}")
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             df_funcs_emp = pd.read_sql(
                 "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios"
                 " WHERE empresa = ? ORDER BY funcionario ASC",
@@ -979,7 +860,7 @@ def dialog_editar_treinamento(id_alvo):
                     if not novo_proximo_tr
                     else validar_e_formatar_data_input(novo_proximo_tr)
                 )
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 conn.execute(
                     """
                     UPDATE treinamentos 
@@ -1016,10 +897,9 @@ def dialog_editar_treinamento(id_alvo):
                 )
                 st.rerun()
 
-
 @st.dialog("✏️ Editar Exame Ocupacional")
 def dialog_editar_exame(id_alvo):
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT empresa, funcionario, tipo_exame, ultimo_exame, periodicidade, proximo_exame, status, matricula, cargo, setor FROM exames WHERE id = ?",
@@ -1042,7 +922,7 @@ def dialog_editar_exame(id_alvo):
         ) = reg_ex
         with st.form(f"form_edicao_exame_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {ex_emp}")
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             df_funcs_emp = pd.read_sql(
                 "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC",
                 conn,
@@ -1118,7 +998,7 @@ def dialog_editar_exame(id_alvo):
                 proximo_final_ed = validar_e_formatar_data_input(novo_proximo_ex) if novo_proximo_ex else proximo_calc_ed
                 status_final_ed = calcular_status_exame(proximo_final_ed)
 
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 conn.execute(
                     """
                     UPDATE exames 
@@ -1153,10 +1033,9 @@ def dialog_editar_exame(id_alvo):
                 )
                 st.rerun()
 
-
 @st.dialog("✏️ Editar Registro de EPI")
 def dialog_editar_epi(id_alvo):
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT empresa, funcionario, epi, ca, data_entrega, quantidade, status,"
@@ -1169,7 +1048,7 @@ def dialog_editar_epi(id_alvo):
         ep_emp, ep_func, ep_epi, ep_ca, ep_dt, ep_qtd, ep_st, ep_mat, ep_cargo, ep_setor = reg_ep
         with st.form(f"form_edicao_epi_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {ep_emp}")
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             df_funcs_emp = pd.read_sql(
                 "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios"
                 " WHERE empresa = ? ORDER BY funcionario ASC",
@@ -1219,7 +1098,7 @@ def dialog_editar_epi(id_alvo):
                         novo_mat = match_f.iloc[0]["matricula"]
                         novo_c = match_f.iloc[0]["cargo"]
                         novo_s = match_f.iloc[0]["setor"]
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 conn.execute(
                     """
                     UPDATE epis 
@@ -1253,10 +1132,9 @@ def dialog_editar_epi(id_alvo):
                 )
                 st.rerun()
 
-
 @st.dialog("✏️ Editar Documento")
 def dialog_editar_documento(id_alvo):
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT empresa, documento, data_emissao, vigencia, proxima_renovacao,"
@@ -1322,7 +1200,7 @@ def dialog_editar_documento(id_alvo):
                 )
                 status_final_ed = calcular_status_por_data(proxima_final_ed)
 
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 conn.execute(
                     """
                     UPDATE documentos 
@@ -1353,10 +1231,9 @@ def dialog_editar_documento(id_alvo):
                 )
                 st.rerun()
 
-
 @st.dialog("✏️ Editar Serviço Realizado")
 def dialog_editar_servico(id_alvo):
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT empresa, servico, data_realizacao, responsavel, observacoes,"
@@ -1379,7 +1256,7 @@ def dialog_editar_servico(id_alvo):
             nova_data = st.text_input(
                 "Data da Realização (DD/MM/AAAA)", value=str(e_data)
             )
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             df_cad_serv_ed = pd.read_sql(
                 "SELECT servico FROM cad_servicos ORDER BY servico ASC", conn
             )
@@ -1427,7 +1304,7 @@ def dialog_editar_servico(id_alvo):
             )
 
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 conn.execute(
                     """
                     UPDATE servicos_realizados 
@@ -1459,7 +1336,6 @@ def dialog_editar_servico(id_alvo):
                     f"Edição de serviço ({novo_servico})",
                 )
                 st.rerun()
-
 
 def formatar_colunas_tabela(df):
     if df is None or df.empty:
@@ -1550,10 +1426,9 @@ def formatar_colunas_tabela(df):
     }
     return df.rename(columns=rename_dict)
 
-
 @st.cache_data(ttl=300)
 def get_empresas():
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     empresas_set = set()
     try:
         df1 = pd.read_sql(
@@ -1569,12 +1444,11 @@ def get_empresas():
     conn.close()
     return sorted(list(empresas_set))
 
-
 @st.cache_data(ttl=300)
 def get_cargos_por_empresa(empresa_nome):
     if not empresa_nome or empresa_nome == "Nenhuma":
         return []
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     try:
         df_c = pd.read_sql(
             "SELECT DISTINCT cargo FROM cad_cargos WHERE empresa = ? ORDER BY"
@@ -1592,12 +1466,11 @@ def get_cargos_por_empresa(empresa_nome):
     conn.close()
     return []
 
-
 @st.cache_data(ttl=300)
 def get_setores_por_empresa(empresa_nome):
     if not empresa_nome or empresa_nome == "Nenhuma":
         return []
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     try:
         df_s = pd.read_sql(
             "SELECT DISTINCT setor FROM cad_setores WHERE empresa = ? ORDER BY"
@@ -1615,7 +1488,6 @@ def get_setores_por_empresa(empresa_nome):
     conn.close()
     return []
 
-
 def formatar_cpf(val):
     if not val or pd.isna(val):
         return ""
@@ -1623,7 +1495,6 @@ def formatar_cpf(val):
     if len(numeros) == 11:
         return f"{numeros[:3]}.{numeros[3:6]}.{numeros[6:9]}-{numeros[9:]}"
     return str(val).strip()
-
 
 def formatar_cnpj(val):
     if not val or pd.isna(val):
@@ -1635,7 +1506,6 @@ def formatar_cnpj(val):
         )
     return str(val).strip()
 
-
 def normalizar_cnae(cnae_input):
     if not cnae_input:
         return ""
@@ -1644,12 +1514,11 @@ def normalizar_cnae(cnae_input):
         return f"{digitos[0:2]}.{digitos[2:4]}-{digitos[4]}"
     return str(cnae_input)
 
-
 def consultar_grau_risco_por_cnae(cnae_str):
     cnae_fmt = normalizar_cnae(cnae_str)
     if not cnae_fmt:
         return "1"
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT grau_risco FROM grau_risco_nr04 WHERE cnae = ?", (cnae_fmt,)
@@ -1659,7 +1528,6 @@ def consultar_grau_risco_por_cnae(cnae_str):
     if res:
         return str(res[0]).strip()
     return "1"
-
 
 def consultar_cep(cep_str):
     cep_limpo = re.sub(r"\D", "", str(cep_str))
@@ -1681,7 +1549,6 @@ def consultar_cep(cep_str):
         except:
             pass
     return None
-
 
 def consultar_cnpj(cnpj_str):
     cnpj_limpo = re.sub(r"\D", "", str(cnpj_str))
@@ -1787,7 +1654,6 @@ def consultar_cnpj(cnpj_str):
             pass
     return None
 
-
 def validar_e_formatar_data_input(data_str):
     if (
         not data_str
@@ -1804,10 +1670,8 @@ def validar_e_formatar_data_input(data_str):
             continue
     return str_val
 
-
 def formatar_data_br(data_str):
     return validar_e_formatar_data_input(data_str)
-
 
 def formatar_valor_brasileiro(valor):
     try:
@@ -1824,7 +1688,6 @@ def formatar_valor_brasileiro(valor):
         )
     except (ValueError, TypeError):
         return "0,00"
-
 
 def formatar_status_visual(val, tipo):
     if pd.isna(val) or not str(val).strip():
@@ -1871,7 +1734,6 @@ def formatar_status_visual(val, tipo):
             return f"🔴 {v}"
         return f"🟢 {v}"
 
-
 def limpar_status_banco(val):
     if pd.isna(val):
         return "Ativo"
@@ -1883,7 +1745,6 @@ def limpar_status_banco(val):
         .replace("🟡", "")
         .strip()
     )
-
 
 def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
     if df.empty:
@@ -1908,12 +1769,10 @@ def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
                     continue
     return df.loc[indices_validos] if indices_validos else pd.DataFrame()
 
-
 def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
-    """Exibe o painel de aniversariantes do mês atual agrupado por empresa."""
     st.markdown("### 🎂 Aniversariantes do Mês")
 
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     try:
         df = pd.read_sql(
             "SELECT DISTINCT funcionario, empresa, data_nascimento, cargo FROM"
@@ -1981,7 +1840,6 @@ def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
                 cargo_txt = f" — *{f['cargo']}*" if f["cargo"] else ""
                 st.markdown(f"* **{f['data'][:5]}** — **{f['funcionario']}**{cargo_txt}")
             st.markdown("")
-
 
 # --- CONTROLE DE SESSÃO COM TELA DE LOGIN CENTRALIZADA ---
 if "autenticado" not in st.session_state:
@@ -2051,7 +1909,7 @@ if not st.session_state["autenticado"]:
                         formatar_cpf(cpf_limpo) if len(cpf_limpo) == 11 else usuario_input
                     )
 
-                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     cursor.execute(
                         """
@@ -2172,7 +2030,7 @@ if not st.session_state["autenticado"]:
                         and cad_senha
                     ):
                         cpf_formatado = formatar_cpf(cad_cpf)
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         
                         cursor.execute(
@@ -2276,7 +2134,7 @@ Sistema Cassilab SST"""
                     if rec_cpf.strip():
                         cpf_formatado = formatar_cpf(rec_cpf)
                         cpf_limpo = re.sub(r"\D", "", rec_cpf)
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         cursor.execute(
                             "SELECT nome, email, celular, empresa, senha FROM"
@@ -2464,7 +2322,7 @@ if menu == "Dashboard / Visão Geral":
         if st.button("🔄 Atualizar Esta Tela"):
             st.rerun()
 
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     try:
         total_empresas = (
             pd.read_sql(
@@ -2561,7 +2419,7 @@ if menu == "Dashboard / Visão Geral":
     hoje = datetime.today().date()
 
     try:
-        conn_emp = sqlite3.connect(DB_NAME, timeout=10.0)
+        conn_emp = sqlite_original.connect(DB_NAME, timeout=10.0)
         df_empresas = pd.read_sql("SELECT nome_empresa, data_registro FROM empresas", conn_emp)
         
         if not df_empresas.empty:
@@ -2725,7 +2583,7 @@ if menu == "Dashboard / Visão Geral":
             "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
             use_container_width=True,
         ):
-            conn_m = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn_m = sqlite_original.connect(DB_NAME, timeout=10.0)
             cursor_m = conn_m.cursor()
             alertas_por_empresa = {}
             
@@ -2963,7 +2821,7 @@ elif menu == "Cadastros Gerais":
                 )
                 if btn_add_salvar_cargo:
                     if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         cargo_fmt = formatar_titulo(novo_cargo)
                         cursor.execute(
@@ -3000,7 +2858,7 @@ elif menu == "Cadastros Gerais":
                 ["Todas as Empresas"] + empresas_cadastradas,
                 key="filtro_cargo_emp_view",
             )
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             df_cargos_geral = pd.read_sql(
                 "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
                 conn,
@@ -3057,7 +2915,7 @@ elif menu == "Cadastros Gerais":
                 if col_cg_1.button(
                     "💾 Salvar Alterações na Tabela de Cargos", use_container_width=True
                 ):
-                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     for _, row in edit_cargos.iterrows():
                         c_id = row.get("_id_banco", row.get("id"))
@@ -3090,7 +2948,7 @@ elif menu == "Cadastros Gerais":
                 ):
                     if len(linhas_sel_cargo) == 1:
                         cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         conn.execute("DELETE FROM cad_cargos WHERE id = ?", (cargo_id_exc,))
                         conn.commit()
                         conn.close()
@@ -3143,7 +3001,7 @@ elif menu == "Cadastros Gerais":
                 )
                 if btn_add_salvar_epi:
                     if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         try:
                             conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
                         except:
@@ -3197,7 +3055,7 @@ elif menu == "Cadastros Gerais":
                     key="filtro_epi_tipo_view",
                 )
 
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
             try:
                 df_epis_geral = pd.read_sql(
                     "SELECT id, empresa, epi, ca, tipo FROM cad_epis ORDER BY empresa, epi ASC",
@@ -3297,7 +3155,7 @@ elif menu == "Cadastros Gerais":
                 if col_ep_1.button(
                     "💾 Salvar Alterações na Tabela de EPIs", use_container_width=True
                 ):
-                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     erro_integridade = False
                     
@@ -3330,7 +3188,7 @@ elif menu == "Cadastros Gerais":
                                             int(epi_id),
                                         ),
                                     )
-                                except sqlite3.IntegrityError:
+                                except sqlite_original.IntegrityError:
                                     erro_integridade = True
                                     st.error(f"❌ Conflito: Já existe um EPI chamado '{formatar_titulo(epi_val)}' cadastrado para a empresa '{str(e_val).strip()}'.")
 
@@ -3355,7 +3213,7 @@ elif menu == "Cadastros Gerais":
                 ):
                     if len(linhas_sel_epi_geral) == 1:
                         epi_id_exc = int(linhas_sel_epi_geral.iloc[0]["_id_banco"])
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         conn.execute("DELETE FROM cad_epis WHERE id = ?", (epi_id_exc,))
                         conn.commit()
                         conn.close()
