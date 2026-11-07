@@ -307,6 +307,7 @@ def renderizar_aba_empresas(
                         conn.commit()
                         conn.close()
                         if "editor_emp" in st.session_state: del st.session_state["editor_emp"]
+                        st.cache_data.clear()
                         st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
                         registrar_log_func(st.session_state.get("nome_usuario", "Administrador"), empresa_para_excluir, "Exclusão definitiva da empresa e dados")
                         st.rerun()
