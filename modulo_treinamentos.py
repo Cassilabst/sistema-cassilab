@@ -8,7 +8,33 @@ import streamlit.components.v1 as components
 def renderizar_aba_treinamentos(*args, **kwargs):
     DB_NAME = kwargs.get("DB_NAME") or (
         args[0] if len(args) > 0 else "cassilab_gestao.db"
-    )
+        
+    # --- FILTROS DE PESQUISA ANTES DA TABELA ---
+    st.markdown("### 🔍 Filtrar Registros de Treinamentos")
+    col_f1, col_f2 = st.columns(2)
+    
+    filtro_nome_func = col_f1.text_input("Filtrar por Nome do Funcionário", value="", key="filtro_trein_nome")
+    filtro_nome_trein = col_f2.text_input("Filtrar por Nome do Treinamento", value="", key="filtro_trein_nome_trein")
+
+    # Carrega os dados originais do banco dentro do módulo
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+    df_exibir = pd.read_sql("SELECT * FROM cad_treinamentos ORDER BY id DESC", conn)
+    conn.close()
+
+    # Aplica os filtros se houver algo digitado
+    if not df_exibir.empty:
+        if filtro_nome_func.strip() and "funcionario" in df_exibir.columns:
+            df_exibir = df_exibir[
+                df_exibir["funcionario"].astype(str).str.contains(filtro_nome_func.strip(), case=False, na=False)
+            ]
+            
+        if filtro_nome_trein.strip() and "treinamento" in df_exibir.columns:
+            df_exibir = df_exibir[
+                df_exibir["treinamento"].astype(str).str.contains(filtro_nome_trein.strip(), case=False, na=False)
+            ]
+          
+    # --- EXIBIÇÃO DA TABELA FILTRADA NO DATA EDITOR ---
+    # (Substitua a variável antiga da tabela por 'df_exibir' já tratada com a formatação e numeração)
     is_admin = (
         kwargs.get("is_admin")
         if "is_admin" in kwargs
