@@ -2877,7 +2877,7 @@ elif menu == "Cadastros Gerais":
             )
             conn.close()
 
-            # Aplicação rigorosa do filtro por empresa
+            # Cria uma cópia exclusiva para exibição filtrada
             df_exibicao_cargos = df_cargos_geral.copy()
             if filtro_cargo_emp != "Todas as Empresas" and not df_exibicao_cargos.empty:
                 if "empresa" in df_exibicao_cargos.columns:
