@@ -9,18 +9,17 @@ from email.mime.text import MIMEText
 import streamlit as st
 import sqlalchemy
 from sqlalchemy import create_engine, text
-
 import sqlite3 as sqlite_original
 import pandas as pd
 
 # --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
-# No Render, utilizamos uma pasta persistente em /data para que o banco SQLite não seja apagado no restart.
 import os
+
 if os.path.exists("/data"):
     DB_NAME = "/data/cassilab_gestao.db"
 else:
     DB_NAME = "cassilab_gestao.db"
-
+    
 # Usamos SQLite local robusto para máxima velocidade e sem latência de rede para os seus clientes
 DB_URL = f"sqlite:///{DB_NAME}"
 
