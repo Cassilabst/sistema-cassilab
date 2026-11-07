@@ -202,7 +202,7 @@ def renderizar_aba_exames(
       if "sel_id_ex" not in st.session_state:
         st.session_state["sel_id_ex"] = None
 
-      # --- BOTÕES DE AÇÃO LADO A LADO ---
+      # --- BOTÕES DE AÇÃO LADO A LADO (EXCLUSÃO DIRETA) ---
       col_acao1, col_acao2 = st.columns(2)
       
       with col_acao1:
@@ -210,7 +210,6 @@ def renderizar_aba_exames(
               if st.button("✏️ Editar Exame Selecionado", use_container_width=True, key="btn_edit_ex"):
                   id_para_editar = None
                   
-                  # Tenta obter pelo editor ativo
                   if 'editor_selecao_exames' in st.session_state:
                       df_editor_atual = st.session_state['editor_selecao_exames']
                       if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
@@ -234,7 +233,6 @@ def renderizar_aba_exames(
               if st.button("🗑️ Excluir Exame Selecionado", use_container_width=True, key="btn_del_ex"):
                   id_a_apagar = None
                   
-                  # Tenta obter pelo editor ativo
                   if 'editor_selecao_exames' in st.session_state:
                       df_editor_atual = st.session_state['editor_selecao_exames']
                       if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
@@ -246,17 +244,23 @@ def renderizar_aba_exames(
                       id_a_apagar = int(st.session_state["sel_id_ex"])
 
                   if id_a_apagar is not None:
-                      st.session_state["modal_excluir_ativo"] = True
-                      st.session_state["modal_excluir_tabela"] = "exames"
-                      st.session_state["modal_excluir_id"] = int(id_a_apagar)
-                      st.session_state["modal_excluir_editor_key"] = "editor_selecao_exames"
+                      # Executa a exclusão diretamente no banco de dados SQLite
+                      conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                      cursor = conn.cursor()
+                      cursor.execute("DELETE FROM exames WHERE id = ?", (id_a_apagar,))
+                      conn.commit()
+                      conn.close()
+
+                      if "editor_selecao_exames" in st.session_state:
+                          del st.session_state["editor_selecao_exames"]
                       st.session_state["sel_id_ex"] = None
+                      
+                      st.success("✅ Exame excluído com sucesso!")
                       st.rerun()
                   else:
                       st.warning("⚠️ Selecione um exame marcando o quadradinho para excluir.")
 
       st.write("")
-
       df_edit["Selecionar"] = df_edit["_id_banco"] == st.session_state["sel_id_ex"]
       cols_ex_ord = [
           "Selecionar",
