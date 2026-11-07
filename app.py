@@ -3299,46 +3299,91 @@ elif menu == "Cadastros Gerais":
                 st.info("ℹ️ Nenhum serviço cadastrado.")
                 
         elif aba_selecionada == "Treinamentos":
-            st.subheader("Gerenciar Treinamentos Gerais do Sistema")
+            st.subheader("Gerenciar Treinamentos por Empresa")
             with st.form("form_cad_treinamento_geral_unico"):
+                empresa_trein_sel = st.selectbox(
+                    "Selecione a Empresa",
+                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                    key="sel_emp_treinamento_geral",
+                )
                 c_tr_1, c_tr_2 = st.columns([0.7, 0.3])
                 novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
                 nova_carga_horaria_geral = c_tr_2.text_input("Carga Horária (ex: 8 horas)", value="8 horas")
                 btn_add_treinamento_geral = st.form_submit_button("Adicionar e Salvar Treinamento")
                 
                 if btn_add_treinamento_geral:
-                    if novo_treinamento_geral.strip():
+                    if empresa_trein_sel != "Nenhuma" and novo_treinamento_geral.strip():
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         trein_fmt = formatar_titulo(novo_treinamento_geral)
+                        
+                        try:
+                            # Garante que a coluna empresa existe na tabela de cadastros gerais
+                            cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN empresa TEXT;")
+                            conn.commit()
+                        except:
+                            pass
+                            
                         try:
                             cursor.execute(
-                                "INSERT INTO cad_treinamentos (treinamento, carga_horaria) VALUES (?, ?)",
-                                (trein_fmt, nova_carga_horaria_geral.strip()),
+                                "SELECT id FROM cad_treinamentos WHERE empresa = ? AND treinamento = ?",
+                                (empresa_trein_sel, trein_fmt),
                             )
-                            conn.commit()
-                            if "edit_treinamentos_gerais_tbl" in st.session_state:
-                                del st.session_state["edit_treinamentos_gerais_tbl"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                "Todas",
-                                f"Adicionou treinamento geral: {trein_fmt}",
-                            )
-                            st.rerun()
-                        except:
-                            st.error(f"O treinamento '{trein_fmt}' já está cadastrado.")
+                            existe = cursor.fetchone()
+                            if existe:
+                                st.error(f"Este treinamento já está cadastrado para a empresa {empresa_trein_sel}.")
+                            else:
+                                cursor.execute(
+                                    "INSERT INTO cad_treinamentos (empresa, treinamento, carga_horaria) VALUES (?, ?, ?)",
+                                    (empresa_trein_sel, trein_fmt, nova_carga_horaria_geral.strip()),
+                                )
+                                conn.commit()
+                                if "edit_treinamentos_gerais_tbl" in st.session_state:
+                                    del st.session_state["edit_treinamentos_gerais_tbl"]
+                                st.cache_data.clear()
+                                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                                registrar_log(
+                                    st.session_state.get("nome_usuario", "Administrador"),
+                                    empresa_trein_sel,
+                                    f"Adicionou treinamento: {trein_fmt}",
+                                )
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao cadastrar treinamento: {e}")
                         conn.close()
                     else:
-                        st.error("Preencha o nome do treinamento.")
+                        st.error("Selecione a empresa e preencha o nome do treinamento.")
+                        
             st.markdown("---")
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_tr_geral = pd.read_sql(
-                "SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC",
-                conn,
+            filtro_treinamento_emp = st.selectbox(
+                "Filtrar por Empresa",
+                ["Todas as Empresas"] + empresas_cadastradas,
+                key="filtro_treinamento_emp_view",
             )
+            
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+            try:
+                df_tr_geral = pd.read_sql(
+                    "SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos ORDER BY empresa, treinamento ASC",
+                    conn,
+                )
+            except:
+                # Fallback caso a tabela antiga não tenha a coluna empresa
+                try:
+                    df_temp = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+                    df_temp["empresa"] = "Todas"
+                    df_tr_geral = df_temp[["id", "empresa", "treinamento", "carga_horaria"]]
+                except:
+                    df_tr_geral = pd.DataFrame()
             conn.close()
+
+            if filtro_treinamento_emp != "Todas as Empresas" and not df_tr_geral.empty:
+                if "empresa" in df_tr_geral.columns:
+                    df_tr_geral = df_tr_geral[
+                        df_tr_geral["empresa"].astype(str).str.strip().str.lower()
+                        == str(filtro_treinamento_emp).strip().lower()
+                    ]
+
             if not df_tr_geral.empty:
                 if "sel_id_tr_geral" not in st.session_state:
                     st.session_state["sel_id_tr_geral"] = None
@@ -3346,9 +3391,10 @@ elif menu == "Cadastros Gerais":
                 df_tr_geral["Selecionar"] = (
                     df_tr_geral["_id_banco"] == st.session_state["sel_id_tr_geral"]
                 )
-                df_tr_geral = df_tr_geral[["Selecionar", "_id_banco", "treinamento", "carga_horaria"]]
+                df_tr_geral = df_tr_geral[["Selecionar", "_id_banco", "empresa", "treinamento", "carga_horaria"]]
                 df_tr_ex = formatar_colunas_tabela(df_tr_geral)
                 df_tr_ex = adicionar_numeracao(df_tr_ex)
+                
                 edit_tr_geral = st.data_editor(
                     df_tr_ex,
                     hide_index=True,
@@ -3361,6 +3407,7 @@ elif menu == "Cadastros Gerais":
                         "Nº": st.column_config.NumberColumn("Nº", disabled=True),
                     },
                 )
+                
                 curr_trg = edit_tr_geral[edit_tr_geral["Selecionar"] == True]["_id_banco"].tolist()
                 new_trg = [uid for uid in curr_trg if uid != st.session_state["sel_id_tr_geral"]]
                 if new_trg:
@@ -3369,21 +3416,24 @@ elif menu == "Cadastros Gerais":
                 elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
                     st.session_state["sel_id_tr_geral"] = None
                     st.rerun()
+                    
                 linhas_sel_tr_geral = edit_tr_geral[edit_tr_geral["Selecionar"] == True]
                 col_trg_1, col_trg_2 = st.columns(2)
-                if col_trg_1.button("💾 Salvar Alterações na Tabela de Treinamentos", use_container_width=True):
+                
+                if col_trg_1.button("💾 Salvar Alterações na Tabela de Treinamentos", use_container_width=True, key="btn_salvar_tr_geral_tbl"):
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     for _, row in edit_tr_geral.iterrows():
                         tr_id = row.get("_id_banco", row.get("id"))
+                        e_val = row.get("Empresa", row.get("empresa"))
                         tr_val = row.get("Treinamento", row.get("treinamento"))
                         carga_val = row.get("Carga Horária", row.get("carga_horaria", "8 horas"))
                         if pd.notna(tr_val) and str(tr_val).strip():
                             if pd.notna(tr_id) and str(tr_id).strip() not in ("", "nan", "None"):
                                 try:
                                     cursor.execute(
-                                        "UPDATE cad_treinamentos SET treinamento=?, carga_horaria=? WHERE id=?",
-                                        (formatar_titulo(tr_val), str(carga_val).strip(), int(tr_id)),
+                                        "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
+                                        (str(e_val).strip(), formatar_titulo(tr_val), str(carga_val).strip(), int(tr_id)),
                                     )
                                 except:
                                     pass
@@ -3400,7 +3450,8 @@ elif menu == "Cadastros Gerais":
                         "Atualização na tabela de treinamentos gerais",
                     )
                     st.rerun()
-                if col_trg_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True):
+                    
+                if col_trg_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key="btn_excluir_tr_geral_tbl"):
                     if len(linhas_sel_tr_geral) == 1:
                         tr_id_exc = int(linhas_sel_tr_geral.iloc[0]["_id_banco"])
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
