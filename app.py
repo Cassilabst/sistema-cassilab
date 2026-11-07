@@ -2877,12 +2877,12 @@ elif menu == "Cadastros Gerais":
                     conn,
                 )
             except:
+                # Fallback se a tabela antiga não tiver a coluna empresa
                 df_temp = pd.read_sql("SELECT id, cargo FROM cad_cargos ORDER BY cargo ASC", conn)
                 df_temp["empresa"] = "Todas"
                 df_cargos_geral = df_temp[["id", "empresa", "cargo"]]
             conn.close()
 
-            # Aplicação rigorosa do filtro por empresa
             if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
                 if "empresa" in df_cargos_geral.columns:
                     df_cargos_geral = df_cargos_geral[
@@ -2893,13 +2893,10 @@ elif menu == "Cadastros Gerais":
             if not df_cargos_geral.empty:
                 if "sel_id_cargo_geral" not in st.session_state:
                     st.session_state["sel_id_cargo_geral"] = None
-                    
                 df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
                 df_cargos_geral["Selecionar"] = (
                     df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
                 )
-                
-                # Reorganiza as colunas mantendo o padrão do sistema
                 df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
                 df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                 df_cargos_ex = adicionar_numeracao(df_cargos_ex)
@@ -2921,6 +2918,9 @@ elif menu == "Cadastros Gerais":
                 new_cargo = [uid for uid in curr_cargo if uid != st.session_state["sel_id_cargo_geral"]]
                 if new_cargo:
                     st.session_state["sel_id_cargo_geral"] = new_cargo[-1]
+                    st.rerun()
+                elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
+                    st.session_state["sel_id_cargo_geral"] = None
                     st.rerun()
                 elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
                     st.session_state["sel_id_cargo_geral"] = None
