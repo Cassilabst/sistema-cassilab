@@ -208,8 +208,20 @@ def renderizar_aba_exames(
       with col_acao1:
           if pode_editar:
               if st.button("✏️ Editar Exame Selecionado", use_container_width=True, key="btn_edit_ex"):
-                  if st.session_state.get("sel_id_ex") is not None:
+                  id_para_editar = None
+                  
+                  # Tenta obter pelo editor ativo
+                  if 'editor_selecao_exames' in st.session_state:
+                      df_editor_atual = st.session_state['editor_selecao_exames']
+                      if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
+                          selecionados = df_editor_atual[df_editor_atual["Selecionar"] == True]
+                          if not selecionados.empty:
+                              id_para_editar = int(selecionados.iloc[0]["_id_banco"])
+
+                  if not id_para_editar and st.session_state.get("sel_id_ex") is not None:
                       id_para_editar = int(st.session_state["sel_id_ex"])
+
+                  if id_para_editar is not None:
                       st.session_state["sel_id_ex"] = None
                       if "editor_selecao_exames" in st.session_state:
                           del st.session_state["editor_selecao_exames"]
@@ -220,10 +232,23 @@ def renderizar_aba_exames(
       with col_acao2:
           if pode_excluir:
               if st.button("🗑️ Excluir Exame Selecionado", use_container_width=True, key="btn_del_ex"):
-                  if st.session_state.get("sel_id_ex") is not None:
+                  id_a_apagar = None
+                  
+                  # Tenta obter pelo editor ativo
+                  if 'editor_selecao_exames' in st.session_state:
+                      df_editor_atual = st.session_state['editor_selecao_exames']
+                      if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
+                          selecionados = df_editor_atual[df_editor_atual["Selecionar"] == True]
+                          if not selecionados.empty:
+                              id_a_apagar = int(selecionados.iloc[0]["_id_banco"])
+
+                  if not id_a_apagar and st.session_state.get("sel_id_ex") is not None:
+                      id_a_apagar = int(st.session_state["sel_id_ex"])
+
+                  if id_a_apagar is not None:
                       st.session_state["modal_excluir_ativo"] = True
                       st.session_state["modal_excluir_tabela"] = "exames"
-                      st.session_state["modal_excluir_id"] = int(st.session_state["sel_id_ex"])
+                      st.session_state["modal_excluir_id"] = int(id_a_apagar)
                       st.session_state["modal_excluir_editor_key"] = "editor_selecao_exames"
                       st.session_state["sel_id_ex"] = None
                       st.rerun()
