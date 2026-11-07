@@ -3242,7 +3242,132 @@ elif menu == "Cadastros Gerais":
                         st.warning("⚠️ Selecione um serviço marcando o quadradinho.")
             else:
                 st.info("ℹ️ Nenhum serviço cadastrado.")
-
+                
+        elif aba_selecionada == "Treinamentos":
+            st.subheader("Gerenciar Treinamentos Gerais do Sistema")
+            with st.form("form_cad_treinamento_geral_unico"):
+                c_tr_1, c_tr_2 = st.columns([0.7, 0.3])
+                novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
+                nova_carga_horaria_geral = c_tr_2.text_input("Carga Horária (ex: 8 horas)", value="8 horas")
+                btn_add_treinamento_geral = st.form_submit_button("Adicionar e Salvar Treinamento")
+                
+                if btn_add_treinamento_geral:
+                    if novo_treinamento_geral.strip():
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                        cursor = conn.cursor()
+                        trein_fmt = formatar_titulo(novo_treinamento_geral)
+                        try:
+                            cursor.execute(
+                                "INSERT INTO cad_treinamentos (treinamento, carga_horaria) VALUES (?, ?)",
+                                (trein_fmt, nova_carga_horaria_geral.strip()),
+                            )
+                            conn.commit()
+                            if "edit_treinamentos_gerais_tbl" in st.session_state:
+                                del st.session_state["edit_treinamentos_gerais_tbl"]
+                            st.cache_data.clear()
+                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                            registrar_log(
+                                st.session_state.get("nome_usuario", "Administrador"),
+                                "Todas",
+                                f"Adicionou treinamento geral: {trein_fmt}",
+                            )
+                            st.rerun()
+                        except:
+                            st.error(f"O treinamento '{trein_fmt}' já está cadastrado.")
+                        conn.close()
+                    else:
+                        st.error("Preencha o nome do treinamento.")
+            st.markdown("---")
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+            df_tr_geral = pd.read_sql(
+                "SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC",
+                conn,
+            )
+            conn.close()
+            if not df_tr_geral.empty:
+                if "sel_id_tr_geral" not in st.session_state:
+                    st.session_state["sel_id_tr_geral"] = None
+                df_tr_geral["_id_banco"] = df_tr_geral["id"]
+                df_tr_geral["Selecionar"] = (
+                    df_tr_geral["_id_banco"] == st.session_state["sel_id_tr_geral"]
+                )
+                df_tr_geral = df_tr_geral[["Selecionar", "_id_banco", "treinamento", "carga_horaria"]]
+                df_tr_ex = formatar_colunas_tabela(df_tr_geral)
+                df_tr_ex = adicionar_numeracao(df_tr_ex)
+                edit_tr_geral = st.data_editor(
+                    df_tr_ex,
+                    hide_index=True,
+                    num_rows="fixed",
+                    key="edit_treinamentos_gerais_tbl",
+                    use_container_width=True,
+                    column_config={
+                        "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
+                        "_id_banco": None,
+                        "Nº": st.column_config.NumberColumn("Nº", disabled=True),
+                    },
+                )
+                curr_trg = edit_tr_geral[edit_tr_geral["Selecionar"] == True]["_id_banco"].tolist()
+                new_trg = [uid for uid in curr_trg if uid != st.session_state["sel_id_tr_geral"]]
+                if new_trg:
+                    st.session_state["sel_id_tr_geral"] = new_trg[-1]
+                    st.rerun()
+                elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
+                    st.session_state["sel_id_tr_geral"] = None
+                    st.rerun()
+                linhas_sel_tr_geral = edit_tr_geral[edit_tr_geral["Selecionar"] == True]
+                col_trg_1, col_trg_2 = st.columns(2)
+                if col_trg_1.button("💾 Salvar Alterações na Tabela de Treinamentos", use_container_width=True):
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    cursor = conn.cursor()
+                    for _, row in edit_tr_geral.iterrows():
+                        tr_id = row.get("_id_banco", row.get("id"))
+                        tr_val = row.get("Treinamento", row.get("treinamento"))
+                        carga_val = row.get("Carga Horária", row.get("carga_horaria", "8 horas"))
+                        if pd.notna(tr_val) and str(tr_val).strip():
+                            if pd.notna(tr_id) and str(tr_id).strip() not in ("", "nan", "None"):
+                                try:
+                                    cursor.execute(
+                                        "UPDATE cad_treinamentos SET treinamento=?, carga_horaria=? WHERE id=?",
+                                        (formatar_titulo(tr_val), str(carga_val).strip(), int(tr_id)),
+                                    )
+                                except:
+                                    pass
+                    conn.commit()
+                    conn.close()
+                    if "edit_treinamentos_gerais_tbl" in st.session_state:
+                        del st.session_state["edit_treinamentos_gerais_tbl"]
+                    st.session_state["sel_id_tr_geral"] = None
+                    st.cache_data.clear()
+                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                    registrar_log(
+                        st.session_state.get("nome_usuario", "Administrador"),
+                        "Todas",
+                        "Atualização na tabela de treinamentos gerais",
+                    )
+                    st.rerun()
+                if col_trg_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True):
+                    if len(linhas_sel_tr_geral) == 1:
+                        tr_id_exc = int(linhas_sel_tr_geral.iloc[0]["_id_banco"])
+                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                        conn.execute("DELETE FROM cad_treinamentos WHERE id = ?", (tr_id_exc,))
+                        conn.commit()
+                        conn.close()
+                        if "edit_treinamentos_gerais_tbl" in st.session_state:
+                            del st.session_state["edit_treinamentos_gerais_tbl"]
+                        st.session_state["sel_id_tr_geral"] = None
+                        st.cache_data.clear()
+                        st.session_state["msg_sucesso"] = "🗑️ Treinamento excluído com sucesso!"
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Administrador"),
+                            "Todas",
+                            f"Excluiu treinamento geral ID {tr_id_exc}",
+                        )
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Selecione um treinamento marcando o quadradinho.")
+            else:
+                st.info("ℹ️ Nenhum treinamento cadastrado.")
+        
         elif aba_selecionada == "EPIs":
             st.subheader("Gerenciar EPIs por Empresa (com CA e Tipo)")
             with st.form("form_cad_epi_unico"):
