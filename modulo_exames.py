@@ -275,13 +275,11 @@ def renderizar_aba_exames(
       )
 
       linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
-          "_id_banco"
-      ].tolist()
-      if linhas_marcadas and pode_editar:
+        "_id_banco"
+    ].tolist()
+    if linhas_marcadas and pode_editar:
         id_para_editar = int(linhas_marcadas[-1])
-        st.session_state["sel_id_ex"] = None
-        if "editor_selecao_exames" in st.session_state:
-          del st.session_state["editor_selecao_exames"]
+        ...
         dialog_editar_exame(id_para_editar)
 
   with aba_novo:
