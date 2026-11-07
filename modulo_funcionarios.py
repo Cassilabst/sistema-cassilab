@@ -341,23 +341,40 @@ def renderizar_aba_funcionarios(
         else:
           st.warning("🔒 Seu perfil não possui permissão para editar.")
 
-      # BOTÃO EXCLUIR (Exclui direto sem abrir pop-up)
-      if col_btn_ex.button("🗑️ Excluir Funcionário Selecionado", use_keyword=True, use_container_width=True): # Mantém o uso do container igual
-          if pode_excluir:
-              if len(sel_funcs) == 1:
-                  uid = int(sel_funcs.iloc[0]["_id_banco"])
-                  
-                  # 1. Recupera o nome do funcionário antes de excluir (para limpar em cascata nas outras tabelas)
+      # BOTÃO EXCLUIR (Com verificação e feedback visual direto)
+      if col_btn_ex.button("🗑️ Excluir Funcionário Selecionado", use_container_width=True, key="btn_excluir_func_direto"):
+          if not pode_excluir:
+              st.warning("🔒 Seu perfil não possui permissão para excluir.")
+          else:
+              # Tenta obter o ID selecionado através da tabela ou do session_state
+              id_a_apagar = None
+              
+              # 1. Tenta pegar a partir das linhas marcadas no editor
+              if 'editor_selecao_funcionarios' in st.session_state:
+                  df_editor_atual = st.session_state['editor_selecao_funcionarios']
+                  if isinstance(df_editor_atual, pd.DataFrame) and "Selecionar" in df_editor_atual.columns:
+                      selecionados = df_editor_atual[df_editor_atual["Selecionar"] == True]
+                      if not selecionados.empty:
+                          id_a_apagar = int(selecionados.iloc[0]["_id_banco"])
+  
+              # 2. Se não encontrou no editor, tenta pela variável sel_funcs
+              if not id_a_apagar and not sel_funcs.empty:
+                  id_a_apagar = int(sel_funcs.iloc[0]["_id_banco"])
+  
+              if id_a_apagar:
+                  # Conecta ao banco e executa a exclusão em cascata
                   conn = sqlite3.connect(DB_NAME, timeout=10.0)
                   cursor = conn.cursor()
                   
-                  cursor.execute("SELECT funcionario FROM base_funcionarios WHERE id = ?", (uid,))
+                  # Busca o nome para limpar nas outras tabelas
+                  cursor.execute("SELECT funcionario FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
                   row_func = cursor.fetchone()
                   nome_colaborador = row_func[0] if row_func else None
                   
-                  # 2. Executa a exclusão na base principal e em cascata nas outras abas pelo nome
-                  cursor.execute("DELETE FROM base_funcionarios WHERE id = ?", (uid,))
+                  # Apaga da base principal
+                  cursor.execute("DELETE FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
                   
+                  # Apaga em cascata nas outras abas
                   if nome_colaborador:
                       cursor.execute("DELETE FROM exames WHERE funcionario = ?", (nome_colaborador,))
                       cursor.execute("DELETE FROM cad_treinamentos WHERE funcionario = ?", (nome_colaborador,))
@@ -367,31 +384,29 @@ def renderizar_aba_funcionarios(
                   conn.commit()
                   conn.close()
   
-                  # Limpa a seleção e recarrega a página
+                  # Limpa a sessão e recarrega
                   if "editor_selecao_funcionarios" in st.session_state:
                       del st.session_state["editor_selecao_funcionarios"]
                   st.session_state["sel_id_func"] = None
-                  st.session_state["msg_sucesso"] = "✅ Funcionário excluído com sucesso de todo o sistema!"
-  
+                  
                   registrar_log(
                       st.session_state.get("nome_usuario", "Desconhecido"),
                       empresa_selecionada,
-                      f"Excluiu colaborador ID {uid} ({nome_colaborador}) em cascata",
+                      f"Excluiu colaborador ID {id_a_apagar} ({nome_colaborador}) em cascata",
                   )
+                  st.success("✅ Funcionário excluído com sucesso!")
                   st.rerun()
               else:
-                  st.warning("⚠️ Selecione um funcionário marcando o quadradinho.")
-          else:
-              st.warning("🔒 Seu perfil não possui permissão para excluir.")
-
-      if st.session_state.get("modal_edit_func_id"):
-        dialog_editar_funcionario(st.session_state["modal_edit_func_id"])
-        st.session_state["modal_edit_func_id"] = None
-
-  with aba_novo:
-    st.markdown("### ➕ Cadastrar Novo Funcionário")
-    if not pode_lancar:
-      st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
+                  st.warning("⚠️ Por favor, marque o quadradinho (checkbox) do funcionário que deseja excluir antes de clicar no botão.")
+  
+        if st.session_state.get("modal_edit_func_id"):
+          dialog_editar_funcionario(st.session_state["modal_edit_func_id"])
+          st.session_state["modal_edit_func_id"] = None
+  
+    with aba_novo:
+      st.markdown("### ➕ Cadastrar Novo Funcionário")
+      if not pode_lancar:
+        st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
     else:
       if is_admin:
         emp_global_atual = st.session_state.get("empresa_global", "Todas")
