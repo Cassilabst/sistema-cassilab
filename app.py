@@ -3123,43 +3123,92 @@ elif menu == "Cadastros Gerais":
                 st.info("ℹ️ Nenhum setor cadastrado.")
 
         elif aba_selecionada == "Serviços":
-            st.subheader("Gerenciar Serviços Gerais do Sistema")
+            st.subheader("Gerenciar Serviços por Empresa")
             with st.form("form_cad_servico_geral_unico"):
-                novo_servico_geral = st.text_input("Nome do Serviço")
+                empresa_servico_sel = st.selectbox(
+                    "Selecione a Empresa",
+                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                    key="sel_emp_servico_geral",
+                )
+                novo_servico_geral = st.text_input("Novo Serviço")
                 btn_add_servico_geral = st.form_submit_button("Adicionar e Salvar Serviço")
+                
                 if btn_add_servico_geral:
-                    if novo_servico_geral.strip():
+                    if empresa_servico_sel != "Nenhuma" and novo_servico_geral.strip():
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         serv_fmt = formatar_titulo(novo_servico_geral)
+                        
+                        # Verifica se a tabela possui a coluna empresa, caso contrário ajusta ou trata
                         try:
-                            cursor.execute(
-                                "INSERT INTO cad_servicos (servico) VALUES (?)",
-                                (serv_fmt,),
-                            )
-                            conn.commit()
-                            if "edit_servicos_gerais_tbl" in st.session_state:
-                                del st.session_state["edit_servicos_gerais_tbl"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                "Todas",
-                                f"Adicionou serviço geral: {serv_fmt}",
-                            )
-                            st.rerun()
-                        except:
-                            st.error(f"O serviço '{serv_fmt}' já está cadastrado.")
+                            cursor.execute("SELECT id FROM cad_servicos WHERE empresa = ? AND servico = ?", (empresa_servico_sel, serv_fmt))
+                            existe = cursor.fetchone()
+                            if existe:
+                                st.error(f"Este serviço já está cadastrado para a empresa {empresa_servico_sel}.")
+                            else:
+                                cursor.execute(
+                                    "INSERT INTO cad_servicos (empresa, servico) VALUES (?, ?)",
+                                    (empresa_servico_sel, serv_fmt),
+                                )
+                                conn.commit()
+                                if "edit_servicos_gerais_tbl" in st.session_state:
+                                    del st.session_state["edit_servicos_gerais_tbl"]
+                                st.cache_data.clear()
+                                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                                registrar_log(
+                                    st.session_state.get("nome_usuario", "Administrador"),
+                                    empresa_servico_sel,
+                                    f"Adicionou serviço: {serv_fmt}",
+                                )
+                                st.rerun()
+                        except Exception as e:
+                            # Caso a tabela antiga só tenha a coluna 'servico' sem 'empresa', garante a compatibilidade
+                            try:
+                                cursor.execute("ALTER TABLE cad_servicos ADD COLUMN empresa TEXT;")
+                                conn.commit()
+                                cursor.execute(
+                                    "INSERT INTO cad_servicos (empresa, servico) VALUES (?, ?)",
+                                    (empresa_servico_sel, serv_fmt),
+                                )
+                                conn.commit()
+                                if "edit_servicos_gerais_tbl" in st.session_state:
+                                    del st.session_state["edit_servicos_gerais_tbl"]
+                                st.cache_data.clear()
+                                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Erro ao salvar serviço: {ex}")
                         conn.close()
                     else:
-                        st.error("Preencha o nome do serviço.")
+                        st.error("Selecione a empresa e preencha o nome do serviço.")
+                        
             st.markdown("---")
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_serv_geral = pd.read_sql(
-                "SELECT id, servico FROM cad_servicos ORDER BY servico ASC",
-                conn,
+            filtro_servico_emp = st.selectbox(
+                "Filtrar por Empresa",
+                ["Todas as Empresas"] + empresas_cadastradas,
+                key="filtro_servico_emp_view",
             )
+            
+            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+            try:
+                df_serv_geral = pd.read_sql(
+                    "SELECT id, empresa, servico FROM cad_servicos ORDER BY empresa, servico ASC",
+                    conn,
+                )
+            except:
+                # Fallback se a tabela antiga não tiver a coluna empresa
+                df_temp = pd.read_sql("SELECT id, servico FROM cad_servicos ORDER BY servico ASC", conn)
+                df_temp["empresa"] = "Todas"
+                df_serv_geral = df_temp[["id", "empresa", "servico"]]
             conn.close()
+
+            if filtro_servico_emp != "Todas as Empresas" and not df_serv_geral.empty:
+                if "empresa" in df_serv_geral.columns:
+                    df_serv_geral = df_serv_geral[
+                        df_serv_geral["empresa"].astype(str).str.strip().str.lower()
+                        == str(filtro_servico_emp).strip().lower()
+                    ]
+
             if not df_serv_geral.empty:
                 if "sel_id_serv_geral" not in st.session_state:
                     st.session_state["sel_id_serv_geral"] = None
@@ -3167,9 +3216,10 @@ elif menu == "Cadastros Gerais":
                 df_serv_geral["Selecionar"] = (
                     df_serv_geral["_id_banco"] == st.session_state["sel_id_serv_geral"]
                 )
-                df_serv_geral = df_serv_geral[["Selecionar", "_id_banco", "servico"]]
+                df_serv_geral = df_serv_geral[["Selecionar", "_id_banco", "empresa", "servico"]]
                 df_serv_ex = formatar_colunas_tabela(df_serv_geral)
                 df_serv_ex = adicionar_numeracao(df_serv_ex)
+                
                 edit_serv_geral = st.data_editor(
                     df_serv_ex,
                     hide_index=True,
@@ -3182,6 +3232,7 @@ elif menu == "Cadastros Gerais":
                         "Nº": st.column_config.NumberColumn("Nº", disabled=True),
                     },
                 )
+                
                 curr_sg = edit_serv_geral[edit_serv_geral["Selecionar"] == True]["_id_banco"].tolist()
                 new_sg = [uid for uid in curr_sg if uid != st.session_state["sel_id_serv_geral"]]
                 if new_sg:
@@ -3190,20 +3241,23 @@ elif menu == "Cadastros Gerais":
                 elif not curr_sg and st.session_state["sel_id_serv_geral"] is not None:
                     st.session_state["sel_id_serv_geral"] = None
                     st.rerun()
+                    
                 linhas_sel_serv_geral = edit_serv_geral[edit_serv_geral["Selecionar"] == True]
                 col_svg_1, col_svg_2 = st.columns(2)
-                if col_svg_1.button("💾 Salvar Alterações na Tabela de Serviços", use_container_width=True):
+                
+                if col_svg_1.button("💾 Salvar Alterações na Tabela de Serviços", use_container_width=True, key="btn_salvar_serv_geral_tbl"):
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     for _, row in edit_serv_geral.iterrows():
                         sg_id = row.get("_id_banco", row.get("id"))
+                        e_val = row.get("Empresa", row.get("empresa"))
                         sg_val = row.get("Serviço Executado", row.get("servico"))
                         if pd.notna(sg_val) and str(sg_val).strip():
                             if pd.notna(sg_id) and str(sg_id).strip() not in ("", "nan", "None"):
                                 try:
                                     cursor.execute(
-                                        "UPDATE cad_servicos SET servico=? WHERE id=?",
-                                        (formatar_titulo(sg_val), int(sg_id)),
+                                        "UPDATE cad_servicos SET empresa=?, servico=? WHERE id=?",
+                                        (str(e_val).strip(), formatar_titulo(sg_val), int(sg_id)),
                                     )
                                 except:
                                     pass
@@ -3220,7 +3274,8 @@ elif menu == "Cadastros Gerais":
                         "Atualização na tabela de serviços gerais",
                     )
                     st.rerun()
-                if col_svg_2.button("🗑️ Excluir Serviço Selecionado", use_container_width=True):
+                    
+                if col_svg_2.button("🗑️ Excluir Serviço Selecionado", use_container_width=True, key="btn_excluir_serv_geral_tbl"):
                     if len(linhas_sel_serv_geral) == 1:
                         serv_id_exc = int(linhas_sel_serv_geral.iloc[0]["_id_banco"])
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
