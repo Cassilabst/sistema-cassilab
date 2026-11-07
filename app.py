@@ -3441,32 +3441,31 @@ elif menu == "Cadastros Gerais":
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     for _, row in edit_tr_geral.iterrows():
-                        tr_id = row.get("_id_banco", row.get("id"))
-                        e_val = row.get("Empresa", row.get("empresa"))
-                        tr_val = row.get("Treinamento", row.get("treinamento"))
-                        carga_val = row.get("Carga Horária", row.get("carga_horaria", "8 horas"))
+                        # Pega o ID com segurança de qualquer variação de nome de coluna
+                        tr_id = row.get("_id_banco")
+                        if pd.isna(tr_id):
+                            tr_id = row.get("id", row.get("ID", row.get("Id")))
+                            
+                        # Pega os valores independentemente de maiúsculas/minúsculas
+                        e_val = row.get("empresa", row.get("Empresa", ""))
+                        tr_val = row.get("treinamento", row.get("Treinamento", ""))
+                        carga_val = row.get("carga_horaria", row.get("Carga Horária", row.get("carga horaria", "8 horas")))
                         
-                        if pd.notna(tr_val) and str(tr_val).strip():
-                            if pd.notna(tr_id) and str(tr_id).strip() not in ("", "nan", "None"):
-                                try:
-                                    cursor.execute(
-                                        "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
-                                        (str(e_val).strip(), formatar_titulo(tr_val), str(carga_val).strip(), int(tr_id)),
-                                    )
-                                except Exception as err:
-                                    print(f"Erro ao atualizar: {err}")
+                        if pd.notna(tr_val) and str(tr_val).strip() and pd.notna(tr_id):
+                            try:
+                                cursor.execute(
+                                    "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
+                                    (str(e_val).strip(), formatar_titulo(str(tr_val)), str(carga_val).strip(), int(tr_id)),
+                                )
+                            except Exception as err:
+                                print(f"Erro ao atualizar ID {tr_id}: {err}")
                     conn.commit()
                     conn.close()
                     if "edit_treinamentos_gerais_tbl" in st.session_state:
                         del st.session_state["edit_treinamentos_gerais_tbl"]
                     st.session_state["sel_id_tr_geral"] = None
                     st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Administrador"),
-                        "Todas",
-                        "Atualização na tabela de treinamentos gerais",
-                    )
+                    st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
                     st.rerun()
                     
                 if col_trg_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key="btn_excluir_tr_geral_tbl"):
