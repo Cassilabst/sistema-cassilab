@@ -307,13 +307,22 @@ def renderizar_aba_admin(
         with open(DB_NAME, "rb") as f:
             bytes_db = f.read()
         
-        st.download_button(
-            label="📥 Baixar Banco de Dados Completo (.db)",
-            data=bytes_db,
-            file_name=f"backup_cassilab_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db",
-            mime="application/octet-stream",
-            use_container_width=True
-        )
-    else:
-        st.warning("⚠️ Arquivo de banco de dados não encontrado no caminho atual.")
+        st.markdown("---")
+        st.subheader("💾 Cópia de Segurança (Backup do Banco de Dados)")
+        st.write("Faça o download do arquivo completo da base de dados (`.db`) para guardar no seu computador a qualquer momento.")
+        
+        if os.path.exists(DB_NAME):
+            # Lê o ficheiro apenas no momento em que o botão é gerado/clicado
+            with open(DB_NAME, "rb") as f:
+                bytes_db = f.read()
+    
+            st.download_button(
+                label="📥 Baixar Banco de Dados Completo (.db)",
+                data=bytes_db,
+                file_name=f"backup_cassilab_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db",
+                mime="application/octet-stream",
+                use_container_width=True
+            )
+        else:
+            st.warning("⚠️ Arquivo de banco de dados não encontrado no caminho atual.")
 
