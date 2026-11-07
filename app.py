@@ -2922,45 +2922,37 @@ elif menu == "Cadastros Gerais":
                 elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
                     st.session_state["sel_id_cargo_geral"] = None
                     st.rerun()
-                elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
-                    st.session_state["sel_id_cargo_geral"] = None
-                    st.rerun()
-                elif not curr_c_geral and st.session_state["sel_id_cargo_geral"] is not None:
-                    st.session_state["sel_id_cargo_geral"] = None
-                    st.rerun()
-                linhas_sel_cargo = edit_cargos[edit_cargos["Selecionar"] == True]
+
                 col_cg_1, col_cg_2 = st.columns(2)
-                if col_cg_1.button(
-                    "💾 Salvar Alterações na Tabela de Cargos", use_container_width=True
-                ):
+                if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True, key="btn_salvar_cargos_geral_tbl"):
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
-                    for _, row in edit_cargos.iterrows():
+                    for _, row in edit_cargos_geral.iterrows():
                         c_id = row.get("_id_banco", row.get("id"))
                         e_val = row.get("Empresa", row.get("empresa"))
                         c_val = row.get("Cargo", row.get("cargo"))
                         if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
-                            if pd.notna(c_id) and str(c_id).strip() not in (
-                                "",
-                                "nan",
-                                "None",
-                            ):
+                            if pd.notna(c_id) and str(c_id).strip() not in ("", "nan", "None"):
                                 cursor.execute(
                                     "UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?",
                                     (str(e_val).strip(), formatar_titulo(c_val), int(c_id)),
                                 )
                     conn.commit()
                     conn.close()
-                    if "edit_cargos_tbl" in st.session_state:
-                        del st.session_state["edit_cargos_tbl"]
+                    
+                    if "edit_cargos_gerais_tbl" in st.session_state:
+                        del st.session_state["edit_cargos_gerais_tbl"]
+                        
                     st.session_state["sel_id_cargo_geral"] = None
                     st.cache_data.clear()
                     st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Administrador"),
-                        "Todas",
-                        "Atualização na tabela de cargos",
-                    )
+                    
+                    if "registrar_log" in globals():
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Administrador"),
+                            "Todas",
+                            "Atualização na tabela de cargos",
+                        )
                     st.rerun()
                 if col_cg_2.button(
                     "🗑️ Excluir Cargo Selecionado", use_container_width=True
