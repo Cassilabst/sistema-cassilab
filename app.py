@@ -2118,6 +2118,7 @@ Sistema Cassilab SST"""
                                         f"✅ Cadastro realizado com sucesso para a empresa **{empresa_final}**! "
                                         "O seu pedido foi enviado ao administrador e será liberado brevemente."
                                     )
+                                    st.cache_data.clear()
                                 except Exception as e:
                                     st.error(f"Erro ao realizar cadastro: {e}")
                         else:
