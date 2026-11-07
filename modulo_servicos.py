@@ -113,7 +113,7 @@ def renderizar_aba_servicos(*args, **kwargs):
     st.markdown("---")
 
     empresa_sel = st.selectbox(
-        "Selecione a Empresa Cliente",
+        "Selecione a Empresa",
         empresas if empresas else ["Nenhuma"],
         key="serv_emp_form",
     )
