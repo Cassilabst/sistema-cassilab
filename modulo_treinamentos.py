@@ -6,8 +6,7 @@ import streamlit.components.v1 as components
 
 
 def renderizar_aba_treinamentos(*args, **kwargs):
-    DB_NAME = kwargs.get("DB_NAME") or (
-        args[0] if len(args) > 0 else "cassilab_gestao.db"
+    DB_NAME = kwargs.get("DB_NAME") or (args[0] if len(args) > 0 else "cassilab_gestao.db"
         
     # --- FILTROS DE PESQUISA ANTES DA TABELA ---
     st.markdown("### 🔍 Filtrar Registros de Treinamentos")
