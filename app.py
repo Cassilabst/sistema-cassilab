@@ -2971,7 +2971,7 @@ if menu == "Dashboard / Visão Geral":
                     linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
             
                     col_cg_1, col_cg_2 = st.columns(2)
-                    if col_cg_1.button("💾 Salvar Alterações na Tabela", use_container_width=True, key="btn_salvar_cargos_global"):
+                    if col_cg_1.button("💾 Salvar Alterações na Tabela", width="stretch", key="btn_salvar_cargos_global"):
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         for _, row in edit_cargos_geral.iterrows():
@@ -2996,7 +2996,7 @@ if menu == "Dashboard / Visão Geral":
                         )
                         st.rerun()
                         
-                    if col_cg_2.button("🗑️ Excluir Cargo Selecionado", use_container_width=True, key="btn_excluir_cargos_global"):
+                    if col_cg_2.button("🗑️ Excluir Cargo Selecionado", width="stretch", key="btn_excluir_cargos_global"):
                         if len(linhas_sel_cargo) == 1:
                             cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
                             conn = sqlite_original.connect(DB_NAME, timeout=10.0)
