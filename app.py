@@ -2821,9 +2821,9 @@ if menu == "Dashboard / Visão Geral":
         # 2. CADASTROS GERAIS (FORÇADO)
         # ==========================================
         elif menu == "Cadastros Gerais":
-        st.success("✅ Acessou com sucesso: Cadastros Gerais!")
-        st.write("Se esta mensagem aparecer, o menu está funcionando perfeitamente.")
-        
+            st.success("✅ Acessou com sucesso: Cadastros Gerais!")
+            st.write("Se esta mensagem aparecer, o menu está funcionando perfeitamente.")
+            
         if not is_admin:
             st.warning("🔒 Área restrita ao Administrador.")
         else:
