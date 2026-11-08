@@ -2915,8 +2915,9 @@ if menu == "Dashboard / Visão Geral":
                         hide_index=True,
                         num_rows="fixed",
                         key="edit_cargos_gerais_tbl_global",
-                        use_container_width=True,
-                        column_config={
+                        width="stretch",           # <--- Novo (substitui o use_container_width)
+                        column_config={...}
+                    )
                             "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
                             "_id_banco": None,
                             "Nº": st.column_config.NumberColumn("Nº", disabled=True),
