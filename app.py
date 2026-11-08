@@ -596,7 +596,7 @@ from modulo_senha import renderizar_aba_alterar_senha
 def atualizar_filtro_empresa(empresa_nome):
     st.session_state["ultima_empresa_trabalhada"] = empresa_nome
     st.session_state["filtro_func_emp"] = empresa_nome
-    st.session_state["filtro_tr_emp"] = empresa_nome
+    st.session_state[""] = empresa_nome
     st.session_state["filtro_ex_emp"] = empresa_nome
     st.session_state["filtro_ep_emp"] = empresa_nome
     st.session_state["filtro_doc_emp"] = empresa_nome
@@ -3416,7 +3416,7 @@ elif menu == "Cadastros Gerais":
                     df_tr_ex,
                     hide_index=True,
                     num_rows="fixed",
-                    key="edit_treinamentos_gerais_tbl",
+                    key=f"edit_treinamentos_gerais_tbl_{filtro_treinamento_emp}",
                     use_container_width=True,
                     column_config={
                         "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
@@ -3429,6 +3429,34 @@ elif menu == "Cadastros Gerais":
                 new_trg = [uid for uid in curr_trg if uid != st.session_state["sel_id_tr_geral"]]
                 if new_trg:
                     st.session_state["sel_id_tr_geral"] = new_trg[-1]
+                    st.rerun()
+                elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
+                    st.session_state["sel_id_tr_geral"] = None
+                    st.rerun()
+
+                # Botão de Salvar Alterações na Tabela de Treinamentos
+                col_tr_1, col_tr_2 = st.columns(2)
+                if col_tr_1.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key="btn_salvar_tr_geral_tbl"):
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    cursor = conn.cursor()
+                    for _, row in edit_tr_geral.iterrows():
+                        t_id = row.get("_id_banco", row.get("id"))
+                        e_val = row.get("Empresa", row.get("empresa"))
+                        tr_val = row.get("Treinamento", row.get("treinamento"))
+                        ch_val = row.get("Carga Horária", row.get("carga_horaria"))
+                        
+                        if pd.notna(e_val) and pd.notna(tr_val) and str(tr_val).strip():
+                            if pd.notna(t_id) and str(t_id).strip() not in ("", "nan", "None"):
+                                cursor.execute(
+                                    "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
+                                    (str(e_val).strip(), formatar_titulo(tr_val), str(ch_val), int(t_id)),
+                                )
+                    conn.commit()
+                    conn.close()
+                    
+                    st.session_state["sel_id_tr_geral"] = None
+                    st.cache_data.clear()
+                    st.session_state["msg_sucesso"] = "✅ Treinamentos atualizados com sucesso!"
                     st.rerun()
                 elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
                     st.session_state["sel_id_tr_geral"] = None
