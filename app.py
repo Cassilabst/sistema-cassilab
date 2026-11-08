@@ -2946,7 +2946,6 @@ elif menu == "Cadastros Gerais":
                 df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                 df_cargos_ex = adicionar_numeracao(df_cargos_ex)
                 
-                # CORREÇÃO 1: Chave dinâmica baseada no filtro selecionado
                 edit_cargos_geral = st.data_editor(
                     df_cargos_ex,
                     hide_index=True,
@@ -2969,7 +2968,6 @@ elif menu == "Cadastros Gerais":
                     st.session_state["sel_id_cargo_geral"] = None
                     st.rerun()
 
-                # CORREÇÃO 2: Definindo a variável linhas_sel_cargo corretamente
                 linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
 
                 col_cg_1, col_cg_2 = st.columns(2)
@@ -3030,7 +3028,7 @@ elif menu == "Cadastros Gerais":
                         st.warning("⚠️ Selecione um cargo marcando o quadradinho.")
             else:
                 st.info("ℹ️ Nenhum cargo cadastrado.")
-
+        
         elif aba_selecionada == "Setores":
             st.subheader("Gerenciar Setores por Empresa")
             with st.form("form_cad_setor_unico"):
