@@ -2834,7 +2834,7 @@ if menu == "Dashboard / Visão Geral":
         # 2. CADASTROS GERAIS (O Bloco Completo)
         # ==========================================
         
-        if aba_selecionada == "Cargos":
+        elif aba_selecionada == "Cargos":
             st.subheader("Gerenciar Cargos por Empresa")
             
             # Pega a empresa selecionada globalmente na barra lateral
