@@ -2811,113 +2811,18 @@ if menu == "Dashboard / Visão Geral":
         st.markdown("---")
 
         # ==========================================
-        # 1. CADASTRO DE EMPRESAS
+        # 1. CADASTRO DE EMPRESAS (FORÇADO)
         # ==========================================
         if menu == "Cadastro de Empresas":
-            st.write("DEBUG: Entrou no Cadastro de Empresas")
-            try:
-                renderizar_aba_empresas(
-                    DB_NAME,
-                    is_admin,
-                    emp_usuario,
-                    formatar_titulo,
-                    formatar_data_br,
-                    formatar_cnpj,
-                    consultar_cnpj,
-                    consultar_cep,
-                    consultar_grau_risco_por_cnae,
-                    formatar_colunas_tabela,
-                    adicionar_numeracao,
-                    atualizar_filtro_empresa,
-                    registrar_log,
-                )
-            except Exception as e:
-                st.error(f"Erro ao carregar a aba de Empresas: {e}")
+            st.success("✅ Acessou com sucesso: Cadastro de Empresas!")
+            st.write("Se esta mensagem aparecer, o menu está funcionando e o problema está dentro da função renderizar_aba_empresas.")
 
         # ==========================================
-        # 2. CADASTROS GERAIS
+        # 2. CADASTROS GERAIS (FORÇADO)
         # ==========================================
         elif menu == "Cadastros Gerais":
-            st.write("DEBUG: Entrou em Cadastros Gerais")
-            try:
-                col_h1, col_h2 = st.columns([0.8, 0.2])
-                with col_h1:
-                    st.title("⚙️ Gerenciamento de Cadastros Gerais")
-                with col_h2:
-                    st.write("")
-                    if st.button("🔄 Atualizar Aba"):
-                        st.rerun()
-
-                if not is_admin:
-                    st.warning("🔒 Área restrita ao Administrador.")
-                else:
-                    empresas_cadastradas = get_empresas()
-                    st.write(f"DEBUG: Empresas carregadas: {len(empresas_cadastradas) if empresas_cadastradas else 0}")
-                    
-                    sub_abas_nomes = ["Cargos", "Setores", "Serviços", "Treinamentos", "EPIs"]
-                    sub_aba_url = st.query_params.get("sub_aba", "Cargos")
-                    idx_aba_inicial = sub_abas_nomes.index(sub_aba_url) if sub_aba_url in sub_abas_nomes else 0
-
-                    aba_selecionada = st.radio(
-                        "Navegação de Cadastros",
-                        sub_abas_nomes,
-                        index=idx_aba_inicial,
-                        horizontal=True,
-                        key="radio_sub_abas_gerais"
-                    )
-                    st.query_params["sub_aba"] = aba_selecionada
-                    st.markdown("---")
-
-                    if aba_selecionada == "Cargos":
-                        st.subheader("Gerenciar Cargos por Empresa")
-                        
-                        empresa_ativa = st.session_state.get("empresa_global", "Todas")
-                        
-                        if empresa_ativa == "Todas":
-                            st.warning("⚠️ Por favor, selecione uma empresa específica na barra lateral (ao lado esquerdo) para gerenciar ou cadastrar cargos.")
-                        else:
-                            st.info(f"🏢 Empresa Ativa: **{empresa_ativa}**")
-                        
-                        # Formulário de Cadastro vinculado à empresa ativa
-                        with st.form("form_cad_cargo_unico"):
-                            st.markdown(f"**Cadastrar novo cargo para:** {empresa_ativa}")
-                            novo_cargo = st.text_input("Nome do Cargo")
-                            btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
-                            
-                            if btn_add_salvar_cargo:
-                                if novo_cargo.strip():
-                                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                                    cursor = conn.cursor()
-                                    cargo_fmt = formatar_titulo(novo_cargo)
-                                    
-                                    cursor.execute(
-                                        "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
-                                        (empresa_ativa, cargo_fmt),
-                                    )
-                                    existe = cursor.fetchone()
-                                    if existe:
-                                        st.error(f"Este cargo já está cadastrado para a empresa {empresa_ativa}.")
-                                    else:
-                                        cursor.execute(
-                                            "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
-                                            (empresa_ativa, cargo_fmt),
-                                        )
-                                        conn.commit()
-                                        if "edit_cargos_tbl" in st.session_state:
-                                            del st.session_state["edit_cargos_tbl"]
-                                        st.cache_data.clear()
-                                        st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
-                                        registrar_log(
-                                            st.session_state.get("nome_usuario", "Administrador"),
-                                            empresa_ativa,
-                                            f"Adicionou cargo: {cargo_fmt}",
-                                        )
-                                        st.rerun()
-                                    conn.close()
-                                else:
-                                    st.error("Preencha o nome do cargo.")
-            except Exception as e:
-                st.error(f"Erro ao carregar Cadastros Gerais: {e}")
+            st.success("✅ Acessou com sucesso: Cadastros Gerais!")
+            st.write("Se esta mensagem aparecer, o menu está funcionando perfeitamente.")
                             
                 st.markdown("---")
                 st.markdown(f"### 📋 Cargos Cadastrados — {empresa_ativa}")
