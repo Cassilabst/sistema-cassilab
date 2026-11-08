@@ -2862,7 +2862,7 @@ elif menu == "Cadastros Gerais":
         st.query_params["sub_aba"] = aba_selecionada
         st.markdown("---")
 
-        if aba_selecionada == "Cargos":
+        elif aba_selecionada == "Cargos":
             st.subheader("Gerenciar Cargos por Empresa")
             with st.form("form_cad_cargo_unico"):
                 empresa_cargo_sel = st.selectbox(
@@ -2922,7 +2922,6 @@ elif menu == "Cadastros Gerais":
                     conn,
                 )
             except Exception:
-                # Fallback se a tabela antiga não tiver a coluna empresa
                 df_temp = pd.read_sql("SELECT id, cargo FROM cad_cargos ORDER BY cargo ASC", conn)
                 df_temp["empresa"] = "Todas"
                 df_cargos_geral = df_temp[["id", "empresa", "cargo"]]
@@ -2947,6 +2946,7 @@ elif menu == "Cadastros Gerais":
                 df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                 df_cargos_ex = adicionar_numeracao(df_cargos_ex)
                 
+                # CORREÇÃO 1: Chave dinâmica baseada no filtro selecionado
                 edit_cargos_geral = st.data_editor(
                     df_cargos_ex,
                     hide_index=True,
@@ -2968,6 +2968,9 @@ elif menu == "Cadastros Gerais":
                 elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
                     st.session_state["sel_id_cargo_geral"] = None
                     st.rerun()
+
+                # CORREÇÃO 2: Definindo a variável linhas_sel_cargo corretamente
+                linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
 
                 col_cg_1, col_cg_2 = st.columns(2)
                 if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True, key="btn_salvar_cargos_geral_tbl"):
@@ -3000,6 +3003,7 @@ elif menu == "Cadastros Gerais":
                             "Atualização na tabela de cargos",
                         )
                     st.rerun()
+                    
                 if col_cg_2.button(
                     "🗑️ Excluir Cargo Selecionado", use_container_width=True
                 ):
@@ -3024,6 +3028,8 @@ elif menu == "Cadastros Gerais":
                         st.rerun()
                     else:
                         st.warning("⚠️ Selecione um cargo marcando o quadradinho.")
+            else:
+                st.info("ℹ️ Nenhum cargo cadastrado.")
 
         elif aba_selecionada == "Setores":
             st.subheader("Gerenciar Setores por Empresa")
