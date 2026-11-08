@@ -421,6 +421,19 @@ def init_db():
     conn.commit()
     conn.close()
 
+    # Reconecta para continuar a inicialização das outras tabelas na mesma função
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS base_funcionarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
