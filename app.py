@@ -398,28 +398,28 @@ def init_db():
     cursor = conn.cursor()
 
     # Corrige a tabela de treinamentos para remover a restrição UNIQUE global
-conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-cursor = conn.cursor()
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
-    SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
-""")
-cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
-cursor.execute("""
-    CREATE TABLE cad_treinamentos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        empresa TEXT,
-        treinamento TEXT,
-        carga_horaria TEXT
-    );
-""")
-cursor.execute("""
-    INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
-    SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
-""")
-cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
-conn.commit()
-conn.close()
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
+        SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
+    """)
+    cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
+    cursor.execute("""
+        CREATE TABLE cad_treinamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empresa TEXT,
+            treinamento TEXT,
+            carga_horaria TEXT
+        );
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
+        SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
+    """)
+    cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
+    conn.commit()
+    conn.close()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
