@@ -2813,7 +2813,7 @@ if menu == "Dashboard / Visão Geral":
 # ==========================================
 # 1. CADASTRO DE EMPRESAS
 # ==========================================
-        elif menu == "Cadastro de Empresas":
+        if menu == "Cadastro de Empresas":
             renderizar_aba_empresas(
                 DB_NAME,
                 is_admin,
