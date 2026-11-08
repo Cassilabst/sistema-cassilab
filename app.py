@@ -2862,7 +2862,7 @@ elif menu == "Cadastros Gerais":
         st.query_params["sub_aba"] = aba_selecionada
         st.markdown("---")
 
-        elif aba_selecionada == "Cargos":
+        if aba_selecionada == "Cargos":
             st.subheader("Gerenciar Cargos por Empresa")
             with st.form("form_cad_cargo_unico"):
                 empresa_cargo_sel = st.selectbox(
