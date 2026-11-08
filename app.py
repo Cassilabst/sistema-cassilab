@@ -3441,9 +3441,10 @@ elif menu == "Cadastros Gerais":
                     st.session_state["sel_id_tr_geral"] = None
                     st.rerun()
 
-                # Botão de Salvar Alterações na Tabela de Treinamentos
+                # Botões de Salvar Alterações e Excluir
                 col_tr_1, col_tr_2 = st.columns(2)
-                if st.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key=f"btn_salvar_tr_geral_tbl_{filtro_treinamento_emp}"):
+                
+                if col_tr_1.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key=f"btn_salvar_tr_geral_tbl_{filtro_treinamento_emp}"):
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     for _, row in edit_tr_geral.iterrows():
@@ -3465,68 +3466,21 @@ elif menu == "Cadastros Gerais":
                     st.cache_data.clear()
                     st.session_state["msg_sucesso"] = "✅ Treinamentos atualizados com sucesso!"
                     st.rerun()
-                elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
-                    st.session_state["sel_id_tr_geral"] = None
-                    st.rerun()
-                    
-                linhas_sel_tr_geral = edit_tr_geral[edit_tr_geral["Selecionar"] == True]
-                col_trg_1, col_trg_2 = st.columns(2)
-                
-                if col_trg_1.button("💾 Salvar Alterações na Tabela de Treinamentos", use_container_width=True, key="btn_salvar_tr_geral_tbl"):
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    
-                    # Garante que temos os dados do editor
-                    df_editado = st.session_state.get("edit_treinamentos_gerais_tbl", edit_tr_geral)
-                    
-                    for _, row in df_editado.iterrows():
-                        # Tenta capturar o ID de qualquer variação de nome de coluna
-                        tr_id = row.get("id", row.get("ID", row.get("_id_banco")))
-                        e_val = row.get("empresa", row.get("Empresa", ""))
-                        tr_val = row.get("treinamento", row.get("Treinamento", ""))
-                        carga_val = row.get("carga_horaria", row.get("Carga Horária", row.get("carga horaria", "8 horas")))
-                        
-                        if pd.notna(tr_id) and pd.notna(tr_val) and str(tr_val).strip():
-                            try:
-                                cursor.execute(
-                                    "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
-                                    (str(e_val).strip(), formatar_titulo(str(tr_val)), str(carga_val).strip(), int(tr_id)),
-                                )
-                            except Exception as err:
-                                st.error(f"Erro ao atualizar ID {tr_id}: {err}")
-                                
-                    # Commit e fechamento fora do loop!
-                    conn.commit()
-                    conn.close()
-                    
-                    # Limpa estados para forçar atualização visual
-                    if "edit_treinamentos_gerais_tbl" in st.session_state:
-                        del st.session_state["edit_treinamentos_gerais_tbl"]
-                        
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
-                    st.rerun()
-                    
-                if col_trg_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key="btn_excluir_tr_geral_tbl"):
-                    if len(linhas_sel_tr_geral) == 1:
-                        tr_id_exc = int(linhas_sel_tr_geral.iloc[0]["_id_banco"])
+
+                if col_tr_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key=f"btn_excluir_tr_{filtro_treinamento_emp}"):
+                    if st.session_state["sel_id_tr_geral"] is not None:
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        conn.execute("DELETE FROM cad_treinamentos WHERE id = ?", (tr_id_exc,))
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM cad_treinamentos WHERE id=?", (int(st.session_state["sel_id_tr_geral"]),))
                         conn.commit()
                         conn.close()
-                        if "edit_treinamentos_gerais_tbl" in st.session_state:
-                            del st.session_state["edit_treinamentos_gerais_tbl"]
+                        
                         st.session_state["sel_id_tr_geral"] = None
                         st.cache_data.clear()
                         st.session_state["msg_sucesso"] = "🗑️ Treinamento excluído com sucesso!"
-                        registrar_log(
-                            st.session_state.get("nome_usuario", "Administrador"),
-                            "Todas",
-                            f"Excluiu treinamento geral ID {tr_id_exc}",
-                        )
                         st.rerun()
                     else:
-                        st.warning("⚠️ Selecione um treinamento marcando o quadradinho.")
+                        st.warning("⚠️ Selecione um treinamento na caixa de seleção da tabela para excluir.")
             else:
                 st.info("ℹ️ Nenhum treinamento cadastrado.")
         
