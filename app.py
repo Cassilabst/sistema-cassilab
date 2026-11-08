@@ -3423,7 +3423,7 @@ elif menu == "Cadastros Gerais":
                     df_tr_ex,
                     hide_index=True,
                     num_rows="fixed",
-                    key=f"edit_treinamentos_gerais_tbl_{filtro_treinamento_emp}",
+                    key=f"edit_tr_geral_{filtro_treinamento_emp}",
                     use_container_width=True,
                     column_config={
                         "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
