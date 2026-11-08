@@ -2844,11 +2844,13 @@ if menu == "Dashboard / Visão Geral":
                 conn.close()
                 
                 if not df_cargos_geral.empty:
-                    st.dataframe(df_cargos_geral, hide_index=True)
-                else:
-                    st.info(f"Nenhum cargo cadastrado para {empresa_ativa}.")
-            else:
-                st.warning("⚠️ Selecione uma empresa na barra lateral para gerenciar os cadastros.")
+                    if "sel_id_cargo_geral" not in st.session_state:
+                        st.session_state["sel_id_cargo_geral"] = None
+                        
+                    df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
+                    df_cargos_geral["Selecionar"] = (
+                        df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
+                    )
                     df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
                     df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                     df_cargos_ex = adicionar_numeracao(df_cargos_ex)
@@ -2893,35 +2895,10 @@ if menu == "Dashboard / Visão Geral":
                                     )
                         conn.commit()
                         conn.close()
-                        
-                        st.session_state["sel_id_cargo_geral"] = None
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                        registrar_log(
-                            st.session_state.get("nome_usuario", "Administrador"),
-                            empresa_ativa,
-                            "Atualização na tabela de cargos",
-                        )
-                        st.rerun()
-                        
-                    if col_cg_2.button("🗑️ Excluir Cargo Selecionado", width="stretch", key="btn_excluir_cargos_global"):
-                        if len(linhas_sel_cargo) == 1:
-                            cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
-                            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                            conn.execute("DELETE FROM cad_cargos WHERE id = ?", (cargo_id_exc,))
-                            conn.commit()
-                            conn.close()
-                            st.session_state["sel_id_cargo_geral"] = None
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "🗑️ Cargo excluído com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                empresa_ativa,
-                                f"Excluiu cargo ID {cargo_id_exc}",
-                            )
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Selecione um cargo marcando o quadradinho.")
+                else:
+                    st.info(f"Nenhum cargo cadastrado para {empresa_ativa}.")
+            else:
+                st.warning("⚠️ Selecione uma empresa na barra lateral para gerenciar os cadastros.")
                 else:
                     st.info(f"ℹ️ Nenhum cargo cadastrado para {empresa_ativa}.")
         
