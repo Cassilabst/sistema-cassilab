@@ -3443,7 +3443,7 @@ elif menu == "Cadastros Gerais":
 
                 # Botão de Salvar Alterações na Tabela de Treinamentos
                 col_tr_1, col_tr_2 = st.columns(2)
-                if col_tr_1.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key="btn_salvar_tr_geral_tbl"):
+                if st.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key=f"btn_salvar_tr_geral_tbl_{filtro_treinamento_emp}"):
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     for _, row in edit_tr_geral.iterrows():
