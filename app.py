@@ -2810,9 +2810,9 @@ if menu == "Dashboard / Visão Geral":
                 st.success("Nenhum documento vencido ou próximo.")
         st.markdown("---")
 
-# ==========================================
-# 1. CADASTRO DE EMPRESAS
-# ==========================================
+        # ==========================================
+        # 1. CADASTRO DE EMPRESAS
+        # ==========================================
         if menu == "Cadastro de Empresas":
             renderizar_aba_empresas(
                 DB_NAME,
@@ -2829,21 +2829,47 @@ if menu == "Dashboard / Visão Geral":
                 atualizar_filtro_empresa,
                 registrar_log,
             )
-        
+
         # ==========================================
         # 2. CADASTROS GERAIS (O Bloco Completo)
         # ==========================================
-        
-        elif aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            
-            # Pega a empresa selecionada globalmente na barra lateral
-            empresa_ativa = st.session_state.get("empresa_global", "Todas")
-            
-            if empresa_ativa == "Todas":
-                st.warning("⚠️ Por favor, selecione uma empresa específica na barra lateral (ao lado esquerdo) para gerenciar ou cadastrar cargos.")
+        elif menu == "Cadastros Gerais":
+            col_h1, col_h2 = st.columns([0.8, 0.2])
+            with col_h1:
+                st.title("⚙️ Gerenciamento de Cadastros Gerais")
+            with col_h2:
+                st.write("")
+                if st.button("🔄 Atualizar Aba"):
+                    st.rerun()
+
+            if not is_admin:
+                st.warning("🔒 Área restrita ao Administrador.")
             else:
-                st.info(f"🏢 Empresa Ativa: **{empresa_ativa}**")
+                empresas_cadastradas = get_empresas()
+                
+                sub_abas_nomes = ["Cargos", "Setores", "Serviços", "Treinamentos", "EPIs"]
+                sub_aba_url = st.query_params.get("sub_aba", "Cargos")
+                idx_aba_inicial = sub_abas_nomes.index(sub_aba_url) if sub_aba_url in sub_abas_nomes else 0
+
+                aba_selecionada = st.radio(
+                    "Navegação de Cadastros",
+                    sub_abas_nomes,
+                    index=idx_aba_inicial,
+                    horizontal=True,
+                    key="radio_sub_abas_gerais"
+                )
+                st.query_params["sub_aba"] = aba_selecionada
+                st.markdown("---")
+
+                if aba_selecionada == "Cargos":
+                    st.subheader("Gerenciar Cargos por Empresa")
+                    
+                    empresa_ativa = st.session_state.get("empresa_global", "Todas")
+                    
+                    if empresa_ativa == "Todas":
+                        st.warning("⚠️ Por favor, selecione uma empresa específica na barra lateral (ao lado esquerdo) para gerenciar ou cadastrar cargos.")
+                    else:
+                        st.info(f"🏢 Empresa Ativa: **{empresa_ativa}**")
                 
                 # Formulário de Cadastro vinculado à empresa ativa
                 with st.form("form_cad_cargo_unico"):
