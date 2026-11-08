@@ -2885,9 +2885,10 @@ elif menu == "Cadastros Gerais":
 
             if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
                 if "empresa" in df_cargos_geral.columns:
+                    # Filtro flexível por trecho do nome para evitar falhas de formatação/CNPJ
+                    termo_busca = str(filtro_cargo_emp).split("-")[0].strip().lower()
                     df_cargos_geral = df_cargos_geral[
-                        df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
-                        == str(filtro_cargo_emp).strip().lower()
+                        df_cargos_geral["empresa"].astype(str).str.strip().str.lower().str.contains(termo_busca, na=False)
                     ]
 
             if not df_cargos_geral.empty:
