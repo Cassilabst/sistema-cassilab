@@ -2813,27 +2813,27 @@ if menu == "Dashboard / Visão Geral":
 # ==========================================
 # 1. CADASTRO DE EMPRESAS
 # ==========================================
-elif menu == "Cadastro de Empresas":
-    renderizar_aba_empresas(
-        DB_NAME,
-        is_admin,
-        emp_usuario,
-        formatar_titulo,
-        formatar_data_br,
-        formatar_cnpj,
-        consultar_cnpj,
-        consultar_cep,
-        consultar_grau_risco_por_cnae,
-        formatar_colunas_tabela,
-        adicionar_numeracao,
-        atualizar_filtro_empresa,
-        registrar_log,
-    )
-
-# ==========================================
-# 2. CADASTROS GERAIS (O Bloco Completo)
-# ==========================================
-
+        elif menu == "Cadastro de Empresas":
+            renderizar_aba_empresas(
+                DB_NAME,
+                is_admin,
+                emp_usuario,
+                formatar_titulo,
+                formatar_data_br,
+                formatar_cnpj,
+                consultar_cnpj,
+                consultar_cep,
+                consultar_grau_risco_por_cnae,
+                formatar_colunas_tabela,
+                adicionar_numeracao,
+                atualizar_filtro_empresa,
+                registrar_log,
+            )
+        
+        # ==========================================
+        # 2. CADASTROS GERAIS (O Bloco Completo)
+        # ==========================================
+        
         if aba_selecionada == "Cargos":
             st.subheader("Gerenciar Cargos por Empresa")
             
