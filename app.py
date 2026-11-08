@@ -2811,11 +2811,28 @@ if menu == "Dashboard / Visão Geral":
         st.markdown("---")
 
         # ==========================================
-        # 1. CADASTRO DE EMPRESAS (FORÇADO)
+        # 1. CADASTRO DE EMPRESAS
         # ==========================================
         if menu == "Cadastro de Empresas":
-            st.success("✅ Acessou com sucesso: Cadastro de Empresas!")
-            st.write("Se esta mensagem aparecer, o menu está funcionando e o problema está dentro da função renderizar_aba_empresas.")
+            st.write("DEBUG: Entrou no Cadastro de Empresas")
+            try:
+                renderizar_aba_empresas(
+                    DB_NAME,
+                    is_admin,
+                    emp_usuario,
+                    formatar_titulo,
+                    formatar_data_br,
+                    formatar_cnpj,
+                    consultar_cnpj,
+                    consultar_cep,
+                    consultar_grau_risco_por_cnae,
+                    formatar_colunas_tabela,
+                    adicionar_numeracao,
+                    atualizar_filtro_empresa,
+                    registrar_log,
+                )
+            except Exception as e:
+                st.error(f"Erro ao carregar a aba de Empresas: {e}")
 
         # ==========================================
         # 2. CADASTROS GERAIS (FORÇADO)
