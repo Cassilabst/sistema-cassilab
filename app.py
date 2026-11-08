@@ -2911,6 +2911,9 @@ elif menu == "Cadastros Gerais":
                                 )
                     conn.commit()
                     conn.close()
+
+if aba_selecionada == "Setores":
+    st.subheader("Gerenciar Setores por Empresa")
             
             if not is_admin:
                 st.warning("🔒 Área restrita ao Administrador.")
