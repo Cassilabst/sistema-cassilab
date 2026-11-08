@@ -2870,60 +2870,54 @@ if menu == "Dashboard / Visão Geral":
 
                     if aba_selecionada == "Cargos":
                         st.subheader("Gerenciar Cargos por Empresa")
+                        
                         empresa_ativa = st.session_state.get("empresa_global", "Todas")
-                        st.info(f"Empresa ativa: {empresa_ativa}")
+                        
+                        if empresa_ativa == "Todas":
+                            st.warning("⚠️ Por favor, selecione uma empresa específica na barra lateral (ao lado esquerdo) para gerenciar ou cadastrar cargos.")
+                        else:
+                            st.info(f"🏢 Empresa Ativa: **{empresa_ativa}**")
+                        
+                        # Formulário de Cadastro vinculado à empresa ativa
+                        with st.form("form_cad_cargo_unico"):
+                            st.markdown(f"**Cadastrar novo cargo para:** {empresa_ativa}")
+                            novo_cargo = st.text_input("Nome do Cargo")
+                            btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
+                            
+                            if btn_add_salvar_cargo:
+                                if novo_cargo.strip():
+                                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                                    cursor = conn.cursor()
+                                    cargo_fmt = formatar_titulo(novo_cargo)
+                                    
+                                    cursor.execute(
+                                        "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
+                                        (empresa_ativa, cargo_fmt),
+                                    )
+                                    existe = cursor.fetchone()
+                                    if existe:
+                                        st.error(f"Este cargo já está cadastrado para a empresa {empresa_ativa}.")
+                                    else:
+                                        cursor.execute(
+                                            "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
+                                            (empresa_ativa, cargo_fmt),
+                                        )
+                                        conn.commit()
+                                        if "edit_cargos_tbl" in st.session_state:
+                                            del st.session_state["edit_cargos_tbl"]
+                                        st.cache_data.clear()
+                                        st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
+                                        registrar_log(
+                                            st.session_state.get("nome_usuario", "Administrador"),
+                                            empresa_ativa,
+                                            f"Adicionou cargo: {cargo_fmt}",
+                                        )
+                                        st.rerun()
+                                    conn.close()
+                                else:
+                                    st.error("Preencha o nome do cargo.")
             except Exception as e:
                 st.error(f"Erro ao carregar Cadastros Gerais: {e}")
-
-        
-                if aba_selecionada == "Cargos":
-                    st.subheader("Gerenciar Cargos por Empresa")
-                    
-                    empresa_ativa = st.session_state.get("empresa_global", "Todas")
-                    
-                    if empresa_ativa == "Todas":
-                        st.warning("⚠️ Por favor, selecione uma empresa específica na barra lateral (ao lado esquerdo) para gerenciar ou cadastrar cargos.")
-                    else:
-                        st.info(f"🏢 Empresa Ativa: **{empresa_ativa}**")
-                
-                # Formulário de Cadastro vinculado à empresa ativa
-                with st.form("form_cad_cargo_unico"):
-                    st.markdown(f"**Cadastrar novo cargo para:** {empresa_ativa}")
-                    novo_cargo = st.text_input("Nome do Cargo")
-                    btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
-                    
-                    if btn_add_salvar_cargo:
-                        if novo_cargo.strip():
-                            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                            cursor = conn.cursor()
-                            cargo_fmt = formatar_titulo(novo_cargo)
-                            
-                            cursor.execute(
-                                "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
-                                (empresa_ativa, cargo_fmt),
-                            )
-                            existe = cursor.fetchone()
-                            if existe:
-                                st.error(f"Este cargo já está cadastrado para a empresa {empresa_ativa}.")
-                            else:
-                                cursor.execute(
-                                    "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
-                                    (empresa_ativa, cargo_fmt),
-                                )
-                                conn.commit()
-                                if "edit_cargos_tbl" in st.session_state:
-                                    del st.session_state["edit_cargos_tbl"]
-                                st.cache_data.clear()
-                                st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
-                                registrar_log(
-                                    st.session_state.get("nome_usuario", "Administrador"),
-                                    empresa_ativa,
-                                    f"Adicionou cargo: {cargo_fmt}",
-                                )
-                                st.rerun()
-                            conn.close()
-                        else:
-                            st.error("Preencha o nome do cargo.")
                             
                 st.markdown("---")
                 st.markdown(f"### 📋 Cargos Cadastrados — {empresa_ativa}")
