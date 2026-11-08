@@ -2946,11 +2946,12 @@ elif menu == "Cadastros Gerais":
                 df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                 df_cargos_ex = adicionar_numeracao(df_cargos_ex)
                 
+                # CORREÇÃO: Usar uma chave limpa e fixa para o editor, evitando conflito de estado do Streamlit
                 edit_cargos_geral = st.data_editor(
                     df_cargos_ex,
                     hide_index=True,
                     num_rows="fixed",
-                    key=f"edit_cargos_gerais_tbl_{filtro_cargo_emp}",
+                    key="edit_cargos_gerais_tbl_principal",
                     use_container_width=True,
                     column_config={
                         "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
