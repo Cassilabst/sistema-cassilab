@@ -396,34 +396,51 @@ def atualizar_validade_treinamentos_para_meses():
 def init_db():
     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
+    
+    # 1. Corrige a tabela de treinamentos para remover a restrição UNIQUE global (com segurança)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
+    tabela_existe = cursor.fetchone()
+    
+    if tabela_existe:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
+            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
+        """)
+        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
+        cursor.execute("""
+            CREATE TABLE cad_treinamentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                empresa TEXT,
+                treinamento TEXT,
+                carga_horaria TEXT
+            );
+        """)
+        cursor.execute("""
+            INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
+            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
+        """)
+        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cad_treinamentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                empresa TEXT,
+                treinamento TEXT,
+                carga_horaria TEXT
+            );
+        """)
 
-    # Corrige a tabela de treinamentos para remover a restrição UNIQUE global
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
+    # 2. Criação das demais tabelas usando a mesma conexão ativa
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
-        SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
-    """)
-    cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
-    cursor.execute("""
-        CREATE TABLE cad_treinamentos (
+        CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            treinamento TEXT,
-            carga_horaria TEXT
-        );
+            nome TEXT
+        )
     """)
-    cursor.execute("""
-        INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
-        SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
-    """)
-    cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
+    
+    # Salva todas as alterações e fecha a conexão apenas no final
     conn.commit()
     conn.close()
-
-    # Reconecta para continuar a inicialização das outras tabelas na mesma função
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
