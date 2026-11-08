@@ -2845,7 +2845,9 @@ if menu == "Dashboard / Visão Geral":
             st.warning("🔒 Área restrita ao Administrador.")
         else:
             empresa_ativa = st.session_state.get("empresa_global", "Todas")
-            if empresa_ativa != "Todas":
+            if empresa_ativa == "Todas":
+                st.warning("⚠️ Selecione uma empresa na barra lateral para gerenciar os cadastros.")
+            else:
                 st.markdown("---")
                 st.markdown(f"### 📋 Cargos Cadastrados — {empresa_ativa}")
                 
@@ -2860,7 +2862,9 @@ if menu == "Dashboard / Visão Geral":
                     df_cargos_geral = pd.DataFrame()
                 conn.close()
                 
-                if not df_cargos_geral.empty:
+                if df_cargos_geral.empty:
+                    st.info(f"Nenhum cargo cadastrado para {empresa_ativa}.")
+                else:
                     if "sel_id_cargo_geral" not in st.session_state:
                         st.session_state["sel_id_cargo_geral"] = None
                         
@@ -2894,8 +2898,6 @@ if menu == "Dashboard / Visão Geral":
                     elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
                         st.session_state["sel_id_cargo_geral"] = None
                         st.rerun()
-            
-                    linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
             
                     col_cg_1, col_cg_2 = st.columns(2)
                     if col_cg_1.button("💾 Salvar Alterações na Tabela", use_container_width=True, key="btn_salvar_cargos_global"):
