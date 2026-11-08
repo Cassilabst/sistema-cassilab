@@ -2821,9 +2821,14 @@ if menu == "Dashboard / Visão Geral":
         # 2. CADASTROS GERAIS (FORÇADO)
         # ==========================================
         elif menu == "Cadastros Gerais":
-            st.success("✅ Acessou com sucesso: Cadastros Gerais!")
-            st.write("Se esta mensagem aparecer, o menu está funcionando perfeitamente.")
-                            
+        st.success("✅ Acessou com sucesso: Cadastros Gerais!")
+        st.write("Se esta mensagem aparecer, o menu está funcionando perfeitamente.")
+        
+        if not is_admin:
+            st.warning("🔒 Área restrita ao Administrador.")
+        else:
+            empresa_ativa = st.session_state.get("empresa_global", "Todas")
+            if empresa_ativa != "Todas":
                 st.markdown("---")
                 st.markdown(f"### 📋 Cargos Cadastrados — {empresa_ativa}")
                 
@@ -2837,15 +2842,13 @@ if menu == "Dashboard / Visão Geral":
                 except Exception:
                     df_cargos_geral = pd.DataFrame()
                 conn.close()
-            
+                
                 if not df_cargos_geral.empty:
-                    if "sel_id_cargo_geral" not in st.session_state:
-                        st.session_state["sel_id_cargo_geral"] = None
-                        
-                    df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
-                    df_cargos_geral["Selecionar"] = (
-                        df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
-                    )
+                    st.dataframe(df_cargos_geral, hide_index=True)
+                else:
+                    st.info(f"Nenhum cargo cadastrado para {empresa_ativa}.")
+            else:
+                st.warning("⚠️ Selecione uma empresa na barra lateral para gerenciar os cadastros.")
                     df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
                     df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
                     df_cargos_ex = adicionar_numeracao(df_cargos_ex)
@@ -2876,7 +2879,7 @@ if menu == "Dashboard / Visão Geral":
                     linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
             
                     col_cg_1, col_cg_2 = st.columns(2)
-                    if col_cg_1.button("💾 Salvar Alterações na Tabela", width="stretch", key="btn_salvar_cargos_global"):
+                    if col_cg_1.button("💾 Salvar Alterações na Tabela", use_container_width=True, key="btn_salvar_cargos_global"):
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         for _, row in edit_cargos_geral.iterrows():
