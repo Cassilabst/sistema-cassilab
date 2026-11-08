@@ -2897,7 +2897,7 @@ elif menu == "Cadastro de Empresas":
                 except Exception:
                     df_cargos_geral = pd.DataFrame()
                 conn.close()
-
+            
                 if not df_cargos_geral.empty:
                     if "sel_id_cargo_geral" not in st.session_state:
                         st.session_state["sel_id_cargo_geral"] = None
@@ -2932,9 +2932,9 @@ elif menu == "Cadastro de Empresas":
                     elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
                         st.session_state["sel_id_cargo_geral"] = None
                         st.rerun()
-
+            
                     linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
-
+            
                     col_cg_1, col_cg_2 = st.columns(2)
                     if col_cg_1.button("💾 Salvar Alterações na Tabela", use_container_width=True, key="btn_salvar_cargos_global"):
                         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
