@@ -430,27 +430,7 @@ def init_db():
             );
         """)
 
-    # 2. Criação das demais tabelas usando a mesma conexão ativa
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS base_funcionarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT
-        )
-    """)
-    
-    # Salva todas as alterações e fecha a conexão apenas no final
-    conn.commit()
-    conn.close()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS base_funcionarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
+    # 2. Criação de TODAS as demais tabelas usando a mesma conexão ativa
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -553,6 +533,10 @@ def init_db():
             porte TEXT
         )
     """)
+    
+    # Salva todas as alterações e fecha a conexão APENAS no final de tudo
+    conn.commit()
+    conn.close()
     
     for sql_alt in [
         "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
