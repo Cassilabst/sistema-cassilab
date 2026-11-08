@@ -2834,7 +2834,7 @@ elif menu == "Cadastro de Empresas":
 # 2. CADASTROS GERAIS (O Bloco Completo)
 # ==========================================
 
-        elif aba_selecionada == "Cargos":
+        if aba_selecionada == "Cargos":
             st.subheader("Gerenciar Cargos por Empresa")
             
             # Pega a empresa selecionada globalmente na barra lateral
