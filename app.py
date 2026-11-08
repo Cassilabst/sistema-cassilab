@@ -2876,7 +2876,7 @@ elif menu == "Cadastros Gerais":
                     "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
                     conn,
                 )
-            except:
+            except Exception:
                 # Fallback se a tabela antiga não tiver a coluna empresa
                 df_temp = pd.read_sql("SELECT id, cargo FROM cad_cargos ORDER BY cargo ASC", conn)
                 df_temp["empresa"] = "Todas"
@@ -2885,15 +2885,15 @@ elif menu == "Cadastros Gerais":
 
             if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
                 if "empresa" in df_cargos_geral.columns:
-                    # Filtro flexível por trecho do nome para evitar falhas de formatação/CNPJ
-                    termo_busca = str(filtro_cargo_emp).split("-")[0].strip().lower()
                     df_cargos_geral = df_cargos_geral[
-                        df_cargos_geral["empresa"].astype(str).str.strip().str.lower().str.contains(termo_busca, na=False)
+                        df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
+                        == str(filtro_cargo_emp).strip().lower()
                     ]
 
             if not df_cargos_geral.empty:
                 if "sel_id_cargo_geral" not in st.session_state:
                     st.session_state["sel_id_cargo_geral"] = None
+                    
                 df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
                 df_cargos_geral["Selecionar"] = (
                     df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
