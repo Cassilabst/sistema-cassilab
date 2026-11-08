@@ -594,13 +594,18 @@ from modulo_treinamentos import renderizar_aba_treinamentos
 from modulo_senha import renderizar_aba_alterar_senha
 
 def atualizar_filtro_empresa(empresa_nome):
-    st.session_state["ultima_empresa_trabalhada"] = empresa_nome
-    st.session_state["filtro_func_emp"] = empresa_nome
-    st.session_state[""] = empresa_nome
-    st.session_state["filtro_ex_emp"] = empresa_nome
-    st.session_state["filtro_ep_emp"] = empresa_nome
-    st.session_state["filtro_doc_emp"] = empresa_nome
-    st.session_state["filtro_srv_emp_trad"] = empresa_nome
+    if empresa_nome and empresa_nome.strip() != "":
+        st.session_state["sel_emp_cargo"] = empresa_nome
+        st.session_state["filtro_cargo_emp_view"] = empresa_nome
+        st.session_state["sel_emp_epi_geral"] = empresa_nome
+        st.session_state["filtro_epi_geral_emp_view"] = empresa_nome
+        st.session_state["filtro_treinamento_emp_view"] = empresa_nome
+    else:
+        st.session_state["sel_emp_cargo"] = "Nenhuma"
+        st.session_state["filtro_cargo_emp_view"] = "Todas as Empresas"
+        st.session_state["sel_emp_epi_geral"] = "Nenhuma"
+        st.session_state["filtro_epi_geral_emp_view"] = "Todas as Empresas"
+        st.session_state["filtro_treinamento_emp_view"] = "Todas as Empresas"
     
     if empresa_nome and empresa_nome != "Todas":
         st.session_state["sel_emp_cargo"] = empresa_nome
