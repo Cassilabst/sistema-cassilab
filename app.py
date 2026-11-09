@@ -728,7 +728,7 @@ def reset_doc_selection():
     st.session_state["sel_id_doc"] = None
     st.session_state["modal_edit_doc_id"] = None
 
-@st.dialog("✏️ Editar Funcionário")
+@st.dialog("✏️ Editar Funcionário", width="large")
 def dialog_editar_funcionario(id_alvo):
     def formatar_data_flexivel_local(texto):
         if not texto:
@@ -740,86 +740,145 @@ def dialog_editar_funcionario(id_alvo):
 
     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
+    
+    # Garante que as colunas de assinatura eletrônica existam no banco
+    try:
+        cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN pin_colaborador TEXT;")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN termo_adesao INTEGER DEFAULT 0;")
+    except:
+        pass
+
     cursor.execute(
-        "SELECT empresa, matricula, funcionario, cargo, setor, cpf,"
-        " data_admissao, status, data_nascimento FROM base_funcionarios WHERE id ="
-        " ?",
+        "SELECT empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status, data_nascimento, pin_colaborador, termo_adesao FROM base_funcionarios WHERE id = ?",
         (id_alvo,),
     )
     reg_func = cursor.fetchone()
     conn.close()
+
     if reg_func:
-        f_emp, f_mat, f_nome, f_cargo, f_setor, f_cpf, f_dt, f_st, f_nasc = reg_func
+        f_emp, f_mat, f_nome, f_cargo, f_setor, f_cpf, f_dt, f_st, f_nasc, f_pin, f_termo = reg_func
         with st.form(f"form_edicao_func_modal_{id_alvo}"):
             st.markdown(f"**Empresa:** {f_emp}")
             novo_mat = st.text_input("Matrícula", value=str(f_mat) if f_mat else "")
             novo_nome = st.text_input("Nome do Funcionário", value=str(f_nome))
+            
             cargos_emp_ed = get_cargos_por_empresa(f_emp)
             if f_cargo in cargos_emp_ed:
                 idx_c_ed = cargos_emp_ed.index(f_cargo)
                 novo_cargo = st.selectbox("Cargo", cargos_emp_ed, index=idx_c_ed)
             else:
-                novo_cargo = st.text_input("Cargo", value=str(f_cargo))
+                novo_cargo = st.text_input("Cargo", value=str(f_cargo) if f_cargo else "")
+
             setores_emp_ed = get_setores_por_empresa(f_emp)
             if f_setor in setores_emp_ed:
                 idx_s_ed = setores_emp_ed.index(f_setor)
                 novo_setor = st.selectbox("Setor", setores_emp_ed, index=idx_s_ed)
             else:
-                novo_setor = st.text_input(
-                    "Setor", value=str(f_setor) if f_setor else ""
-                )
+                novo_setor = st.text_input("Setor", value=str(f_setor) if f_setor else "")
+
             novo_cpf = st.text_input("CPF", value=str(f_cpf) if f_cpf else "")
-            nova_data_adm = st.text_input(
-                "Data Admissão", value=str(f_dt) if f_dt else ""
-            )
-            nova_data_nasc = st.text_input(
-                "Data de Nascimento", value=str(f_nasc) if f_nasc else ""
-            )
+            nova_data_adm = st.text_input("Data Admissão", value=str(f_dt) if f_dt else "")
+            nova_data_nasc = st.text_input("Data de Nascimento", value=str(f_nasc) if f_nasc else "")
+            
             st_limpo_f = limpar_status_banco(f_st)
             opcoes_st_f = ["Ativo", "Afastado", "Desligado"]
             try:
                 idx_st_f = opcoes_st_f.index(st_limpo_f)
             except:
                 idx_st_f = 0
+            
             novo_status_f = st.selectbox(
                 "Status",
                 ["🟢 Ativo", "🟠 Afastado", "🔴 Desligado"],
                 index=idx_st_f,
             )
 
+            # --- CAMPOS DE COMPLIANCE E SEGURANÇA DO PIN ---
+            st.markdown("---")
+            st.markdown("#### 🔑 Assinatura Eletrônica (PIN de 4 Dígitos)")
+            if f_pin and str(f_pin).strip() and str(f_pin) != "None":
+                st.info("🔒 O PIN do colaborador está cadastrado e protegido por sigilo de compliance.")
+            else:
+                st.warning("⚠️ Este colaborador ainda não possui PIN de assinatura eletrônica cadastrado.")
+
+            resetar_pin = st.checkbox("🔄 Gerar / Redefinir PIN Temporário (Caso tenha esquecido)")
+            novo_pin_input = ""
+            if resetar_pin:
+                novo_pin_input = st.text_input("Digite o Novo PIN Temporário (4 Dígitos)", max_chars=4)
+
+            novo_termo = st.checkbox("Termo de Adesão ao EPI Eletrônico Assinado", value=bool(f_termo))
+
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
                 dt_adm_fmt = formatar_data_flexivel_local(nova_data_adm)
                 dt_nasc_fmt = formatar_data_flexivel_local(nova_data_nasc)
+                
                 conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                conn.execute(
-                    """
-                    UPDATE base_funcionarios 
-                    SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?
-                    WHERE id = ?
-                """,
-                    (
-                        str(novo_mat).strip(),
-                        formatar_titulo(novo_nome),
-                        formatar_titulo(novo_cargo),
-                        formatar_titulo(novo_setor),
-                        formatar_cpf(novo_cpf),
-                        dt_adm_fmt,
-                        limpar_status_banco(novo_status_f),
-                        dt_nasc_fmt,
-                        id_alvo,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-                st.session_state["modal_edit_func_id"] = None
-                st.session_state["last_sel_func_id"] = None
-                st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Desconhecido"),
-                    f_emp,
-                    f"Edição do funcionário: {formatar_titulo(novo_nome)}",
-                )
-                st.rerun()
+                
+                # Valida e define se altera o PIN ou mantém o anterior
+                if resetar_pin and novo_pin_input.strip():
+                    if len(novo_pin_input.strip()) == 4 and novo_pin_input.strip().isdigit():
+                        conn.execute(
+                            """
+                            UPDATE base_funcionarios 
+                            SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?, pin_colaborador = ?, termo_adesao = ?
+                            WHERE id = ?
+                            """,
+                            (
+                                str(novo_mat).strip(),
+                                formatar_titulo(novo_nome),
+                                formatar_titulo(novo_cargo),
+                                formatar_titulo(novo_setor),
+                                formatar_cpf(novo_cpf),
+                                dt_adm_fmt,
+                                limpar_status_banco(novo_status_f),
+                                dt_nasc_fmt,
+                                str(novo_pin_input).strip(),
+                                1 if novo_termo else 0,
+                                id_alvo,
+                            ),
+                        )
+                        sucesso_ok = True
+                    else:
+                        st.error("⚠️ O PIN temporário deve conter exatamente 4 dígitos numéricos.")
+                        conn.close()
+                        sucesso_ok = False
+                else:
+                    conn.execute(
+                        """
+                        UPDATE base_funcionarios 
+                        SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?, termo_adesao = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            str(novo_mat).strip(),
+                            formatar_titulo(novo_nome),
+                            formatar_titulo(novo_cargo),
+                            formatar_titulo(novo_setor),
+                            formatar_cpf(novo_cpf),
+                            dt_adm_fmt,
+                            limpar_status_banco(novo_status_f),
+                            dt_nasc_fmt,
+                            1 if novo_termo else 0,
+                            id_alvo,
+                        ),
+                    )
+                    sucesso_ok = True
+
+                if sucesso_ok:
+                    conn.commit()
+                    conn.close()
+                    st.session_state["modal_edit_func_id"] = None
+                    st.session_state["last_sel_func_id"] = None
+                    st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
+                    registrar_log(
+                        st.session_state.get("nome_usuario", "Desconhecido"),
+                        f_emp,
+                        f"Edição do funcionário: {formatar_titulo(novo_nome)}",
+                    )
+                    st.rerun()
 
 @st.dialog("✏️ Editar Treinamento")
 def dialog_editar_treinamento(id_alvo):
