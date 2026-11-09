@@ -3275,6 +3275,7 @@ if menu == "Cadastros Gerais":
     elif aba_selecionada == "Treinamentos":
         st.subheader("Gerenciar Treinamentos por Empresa")
         empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+        
         with st.form("form_cad_treinamento_geral_unico"):
             empresa_trein_sel = st.selectbox(
                 "Selecione a Empresa",
@@ -3282,12 +3283,21 @@ if menu == "Cadastros Gerais":
                 key="sel_emp_treinamento_geral",
             )
             
+            # Puxa os serviços cadastrados especificamente para servirem de base de catálogo
             conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
             try:
-                df_serv_base = pd.read_sql("SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", conn_base)
+                df_serv_base = pd.read_sql(
+                    "SELECT DISTINCT servico FROM cad_servicos WHERE empresa = ? OR empresa = 'Todas' ORDER BY servico ASC", 
+                    conn_base, 
+                    params=(empresa_trein_sel,)
+                )
             except:
-                df_serv_base = pd.DataFrame()
+                try:
+                    df_serv_base = pd.read_sql("SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", conn_base)
+                except:
+                    df_serv_base = pd.DataFrame()
             conn_base.close()
+            
             lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
 
             c_tr_1, c_tr_2, c_tr_3 = st.columns([0.4, 0.4, 0.2])
@@ -3333,7 +3343,7 @@ if menu == "Cadastros Gerais":
                             if "edit_treinamentos_gerais_tbl" in st.session_state:
                                 del st.session_state["edit_treinamentos_gerais_tbl"]
                             st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                            st.session_state["msg_sucesso"] = "✅ Treinamento cadastrado com sucesso!"
                             registrar_log(
                                 st.session_state.get("nome_usuario", "Administrador"),
                                 empresa_trein_sel,
@@ -3368,6 +3378,7 @@ if menu == "Cadastros Gerais":
                 df_tr_geral = pd.DataFrame()
         conn.close()
 
+        # Filtro flexível por empresa selecionada
         if filtro_treinamento_emp != "Todas as Empresas" and not df_tr_geral.empty:
             if "empresa" in df_tr_geral.columns:
                 df_tr_geral = df_tr_geral[
@@ -3448,7 +3459,7 @@ if menu == "Cadastros Gerais":
                 else:
                     st.warning("⚠️ Selecione um treinamento na caixa de seleção da tabela para excluir.")
         else:
-            st.info("ℹ️ Nenhum treinamento cadastrado.")
+            st.info("ℹ️ Nenhum treinamento cadastrado para o filtro selecionado.")
 
     elif aba_selecionada == "EPIs":
         st.subheader("Gerenciar EPIs por Empresa (com CA e Tipo)")
