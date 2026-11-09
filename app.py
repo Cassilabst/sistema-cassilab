@@ -795,7 +795,35 @@ def dialog_editar_funcionario(id_alvo):
                 ["🟢 Ativo", "🟠 Afastado", "🔴 Desligado"],
                 index=idx_st_f,
             )
+            # --- CAMPOS DE COMPLIANCE E SEGURANÇA DO PIN ---
+            st.markdown("---")
+            st.markdown("#### 🔑 Assinatura Eletrônica e Termo")
+            if f_pin and str(f_pin).strip() and str(f_pin) != "None":
+                st.info("🔒 O PIN do colaborador está cadastrado e protegido por sigilo de compliance.")
+            else:
+                st.warning("⚠️ Este colaborador ainda não possui PIN de assinatura eletrônica cadastrado.")
 
+            resetar_pin = st.checkbox("🔄 Gerar / Redefinir PIN Temporário (Caso tenha esquecido)")
+            novo_pin_input = ""
+            if resetar_pin:
+                novo_pin_input = st.text_input("Digite o Novo PIN Temporário (4 Dígitos)", max_chars=4)
+
+            novo_termo = st.checkbox("Termo de Adesão ao EPI Eletrônico Assinado", value=bool(f_termo))
+
+            st.markdown("---")
+            # CHAMADA DO BOTÃO DE IMPRESSÃO DO TERMO DENTRO DO MODAL:
+            renderizar_botao_imprimir_termo(
+                empresa=f_emp,
+                nome=f_nome,
+                matricula=f_mat,
+                cargo=f_cargo,
+                setor=f_setor,
+                cpf=f_cpf
+            )
+
+            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
+            # ... lógica de salvamento que você já tem ...
+                
             # --- CAMPOS DE COMPLIANCE E SEGURANÇA DO PIN ---
             st.markdown("---")
             st.markdown("#### 🔑 Assinatura Eletrônica (PIN de 4 Dígitos)")
