@@ -522,7 +522,6 @@ def renderizar_aba_epis(*args, **kwargs):
                             e_ca = str(r_hist.get("ca", ""))
                             e_status = str(r_hist.get("status", ""))
                             
-                            # Carimbo formal de Assinatura Eletrônica com validade jurídica
                             if "Assinado Eletronicamente" in e_status or "PIN" in e_status:
                                 texto_assinatura_celula = (
                                     "<div style='font-size: 7px; color: #0b2545; line-height: 1.1; font-weight: bold; text-align: center;'>"
@@ -532,83 +531,101 @@ def renderizar_aba_epis(*args, **kwargs):
                             else:
                                 texto_assinatura_celula = ""
 
-                            linhas_ficha_html += f"""
-                                <tr>
-                                    <td style="padding: 3px 5px; font-size: 9px; height: 18px;">{e_nome}</td>
-                                    <td style="text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;">{e_quant}</td>
-                                    <td style="text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;">{e_data}</td>
-                                    <td style="text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;">{texto_assinatura_celula}</td>
-                                    <td style="text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;">{e_ca}</td>
-                                </tr>
-                                """
+                            linhas_ficha_html += (
+                                "<tr>"
+                                f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>"
+                                f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>"
+                                "</tr>"
+                            )
                             c_reg += 1
 
                         while c_reg < itens_por_pagina:
-                            linhas_ficha_html += """
-                                <tr>
-                                    <td style="height: 18px;"></td>
-                                    <td></td>
-                                    <td></td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                                """
+                            linhas_ficha_html += (
+                                "<tr>"
+                                "<td style='height: 18px;'></td>"
+                                "<td></td><td></td><td></td><td></td>"
+                                "</tr>"
+                            )
                             c_reg += 1
 
                         num_pagina_atual = pagina_idx + 1
                         indicador_pagina = f"<b>Página {num_pagina_atual} de {total_paginas}</b>" if total_paginas > 1 else ""
 
-                        html_paginas_acumulado += f"""
-                            <div class="sheet">
-                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;">
-                                    <div>{logo_ficha_html}</div>
-                                    <div style="font-size: 9px; font-weight: bold;">{indicador_pagina}</div>
-                                </div>
-                                <div class="cabecalho-principal-ficha">
-                                    CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I.
-                                </div>
+                        html_paginas_acumulado += (
+                            "<div class='sheet'>"
+                            "<div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>"
+                            f"<div>{logo_ficha_html}</div>"
+                            f"<div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>"
+                            "</div>"
+                            "<div class='cabecalho-principal-ficha'>"
+                            "CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I."
+                            "</div>"
+                            "<table class='tabela-ficha'>"
+                            f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>"
+                            "<tr>"
+                            f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>"
+                            f"<td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>"
+                            "<td style='width: 24%;'><b>Data de demissão:</b></td>"
+                            "</tr>"
+                            "<tr>"
+                            f"<td><b>Função:</b> {cargo_func}</td>"
+                            f"<td colspan='2'><b>Armário nº:</b> {armario_num}</td>"
+                            "</tr>"
+                            "<tr>"
+                            f"<td><b>Setor:</b> {setor_func}</td>"
+                            f"<td colspan='2'><b>Calçado nº:</b> {calcado_num}</td>"
+                            "</tr>"
+                            "</table>"
+                            "<table class='tabela-itens'>"
+                            "<thead><tr>"
+                            "<th style='width: 38%;'>Tipo de E.P.I.</th>"
+                            "<th style='width: 10%;'>Quant.</th>"
+                            "<th style='width: 16%;'>Data de Entrega</th>"
+                            "<th style='width: 23%;'>Assinatura do Funcionário</th>"
+                            "<th style='width: 13%;'>CA</th>"
+                            "</tr></thead>"
+                            f"<tbody>{linhas_ficha_html}</tbody>"
+                            "</table>"
+                            "<div class='termo-legal'>"
+                            f"Recebi da empresa <b>{empresa_selecionada}</b>, a título de empréstimo, para meu uso exclusivo e obrigatório nas dependências da empresa, conforme determinado na NR-6 da Portaria 3.214/78, os equipamentos especificados neste termo de responsabilidade, comprometer-me-a mantê-los em perfeito estado de conservação, ficando ciente de que:<br>"
+                            "<b>1.</b> Recebi treinamento quanto à necessidade na utilização do referido EPI, a maneira correta de usá-lo, guardá-lo e higienizá-lo, bem como da minha responsabilidade quanto ao seu uso conforme determinado na NR-1 da Portaria 3.214/78.<br>"
+                            "<b>2.</b> Se o equipamento for danificado ou inutilizado por <b>emprego inadequado, mau uso, negligência ou extravio</b>, a empresa me fornecerá novo equipamento e cobrará o valor de um equipamento da mesma marca ou equivalente ao da praça (parágrafo único do artigo 462 da CLT).<br>"
+                            "<b>3.</b> Fico proibido de dar ou emprestar o equipamento que estiver sob minha responsabilidade, só podendo fazê-lo se receber ordem por escrito da pessoa autorizada para tal fim.<br>"
+                            "<b>4.</b> Em caso de dano, inutilização ou extravio do equipamento deverei comunicar imediatamente ao setor competente."
+                            "</div>"
+                            "<div class='assinatura-area'>"
+                            "____________________________________________________<br>"
+                            "<b>Assinatura do Funcionário</b>"
+                            "</div>"
+                            "</div>"
+                        )
 
-                                <table class="tabela-ficha">
-                                    <tr>
-                                        <td colspan="3"><b>Empresa:</b> {empresa_selecionada}</td>
-                                    </tr>
-                                    <tr>
-                                        <td style="width: 52%;"><b>Nome:</b> {func_escolhido}</td>
-                                        <td style="width: 24%;"><b>Data de admissão:</b> {admissao_func}</td>
-                                        <td style="width: 24%;"><b>Data de demissão:</b></td>
-                                    </tr>
-                                    <tr>
-                                        <td><b>Função:</b> {cargo_func}</td>
-                                        <td colspan="2"><b>Armário nº:</b> {armario_num}</td>
-                                    </tr>
-                                    <tr>
-                                        <td><b>Setor:</b> {setor_func}</td>
-                                        <td colspan="2"><b>Calçado nº:</b> {calcado_num}</td>
-                                    </tr>
-                                </table>
-
-                                <table class="tabela-itens">
-                                    <thead>
-                                        <tr>
-                                            <th style="width: 38%;">Tipo de E.P.I.</th>
-                                            <th style="width: 10%;">Quant.</th>
-                                            <th style="width: 16%;">Data de Entrega</th>
-                                            <th style="width: 23%;">Assinatura do Funcionário</th>
-                                            <th style="width: 13%;">CA</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {linhas_ficha_html}
-                                    </tbody>
-                                </table>
-
-                                <div class="termo-legal">
-                                    Recebi da empresa <b>{empresa_selecionada}</b>, a título de empréstimo, para meu uso exclusivo e obrigatório nas dependências da empresa, conforme determinado na NR-6 da Portaria 3.214/78, os equipamentos especificados neste termo de responsabilidade, comprometer-me-a mantê-los em perfeito estado de conservação, ficando ciente de que:<br>
-                                    <b>1.</b> Recebi treinamento quanto à necessidade na utilização do referido EPI, a maneira correta de usá-lo, guardá-lo e higienizá-lo, bem como da minha responsabilidade quanto ao seu uso conforme determinado na NR-1 da Portaria 3.214/78.<br>
-                                    <b>2.</b> Se o equipamento for danificado ou inutilizado por <b>emprego inadequado, mau uso, negligência ou extravio</b>, a empresa me fornecerá novo equipamento e cobrará o valor de um equipamento da mesma marca ou equivalente ao da praça (parágrafo único do artigo 462 da CLT).<br>
-                                    <b>3.</b> Fico proibido de dar ou emprestar o equipamento que estiver sob minha responsabilidade, só podendo fazê-lo se receber ordem por escrito da pessoa autorizada para tal fim.<br>
-                                    <b>4.</b> Em caso de dano, inutilização ou extravio do equipamento deverei comunicar imediatamente ao setor competente.
-                                </div>
-
-                                <div class="assinatura-area">
-                                    ____________________________________________________<br
+                    html_ficha = (
+                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
+                        "<style>"
+                        "@page { size: A4 landscape !important; margin: 5mm !important; }"
+                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
+                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }"
+                        ".tabela-ficha { width: 100%; border-collapse: collapse; }"
+                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }"
+                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }"
+                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }"
+                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }"
+                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
+                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
+                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
+                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
+                        "</style></head><body>"
+                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
+                        "<button onclick='window.print()' style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
+                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
+                        "</button>"
+                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
+                        "</div>"
+                        f"{html_paginas_acumulado}"
+                        "</body></html>"
+                    )
+                    components.html(html_ficha, height=850, scrolling=True)
