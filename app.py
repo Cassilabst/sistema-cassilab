@@ -829,31 +829,45 @@ def dialog_editar_funcionario(id_alvo):
                 dt_adm_fmt = formatar_data_flexivel_local(nova_data_adm)
                 dt_nasc_fmt = formatar_data_flexivel_local(nova_data_nasc)
                 
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                pin_para_salvar = str(novo_pin_input).strip()
                 
-                if resetar_pin and novo_pin_input.strip():
-                    if len(novo_pin_input.strip()) == 4 and novo_pin_input.strip().isdigit():
-                        conn.execute(
-                            """
-                            UPDATE base_funcionarios 
-                            SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?, pin_colaborador = ?, termo_adesao = ?
-                            WHERE id = ?
-                            """,
-                            (
-                                str(novo_mat).strip(),
-                                formatar_titulo(novo_nome),
-                                formatar_titulo(novo_cargo),
-                                formatar_titulo(novo_setor),
-                                formatar_cpf(novo_cpf),
-                                dt_adm_fmt,
-                                limpar_status_banco(novo_status_f),
-                                dt_nasc_fmt,
-                                str(novo_pin_input).strip(),
-                                1 if novo_termo else 0,
-                                id_alvo,
-                            ),
-                        )
-                        sucesso_ok = True
+                # Se digitou algo no PIN, valida se tem 4 dígitos
+                if pin_para_salvar and not (len(pin_para_salvar) == 4 and pin_para_salvar.isdigit()):
+                    st.error("⚠️ O PIN deve conter exatamente 4 dígitos numéricos.")
+                else:
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    conn.execute(
+                        """
+                        UPDATE base_funcionarios 
+                        SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?, pin_colaborador = ?, termo_adesao = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            str(novo_mat).strip(),
+                            formatar_titulo(novo_nome),
+                            formatar_titulo(novo_cargo),
+                            formatar_titulo(novo_setor),
+                            formatar_cpf(novo_cpf),
+                            dt_adm_fmt,
+                            limpar_status_banco(novo_status_f),
+                            dt_nasc_fmt,
+                            pin_para_salvar if pin_para_salvar else None,
+                            1 if novo_termo else 0,
+                            id_alvo,
+                        ),
+                    )
+                    conn.commit()
+                    conn.close()
+                    
+                    st.session_state["modal_edit_func_id"] = None
+                    st.session_state["last_sel_func_id"] = None
+                    st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
+                    registrar_log(
+                        st.session_state.get("nome_usuario", "Desconhecido"),
+                        f_emp,
+                        f"Edição do funcionário: {formatar_titulo(novo_nome)}",
+                    )
+                    st.rerun()
                     else:
                         st.error("⚠️ O PIN temporário deve conter exatamente 4 dígitos numéricos.")
                         conn.close()
