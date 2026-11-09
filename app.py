@@ -3790,7 +3790,7 @@ if menu == "Cadastros Gerais":
                 conn_pdf_e = sqlite_original.connect(DB_NAME, timeout=10.0)
                 try:
                     df_pdf_epis = pd.read_sql(
-                        "SELECT tipo, epi, ca FROM cad_epis WHERE empresa = ? ORDER BY tipo, epi ASC",
+                        "SELECT tipo, epi, ca FROM cad_epis WHERE empresa = ? ORDER BY tipo ASC, epi ASC",
                         conn_pdf_e,
                         params=(empresa_rel_epi_geral,)
                     )
