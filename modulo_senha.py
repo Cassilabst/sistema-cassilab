@@ -3,11 +3,11 @@ import sqlite3
 
 def renderizar_aba_alterar_senha(DB_NAME, nome_usuario):
     st.subheader("🔑 Alterar Minha Senha de Acesso")
-    st.markdown("Preencha os campos abaixo para atualizar a sua senha de acesso ao sistema:")
+    st.markdown("Preencha os campos abaixo para atualizar a sua senha de acesso ao sistema (Mín. 6 caracteres, 1 letra maiúscula e 1 símbolo):")
     
     with st.form("form_alterar_senha_usuario"):
         senha_atual = st.text_input("Senha Atual", type="password")
-        nova_senha = st.text_input("Nova Senha", type="password")
+        nova_senha = st.text_input("Nova Senha", type="password", placeholder="Ex: Cassilab@2026")
         confirma_senha = st.text_input("Confirmar Nova Senha", type="password")
         
         btn_salvar_nova_senha = st.form_submit_button("💾 Salvar Nova Senha", use_container_width=True)
@@ -18,23 +18,44 @@ def renderizar_aba_alterar_senha(DB_NAME, nome_usuario):
             elif nova_senha != confirma_senha:
                 st.error("❌ A nova senha e a confirmação não coincidem.")
             else:
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                # Verifica a senha atual do utilizador autenticado
-                cursor.execute(
-                    "SELECT id, senha FROM usuarios_sistema WHERE nome = ? AND senha = ?",
-                    (nome_usuario, senha_atual)
-                )
-                user_record = cursor.fetchone()
-                
-                if user_record:
-                    cursor.execute(
-                        "UPDATE usuarios_sistema SET senha = ? WHERE id = ?",
-                        (nova_senha, user_record[0])
-                    )
-                    conn.commit()
-                    conn.close()
-                    st.success("✅ Senha alterada com sucesso! Utilize esta nova senha nos próximos acessos.")
+                # Validação rigorosa da nova senha
+                senha_final = nova_senha.strip()
+                senha_valida = True
+                mensagem_erro_senha = ""
+
+                if len(senha_final) < 6:
+                    senha_valida = False
+                    mensagem_erro_senha = "❌ A nova senha deve ter pelo menos 6 caracteres."
+                elif not any(c.isupper() for c in senha_final):
+                    senha_valida = False
+                    mensagem_erro_senha = "❌ A nova senha deve conter pelo menos uma letra maiúscula."
+                elif not any(not c.isalnum() for c in senha_final):
+                    senha_valida = False
+                    mensagem_erro_senha = "❌ A nova senha deve conter pelo menos um símbolo/caractere especial (ex: @, #, $, !, etc.)."
+                elif senha_final in ["123456", "12345", "654321", "111111", "222222", "333333", "444444", "555555", "666666", "777777", "888888", "999999", "000000"]:
+                    senha_valida = False
+                    mensagem_erro_senha = "❌ A nova senha não pode ser uma sequência óbvia (ex: 123456)."
+
+                if not senha_valida:
+                    st.error(mensagem_erro_senha)
                 else:
-                    conn.close()
-                    st.error("❌ A senha atual informada está incorreta.")
+                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    cursor = conn.cursor()
+                    # Verifica a senha atual do utilizador autenticado
+                    cursor.execute(
+                        "SELECT id, senha FROM usuarios_sistema WHERE nome = ? AND senha = ?",
+                        (nome_usuario, senha_atual)
+                    )
+                    user_record = cursor.fetchone()
+                    
+                    if user_record:
+                        cursor.execute(
+                            "UPDATE usuarios_sistema SET senha = ? WHERE id = ?",
+                            (senha_final, user_record[0])
+                        )
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Senha alterada com sucesso! Utilize esta nova senha nos próximos acessos.")
+                    else:
+                        conn.close()
+                        st.error("❌ A senha atual informada está incorreta.")
