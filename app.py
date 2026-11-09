@@ -869,10 +869,6 @@ def dialog_editar_funcionario(id_alvo):
                     )
                     st.rerun()
 
-                        st.error("⚠️ O PIN temporário deve conter exatamente 4 dígitos numéricos.")
-                        conn.close()
-                        sucesso_ok = False
-                else:
                     conn.execute(
                         """
                         UPDATE base_funcionarios 
