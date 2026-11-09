@@ -274,3 +274,123 @@ def renderizar_aba_documentos(
       )
   else:
     st.info("ℹ️ Nenhum documento cadastrado.")
+
+def gerar_html_termo_adesao(empresa, nome, matricula, cargo, setor, cpf):
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Termo de Adesão ao Sistema de EPI Eletrônico</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 40px;
+                color: #333;
+                line-height: 1.6;
+            }}
+            .header {{
+                text-align: center;
+                margin-bottom: 30px;
+                border-bottom: 2px solid #2c3e50;
+                padding-bottom: 15px;
+            }}
+            .company-name {{
+                font-size: 20px;
+                font-weight: bold;
+                color: #2c3e50;
+            }}
+            .doc-title {{
+                font-size: 18px;
+                font-weight: bold;
+                margin-top: 10px;
+                text-transform: uppercase;
+                color: #2980b9;
+            }}
+            .section {{
+                margin-bottom: 20px;
+            }}
+            .info-box {{
+                background: #f8f9fa;
+                border: 1px solid #ddd;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+            }}
+            .legal-text {{
+                text-align: justify;
+                font-size: 14px;
+                margin-bottom: 15px;
+            }}
+            .signature-area {{
+                margin-top: 80px;
+                text-align: center;
+            }}
+            .signature-line {{
+                display: inline-block;
+                width: 350px;
+                border-top: 1px solid #000;
+                margin-top: 50px;
+                padding-top: 5px;
+            }}
+            @media print {{
+                body {{
+                    margin: 20px;
+                }}
+                .no-print {{
+                    display: none;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="company-name">{empresa}</div>
+            <div class="doc-title">Termo de Adesão ao Recebimento de EPI por Assinatura Eletrônica (PIN)</div>
+        </div>
+
+        <div class="info-box">
+            <p><strong>Colaborador(a):</strong> {nome}</p>
+            <p><strong>Matrícula:</strong> {matricula} | <strong>CPF:</strong> {cpf}</p>
+            <p><strong>Cargo:</strong> {cargo} | <strong>Setor:</strong> {setor}</p>
+        </div>
+
+        <div class="section">
+            <p class="legal-text">
+                Por meio deste instrumento, o(a) colaborador(a) acima qualificado(a) acorda e adere voluntariamente ao sistema informatizado de gestão e entrega de Equipamentos de Proteção Individual (EPI) adotado pela empresa, baseado em assinatura eletrônica mediante utilização de senha numérica pessoal e intransferível <strong>(PIN de 4 dígitos)</strong>.
+            </p>
+            <p class="legal-text">
+                <strong>1. Da Validade Jurídica:</strong> As partes reconhecem expressamente que o registro de entrega de EPI efetuado por meio da digitação do PIN pessoal possui plena validade jurídica e probatória, equiparando-se à assinatura manuscrita para todos os fins legais, em conformidade com a legislação trabalhista aplicável e as diretrizes de Segurança e Saúde no Trabalho (SST).
+            </p>
+            <p class="legal-text">
+                <strong>2. Da Confidencialidade e Guarda da Senha:</strong> O(A) colaborador(a) compromete-se a manter sua senha (PIN) em absoluto sigilo, sendo pessoalmente responsável por todas as operações realizadas com a sua credencial. É expressamente vedada a transmissão ou revelação da senha a terceiros.
+            </p>
+            <p class="legal-text">
+                <strong>3. Da Comunicação de Perda:</strong> Em caso de perda, esquecimento ou suspeita de comprometimento do sigilo da senha (PIN), o(a) colaborador(a) obriga-se a comunicar imediatamente o setor responsável (SST / RH) para a devida redefinição do código.
+            </p>
+            <p class="legal-text">
+                E por estar de acordo com os termos e condições aqui estabelecidos, o(a) colaborador(a) assina o presente termo para que surta seus efeitos legais.
+            </p>
+        </div>
+
+        <div style="text-align: right; margin-top: 40px; font-size: 14px;">
+            Piraquara - PR, _____ de ___________________ de 20_____.
+        </div>
+
+        <div class="signature-area">
+            <div class="signature-line">
+                {nome}<br>
+                Colaborador(a)
+            </div>
+        </div>
+
+        <div class="no-print" style="text-align: center; margin-top: 50px;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; background-color: #2980b9; color: white; border: none; border-radius: 5px; cursor: pointer;">🖨️ Imprimir Termo</button>
+        </div>
+    </body>
+    </html>
+    """
+    return html_content
