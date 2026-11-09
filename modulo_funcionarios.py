@@ -304,6 +304,18 @@ def renderizar_aba_funcionarios(
                     "funcionario": st.column_config.TextColumn(
                         "Funcionário", disabled=True, pinned=True
                     ),
+                    # --- NOVOS CAMPOS PARA A ASSINATURA ELETRÔNICA ---
+                    "pin_colaborador": st.column_config.TextColumn(
+                        "PIN (4 Dígitos)", 
+                        help="Digite a senha numérica de 4 dígitos do colaborador",
+                        max_chars=4,
+                        width="small"
+                    ),
+                    "termo_adesao": st.column_config.CheckboxColumn(
+                        "Termo Assinado?", 
+                        help="Marque se o colaborador já assinou o Termo de Adesão ao EPI Eletrônico",
+                        default=False
+                    ),
                 },
             )
 
