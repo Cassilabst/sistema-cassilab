@@ -2834,7 +2834,7 @@ if menu == "Cadastro de Empresas":
     except Exception as e:
         st.error(f"Erro ao carregar a aba de Empresas: {e}")
 
-elif menu == "Cadastros Gerais":
+    elif menu == "Cadastros Gerais":
     st.success("✅ Acessou com sucesso: Cadastros Gerais!")
     
     aba_selecionada = st.radio(
@@ -2844,6 +2844,65 @@ elif menu == "Cadastros Gerais":
         key="radio_sub_cadastros_gerais_completo"
     )
     st.markdown("---")
+
+    if aba_selecionada == "Cargos":
+        st.subheader("Gerenciar Cargos por Empresa")
+        with st.form("form_cad_cargo_unico"):
+            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
+            )
+    if aba_selecionada == "Cargos":
+        st.subheader("Gerenciar Cargos por Empresa")
+        with st.form("form_cad_cargo_unico"):
+            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
+            )
+
+    if aba_selecionada == "Cargos":
+        st.subheader("Gerenciar Cargos por Empresa")
+        with st.form("form_cad_cargo_unico"):
+            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
+            )
+
+    if aba_selecionada == "Cargos":
+        st.subheader("Gerenciar Cargos por Empresa")
+        with st.form("form_cad_cargo_unico"):
+            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
+            )
+
+    if aba_selecionada == "Cargos":
+        st.subheader("Gerenciar Cargos por Empresa")
+        with st.form("form_cad_cargo_unico"):
+            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
+            )
+
+    if aba_selecionada == "Cargos":
+        st.subheader("Gerenciar Cargos por Empresa")
+        with st.form("form_cad_cargo_unico"):
+            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
+            )
 
     elif aba_selecionada == "Cargos":
         st.subheader("Gerenciar Cargos por Empresa")
