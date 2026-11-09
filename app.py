@@ -804,7 +804,7 @@ def dialog_editar_funcionario(id_alvo):
             else:
                 st.warning("⚠️ Este colaborador ainda não possui PIN de assinatura eletrônica cadastrado.")
 
-            # Campo único para cadastrar ou alterar o PIN a qualquer momento
+            # Campo para cadastrar ou alterar o PIN a qualquer momento
             novo_pin_input = st.text_input(
                 "Cadastrar / Alterar PIN (4 Dígitos Numéricos)", 
                 value=str(f_pin) if f_pin and str(f_pin) != "None" else "", 
@@ -831,7 +831,7 @@ def dialog_editar_funcionario(id_alvo):
                 
                 pin_para_salvar = str(novo_pin_input).strip()
                 
-                # Validação do PIN (se preenchido, deve ter 4 dígitos)
+                # Validação do PIN (se preenchido, deve ter 4 dígitos numéricos)
                 if pin_para_salvar and not (len(pin_para_salvar) == 4 and pin_para_salvar.isdigit()):
                     st.error("⚠️ O PIN deve conter exatamente 4 dígitos numéricos.")
                 else:
