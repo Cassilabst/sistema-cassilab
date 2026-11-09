@@ -574,28 +574,32 @@ def renderizar_aba_epis(*args, **kwargs):
                         num_pagina_atual = pagina_idx + 1
                         indicador_pagina = f"<b>Página {num_pagina_atual} de {total_paginas}</b>" if total_paginas > 1 else ""
 
-                        html_paginas_acumulado += (
-                            "<div class='sheet'>"
-                            "<div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>"
-                            f"<div>{logo_ficha_html}</div>"
-                            f"<div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>"
-                            "</div>"
-                            "<div class='cabecalho-principal-ficha'>"
-                            "CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I."
-                            "</div>"
-                            "<table class='tabela-ficha'>"
-                            f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>"
-                            "<tr>"
-                            f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>"
-                            f"<td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>"
-                            "</tr>"
-                            "<tr>"
-                            f"<td><b>Função:</b> {cargo_func}</td>"
-                            f"<td colspan='2'><b>Armário nº:</b> {armario_num}</td>"
-                            "</tr>"
-                            "<tr>"
-                            f"<td><b>Setor:</b> {setor_func}</td>"
-                            f"<td colspan='2'><b>Calçado nº:</b> {calcado_num}</td>"
-                            "</tr>"
-                            "</table>"
-                        )
+                        # A variável html_ficha é montada juntando os estilos e as páginas acumuladas:
+                    html_ficha = (
+                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
+                        "<style>"
+                        "@page { size: A4 landscape !important; margin: 5mm !important; }"
+                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
+                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }"
+                        ".tabela-ficha { width: 100%; border-collapse: collapse; }"
+                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }"
+                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }"
+                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }"
+                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }"
+                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
+                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
+                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
+                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
+                        "</style></head><body>"
+                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
+                        "<button onclick='window.print()' style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
+                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
+                        "</button>"
+                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
+                        "</div>"
+                        f"{html_paginas_acumulado}"
+                        "</body></html>"
+                    )
+                    
+                    # LOGO ABAIXO DA VARIÁVEL html_ficha, chamamos o componente:
+                    components.html(html_ficha, height=850, scrolling=True)
