@@ -50,7 +50,7 @@ pd.read_sql = _patched_read_sql
 # --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
 from modulo_absenteismo import renderizar_aba_absenteismo
 from modulo_admin import renderizar_aba_admin
-from modulo_documentos import renderizar_aba_documentos
+from modulo_documentos import renderizar_aba_documentos, renderizar_botao_imprimir_termo
 from modulo_empresas import renderizar_aba_empresas
 from modulo_epis import renderizar_aba_epis
 from modulo_exames import renderizar_aba_exames
