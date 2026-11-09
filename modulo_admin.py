@@ -129,4 +129,192 @@ def renderizar_aba_admin(
                 column_config={
                     "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
                     "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn
+                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
+                    "Nível de Acesso": st.column_config.SelectboxColumn(
+                        "Nível de Acesso",
+                        options=["Somente Visualizar", "Lançar", "Editar", "Fazer Tudo"],
+                        required=True
+                    )
+                }
+            )
+            
+            curr_u = edit_users[edit_users["Selecionar"] == True]["_id_banco"].tolist()
+            new_u = [uid for uid in curr_u if uid != st.session_state["sel_id_user"]]
+            if new_u:
+                st.session_state["sel_id_user"] = new_u[-1]
+                st.rerun()
+            elif not curr_u and st.session_state["sel_id_user"] is not None:
+                st.session_state["sel_id_user"] = None
+                st.rerun()
+                
+            sel_users = edit_users[edit_users["Selecionar"] == True]
+            
+            col_salvar_niveis, col_esp = st.columns([1, 1])
+            
+            if col_salvar_niveis.button("💾 Salvar Alterações de Níveis de Acesso", use_container_width=True):
+                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                cursor = conn.cursor()
+                for _, row in edit_users.iterrows():
+                    u_id = row.get("_id_banco")
+                    novo_nivel = row.get("Nível de Acesso")
+                    if pd.notna(u_id) and pd.notna(novo_nivel):
+                        cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = ? WHERE id = ?", (str(novo_nivel), int(u_id)))
+                conn.commit()
+                conn.close()
+                if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
+                st.session_state["sel_id_user"] = None
+                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                registrar_log_func("Administrador", "Todas", "Atualização de níveis de permissão de usuários")
+                st.rerun()
+                
+            st.markdown("")
+            cu1, cu2, cu3 = st.columns(3)
+            
+            if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True, key="btn_aprovar_acesso_adm"):
+                if len(sel_users) == 1:
+                    uid = int(sel_users.iloc[0]["_id_banco"])
+                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE id = ?", (uid,))
+                    conn.commit()
+                    conn.close()
+                    if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
+                    st.session_state["sel_id_user"] = None
+                    st.session_state["msg_sucesso"] = "✅ Acesso aprovado com sucesso!"
+                    registrar_log_func("Administrador", "Todas", f"Aprovou acesso do usuário ID {uid}")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Selecione apenas um usuário marcando o quadradinho.")
+                    
+            if cu2.button("🚫 Bloquear Acesso Selecionado", use_container_width=True, key="btn_bloquear_acesso_adm"):
+                if len(sel_users) == 1:
+                    uid = int(sel_users.iloc[0]["_id_banco"])
+                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn.execute("UPDATE usuarios_sistema SET status = 'Bloqueado' WHERE id = ?", (uid,))
+                    conn.commit()
+                    conn.close()
+                    if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
+                    st.session_state["sel_id_user"] = None
+                    st.session_state["msg_sucesso"] = "🚫 Acesso bloqueado com sucesso!"
+                    registrar_log_func("Administrador", "Todas", f"Bloqueou acesso do usuário ID {uid}")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Selecione apenas um usuário marcando o quadradinho.")
+                    
+            if cu3.button("🗑️ Excluir Usuário", use_container_width=True, key="btn_excluir_usuario_adm"):
+                if len(sel_users) == 1:
+                    uid = int(sel_users.iloc[0]["_id_banco"])
+                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn.execute("DELETE FROM usuarios_sistema WHERE id = ?", (uid,))
+                    conn.commit()
+                    conn.close()
+                    if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
+                    st.session_state["sel_id_user"] = None
+                    st.session_state["msg_sucesso"] = "🗑️ Usuário excluído com sucesso!"
+                    registrar_log_func("Administrador", "Todas", f"Excluiu usuário ID {uid}")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Selecione apenas um usuário marcando o quadradinho.")
+        else:
+            st.info("Nenhum usuário cadastrado no sistema.")
+
+        st.markdown("---")
+        st.subheader("➕ Cadastrar ou Restaurar Acesso Puxando da Base de Funcionários")
+        st.markdown("Selecione um funcionário já cadastrado no sistema para recriar o acesso dele de forma rápida e com status **Ativo**.")
+
+        conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
+        try:
+            query_func = "SELECT id, funcionario, empresa, cpf FROM base_funcionarios"
+            df_func_cad = pd.read_sql(query_func, conn_func)
+            df_func_cad["email"] = ""
+            df_func_cad["celular"] = ""
+        except Exception:
+            df_func_cad = pd.DataFrame()
+        conn_func.close()
+
+        if not df_func_cad.empty and "funcionario" in df_func_cad.columns:
+            df_func_cad = df_func_cad.sort_values(by="funcionario", key=lambda x: x.astype(str).str.lower())
+            df_func_cad["rotulo"] = df_func_cad["funcionario"].astype(str) + " (" + df_func_cad["empresa"].astype(str) + " - CPF: " + df_func_cad["cpf"].fillna("N/A").astype(str) + ")"
+            lista_funcs_opcoes = df_func_cad["rotulo"].tolist()
+
+            with st.form("form_cad_usuario_via_funcionario"):
+                func_selecionado_rotulo = st.selectbox("Selecione o Funcionário", lista_funcs_opcoes)
+                
+                c_cad5, c_cad6 = st.columns(2)
+                m_senha = c_cad5.text_input("Definir ou Manter a Senha de Acesso", type="password", placeholder="Digite a senha")
+                m_nivel = c_cad6.selectbox("Nível de Permissão", ["Somente Visualizar", "Lançar", "Editar", "Fazer Tudo"])
+
+                btn_salvar_via_func = st.form_submit_button("💾 Gerar/Restaurar Acesso Ativo para o Funcionário", use_container_width=True)
+
+                if btn_salvar_via_func:
+                    dados_func = df_func_cad[df_func_cad["rotulo"] == func_selecionado_rotulo].iloc[0]
+                    
+                    f_nome = str(dados_func["funcionario"])
+                    f_empresa = str(dados_func["empresa"])
+                    f_cpf = str(dados_func["cpf"]) if pd.notna(dados_func["cpf"]) else ""
+                    f_email = ""
+                    f_celular = ""
+
+                    if f_cpf and m_senha:
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        cursor = conn.cursor()
+                        try:
+                            cursor.execute(
+                                """INSERT OR REPLACE INTO usuarios_sistema 
+                                   (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
+                                   VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?)""",
+                                (
+                                    f_nome,
+                                    f_cpf,
+                                    f_empresa,
+                                    f_email,
+                                    f_celular,
+                                    m_senha,
+                                    m_nivel,
+                                ),
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.session_state["msg_sucesso"] = f"✅ Acesso ativado com sucesso para {f_nome}!"
+                            registrar_log_func("Administrador", f_empresa, f"Restaurou/Criou acesso via funcionário para {f_nome}")
+                            st.rerun()
+                        except Exception as e:
+                            conn.close()
+                            st.error(f"Erro ao salvar usuário: {e}")
+                    else:
+                        st.warning("⚠️ O funcionário selecionado precisa ter um CPF válido e você deve definir uma senha.")
+        else:
+            st.info("ℹ️ Nenhum funcionário cadastrado na base de dados para puxar os dados.")
+
+        st.markdown("---")
+        st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        try:
+            df_logs = pd.read_sql("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", conn)
+        except Exception:
+            df_logs = pd.DataFrame()
+        conn.close()
+        
+        if not df_logs.empty:
+            df_logs_exib = df_logs.rename(columns={"data_hora": "Data / Hora", "usuario": "Nome do Usuário", "empresa": "Empresa", "acao": "Ação / Evento"})
+            df_logs_exib = adicionar_numeracao_func(df_logs_exib)
+            st.dataframe(df_logs_exib, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum log registrado até o momento.")
+
+        st.markdown("---")
+        st.subheader("💾 Cópia de Segurança (Backup do Banco de Dados)")
+        st.write("Faça o download do arquivo completo da base de dados (`.db`) para guardar no seu computador a qualquer momento.")
+
+        if os.path.exists(DB_NAME):
+            with open(DB_NAME, "rb") as f:
+                bytes_db = f.read()
+        
+            st.download_button(
+                label="📥 Baixar Banco de Dados Completo (.db)",
+                data=bytes_db,
+                file_name=f"backup_cassilab_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db",
+                mime="application/octet-stream",
+                use_container_width=True
+            )
+        else:
+            st.warning("⚠️ Arquivo de banco de dados não encontrado no caminho atual.")
