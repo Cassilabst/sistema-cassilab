@@ -741,7 +741,7 @@ def dialog_editar_funcionario(id_alvo):
     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
     
-    # Garante que as colunas de assinatura eletrônica existam no banco
+    # Garante compatibilidade caso as colunas novas ainda não existam na tabela
     try:
         cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN pin_colaborador TEXT;")
     except:
@@ -795,6 +795,7 @@ def dialog_editar_funcionario(id_alvo):
                 ["🟢 Ativo", "🟠 Afastado", "🔴 Desligado"],
                 index=idx_st_f,
             )
+
             # --- CAMPOS DE COMPLIANCE E SEGURANÇA DO PIN ---
             st.markdown("---")
             st.markdown("#### 🔑 Assinatura Eletrônica e Termo")
@@ -822,30 +823,11 @@ def dialog_editar_funcionario(id_alvo):
             )
 
             if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-            # ... lógica de salvamento que você já tem ...
-                
-            # --- CAMPOS DE COMPLIANCE E SEGURANÇA DO PIN ---
-            st.markdown("---")
-            st.markdown("#### 🔑 Assinatura Eletrônica (PIN de 4 Dígitos)")
-            if f_pin and str(f_pin).strip() and str(f_pin) != "None":
-                st.info("🔒 O PIN do colaborador está cadastrado e protegido por sigilo de compliance.")
-            else:
-                st.warning("⚠️ Este colaborador ainda não possui PIN de assinatura eletrônica cadastrado.")
-
-            resetar_pin = st.checkbox("🔄 Gerar / Redefinir PIN Temporário (Caso tenha esquecido)")
-            novo_pin_input = ""
-            if resetar_pin:
-                novo_pin_input = st.text_input("Digite o Novo PIN Temporário (4 Dígitos)", max_chars=4)
-
-            novo_termo = st.checkbox("Termo de Adesão ao EPI Eletrônico Assinado", value=bool(f_termo))
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
                 dt_adm_fmt = formatar_data_flexivel_local(nova_data_adm)
                 dt_nasc_fmt = formatar_data_flexivel_local(nova_data_nasc)
                 
                 conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 
-                # Valida e define se altera o PIN ou mantém o anterior
                 if resetar_pin and novo_pin_input.strip():
                     if len(novo_pin_input.strip()) == 4 and novo_pin_input.strip().isdigit():
                         conn.execute(
