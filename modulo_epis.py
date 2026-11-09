@@ -252,13 +252,20 @@ def renderizar_aba_epis(*args, **kwargs):
                         use_container_width=True,
                         key="btn_edit_epi",
                     ):
-                        if st.session_state["sel_id_epi"] is not None:
-                            st.session_state["modal_edit_epi_id"] = int(
-                                st.session_state["sel_id_epi"]
-                            )
+                        if st.session_state.get("sel_id_epi") is not None:
+                            # Armazena o ID com segurança sem conflitos de estado
+                            st.session_state["modal_edit_epi_id"] = int(st.session_state["sel_id_epi"])
                             st.rerun()
                         else:
                             st.warning("⚠️ Selecione um registro marcando o quadradinho para editar.")
+                        
+                # Tratamento seguro para abrir a edição sem loop
+                if st.session_state.get("modal_edit_epi_id"):
+                    id_ed = st.session_state["modal_edit_epi_id"]
+                    # Limpa o gatilho para evitar que o modal reabra sozinho em loop
+                    st.session_state["modal_edit_epi_id"] = None
+                    if callable(dialog_editar_epi_func):
+                        dialog_editar_epi_func(id_ed)
 
                 if pode_excluir:
                     if col_acao2.button(
