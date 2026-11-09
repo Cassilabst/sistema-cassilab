@@ -843,20 +843,53 @@ def renderizar_aba_epis(*args, **kwargs):
                         </div>
                         """
 
-                    # MONTAGEM FINAL DA FICHA COM O BOTÃO DE IMPRESSÃO EM BASE64 (FORA DO LOOP)
-                    html_base64 = base64.b64encode(
-                        html_paginas_acumulado.encode("utf-8")
-                    ).decode("utf-8")
+                    # MONTAGEM FINAL DA FICHA SEGURA (SEM CONFLITO DE F-STRING)
+                    html_conteudo_bruto = (
+                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
+                        "<style>"
+                        "@page { size: A4 landscape !important; margin: 5mm !important; }"
+                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
+                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }"
+                        ".tabela-ficha { width: 100%; border-collapse: collapse; }"
+                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }"
+                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }"
+                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }"
+                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }"
+                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
+                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
+                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
+                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
+                        "</style></head><body>"
+                        + html_paginas_acumulado +
+                        "</body></html>"
+                    )
 
-                    html_ficha = f"""
-                    <!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>
-                    <style>
-                        @page {{ size: A4 landscape !important; margin: 5mm !important; }}
-                        body {{ font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }}
-                        .sheet {{ width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }}
-                        .tabela-ficha {{ width: 100%; border-collapse: collapse; }}
-                        .tabela-ficha td {{ border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }}
-                        .cabecalho-principal-ficha {{ text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }}
-                        .tabela-itens {{ width: 100%; border-collapse: collapse; margin-top: -1px; }}
-                        .tabela-itens th, .tabela-itens td {{ border: 1px solid #000; padding: 3px 5px; font-size: 9px; }}
-                        .tabela-itens th {{ background-color: #f2f2f2; text-align: center; font-weight: bold; }}
+                    html_base64 = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
+
+                    html_ficha = (
+                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
+                        "<style>"
+                        "@page { size: A4 landscape !important; margin: 5mm !important; }"
+                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
+                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }"
+                        ".tabela-ficha { width: 100%; border-collapse: collapse; }"
+                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }"
+                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }"
+                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }"
+                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }"
+                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
+                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
+                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
+                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
+                        "</style></head><body>"
+                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
+                        f"<button onclick=\"var win = window.open('data:text/html;base64,{html_base64}', '_blank'); setTimeout(function(){{ win.print(); }}, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
+                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
+                        "</button>"
+                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
+                        "</div>"
+                        + html_paginas_acumulado +
+                        "</body></html>"
+                    )
+
+                    components.html(html_ficha, height=850, scrolling=True)
