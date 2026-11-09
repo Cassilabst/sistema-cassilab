@@ -306,6 +306,18 @@ def renderizar_aba_epis(*args, **kwargs):
             )
         else:
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            
+            # Garante que as colunas armario e calcado existem na tabela base_funcionarios
+            try:
+                conn.execute("ALTER TABLE base_funcionarios ADD COLUMN armario TEXT")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT")
+            except Exception:
+                pass
+            conn.commit()
+
             df_funcs = pd.read_sql(
                 "SELECT funcionario, matricula, cargo, setor, data_admissao, armario, calcado FROM base_funcionarios WHERE empresa = ?",
                 conn,
