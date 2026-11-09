@@ -2930,7 +2930,7 @@ if menu == "Dashboard / Visão Geral":
 # 1. CADASTRO DE EMPRESAS & 2. CADASTROS GERAIS
 # ==========================================
 if menu == "Cadastro de Empresas":
-    st.write("DEBUG: Entrou no Cadastro de Empresas")
+    #st.write("DEBUG: Entrou no Cadastro de Empresas")
     try:
         renderizar_aba_empresas(
             DB_NAME,
