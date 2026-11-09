@@ -2864,189 +2864,149 @@ if menu == "Cadastros Gerais":
                     key="sel_emp_cargo_geral",
                 )
     
-        if aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            with st.form("form_cad_cargo_unico"):
-                empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-    
-        if aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            with st.form("form_cad_cargo_unico"):
-                empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-    
-        if aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            with st.form("form_cad_cargo_unico"):
-                empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-    
-        if aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            with st.form("form_cad_cargo_unico"):
-                empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-    
         elif aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            with st.form("form_cad_cargo_unico"):
-                empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-                novo_cargo = st.text_input("Novo Cargo")
-                btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
-                if btn_add_salvar_cargo:
-                    if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        cargo_fmt = formatar_titulo(novo_cargo)
-                        cursor.execute(
-                            "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
-                            (empresa_cargo_sel, cargo_fmt),
-                        )
-                        existe = cursor.fetchone()
-                        if existe:
-                            st.error(f"Este cargo já está cadastrado para a empresa {empresa_cargo_sel}.")
-                        else:
-                            cursor.execute(
-                                "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
-                                (empresa_cargo_sel, cargo_fmt),
-                            )
-                            conn.commit()
-                            if "edit_cargos_gerais_tbl_global" in st.session_state:
-                                del st.session_state["edit_cargos_gerais_tbl_global"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                empresa_cargo_sel,
-                                f"Adicionou cargo: {cargo_fmt}",
-                            )
-                            st.rerun()
-                        conn.close()
-                    else:
-                        st.error("Selecione a empresa e preencha o nome do cargo.")
-                        
-            st.markdown("---")
-            filtro_cargo_emp = st.selectbox(
-                "Filtrar por Empresa",
-                ["Todas as Empresas"] + (empresas_cadastradas if "empresas_cadastradas" in locals() else []),
-                key="filtro_cargo_emp_view",
+        st.subheader("Gerenciar Cargos por Empresa")
+        empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+        with st.form("form_cad_cargo_unico_geral"):
+            empresa_cargo_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_cargo_geral",
             )
-            
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            try:
-                df_cargos_geral = pd.read_sql(
-                    "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
-                    conn,
-                )
-            except Exception:
-                df_cargos_geral = pd.DataFrame()
-            conn.close()
-            
-            if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
-                df_cargos_geral = df_cargos_geral[
-                    df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
-                    == str(filtro_cargo_emp).strip().lower()
-                ]
-                
-            if not df_cargos_geral.empty:
-                if "sel_id_cargo_geral" not in st.session_state:
-                    st.session_state["sel_id_cargo_geral"] = None
-                    
-                df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
-                df_cargos_geral["Selecionar"] = (
-                    df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
-                )
-                df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
-                df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
-                df_cargos_ex = adicionar_numeracao(df_cargos_ex)
-                
-                edit_cargos_geral = st.data_editor(
-                    df_cargos_ex,
-                    hide_index=True,
-                    num_rows="fixed",
-                    key=f"edit_cargos_gerais_tbl_{filtro_cargo_emp}",
-                    width="stretch",
-                    column_config={
-                        "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
-                        "_id_banco": None,
-                        "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                        "Empresa": st.column_config.TextColumn("Empresa", disabled=True),
-                    },
-                )
-                
-                curr_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]["_id_banco"].tolist()
-                new_cargo = [uid for uid in curr_cargo if uid != st.session_state["sel_id_cargo_geral"]]
-                if new_cargo:
-                    st.session_state["sel_id_cargo_geral"] = new_cargo[-1]
-                    st.rerun()
-                elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
-                    st.session_state["sel_id_cargo_geral"] = None
-                    st.rerun()
-                    
-                linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
-                col_cg_1, col_cg_2 = st.columns(2)
-                
-                if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True, key="btn_salvar_cargos_global"):
+            novo_cargo = st.text_input("Novo Cargo")
+            btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
+            if btn_add_salvar_cargo:
+                if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
-                    for _, row in edit_cargos_geral.iterrows():
-                        c_id = row.get("_id_banco", row.get("id"))
-                        e_val = row.get("Empresa", row.get("empresa"))
-                        c_val = row.get("Cargo", row.get("cargo"))
-                        if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
-                            if pd.notna(c_id) and str(c_id).strip() not in ("", "nan", "None"):
-                                cursor.execute(
-                                    "UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?",
-                                    (str(e_val).strip(), formatar_titulo(c_val), int(c_id)),
-                                )
+                    cargo_fmt = formatar_titulo(novo_cargo)
+                    cursor.execute(
+                        "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
+                        (empresa_cargo_sel, cargo_fmt),
+                    )
+                    existe = cursor.fetchone()
+                    if existe:
+                        st.error(f"Este cargo já está cadastrado para a empresa {empresa_cargo_sel}.")
+                    else:
+                        cursor.execute(
+                            "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
+                            (empresa_cargo_sel, cargo_fmt),
+                        )
+                        conn.commit()
+                        if "edit_cargos_gerais_tbl_global" in st.session_state:
+                            del st.session_state["edit_cargos_gerais_tbl_global"]
+                        st.cache_data.clear()
+                        st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Administrador"),
+                            empresa_cargo_sel,
+                            f"Adicionou cargo: {cargo_fmt}",
+                        )
+                        st.rerun()
+                    conn.close()
+                else:
+                    st.error("Selecione a empresa e preencha o nome do cargo.")
+                    
+        st.markdown("---")
+        filtro_cargo_emp = st.selectbox(
+            "Filtrar por Empresa",
+            ["Todas as Empresas"] + (empresas_cadastradas if "empresas_cadastradas" in locals() else []),
+            key="filtro_cargo_emp_view",
+        )
+        
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        try:
+            df_cargos_geral = pd.read_sql(
+                "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
+                conn,
+            )
+        except Exception:
+            df_cargos_geral = pd.DataFrame()
+        conn.close()
+        
+        if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
+            df_cargos_geral = df_cargos_geral[
+                df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
+                == str(filtro_cargo_emp).strip().lower()
+            ]
+            
+        if not df_cargos_geral.empty:
+            if "sel_id_cargo_geral" not in st.session_state:
+                st.session_state["sel_id_cargo_geral"] = None
+                
+            df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
+            df_cargos_geral["Selecionar"] = (
+                df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
+            )
+            df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
+            df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
+            df_cargos_ex = adicionar_numeracao(df_cargos_ex)
+            
+            edit_cargos_geral = st.data_editor(
+                df_cargos_ex,
+                hide_index=True,
+                num_rows="fixed",
+                key=f"edit_cargos_gerais_tbl_{filtro_cargo_emp}",
+                width="stretch",
+                column_config={
+                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
+                    "_id_banco": None,
+                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
+                    "Empresa": st.column_config.TextColumn("Empresa", disabled=True),
+                },
+            )
+            
+            curr_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]["_id_banco"].tolist()
+            new_cargo = [uid for uid in curr_cargo if uid != st.session_state["sel_id_cargo_geral"]]
+            if new_cargo:
+                st.session_state["sel_id_cargo_geral"] = new_cargo[-1]
+                st.rerun()
+            elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
+                st.session_state["sel_id_cargo_geral"] = None
+                st.rerun()
+                
+            linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
+            col_cg_1, col_cg_2 = st.columns(2)
+            
+            if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True, key="btn_salvar_cargos_global"):
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                cursor = conn.cursor()
+                for _, row in edit_cargos_geral.iterrows():
+                    c_id = row.get("_id_banco", row.get("id"))
+                    e_val = row.get("Empresa", row.get("empresa"))
+                    c_val = row.get("Cargo", row.get("cargo"))
+                    if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
+                        if pd.notna(c_id) and str(c_id).strip() not in ("", "nan", "None"):
+                            cursor.execute(
+                                "UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?",
+                                (str(e_val).strip(), formatar_titulo(c_val), int(c_id)),
+                            )
+                conn.commit()
+                conn.close()
+                if "edit_cargos_gerais_tbl_global" in st.session_state:
+                    del st.session_state["edit_cargos_gerais_tbl_global"]
+                st.session_state["sel_id_cargo_geral"] = None
+                st.cache_data.clear()
+                st.session_state["msg_sucesso"] = "✅ Cargos atualizados com sucesso!"
+                st.rerun()
+                
+            if col_cg_2.button("🗑️ Excluir Cargo Selecionado", use_container_width=True, key="btn_excluir_cargo_global"):
+                if len(linhas_sel_cargo) == 1:
+                    cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    conn.execute("DELETE FROM cad_cargos WHERE id = ?", (cargo_id_exc,))
                     conn.commit()
                     conn.close()
                     if "edit_cargos_gerais_tbl_global" in st.session_state:
                         del st.session_state["edit_cargos_gerais_tbl_global"]
                     st.session_state["sel_id_cargo_geral"] = None
                     st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "✅ Cargos atualizados com sucesso!"
+                    st.session_state["msg_sucesso"] = "🗑️ Cargo excluído com sucesso!"
                     st.rerun()
-                    
-                if col_cg_2.button("🗑️ Excluir Cargo Selecionado", use_container_width=True, key="btn_excluir_cargo_global"):
-                    if len(linhas_sel_cargo) == 1:
-                        cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        conn.execute("DELETE FROM cad_cargos WHERE id = ?", (cargo_id_exc,))
-                        conn.commit()
-                        conn.close()
-                        if "edit_cargos_gerais_tbl_global" in st.session_state:
-                            del st.session_state["edit_cargos_gerais_tbl_global"]
-                        st.session_state["sel_id_cargo_geral"] = None
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "🗑️ Cargo excluído com sucesso!"
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ Selecione um cargo marcando o quadradinho.")
-            else:
-                st.info("ℹ️ Nenhum cargo cadastrado.")
+                else:
+                    st.warning("⚠️ Selecione um cargo marcando o quadradinho.")
+        else:
+            st.info("ℹ️ Nenhum cargo cadastrado.")
 
     elif aba_selecionada == "Setores":
         st.subheader("Gerenciar Setores por Empresa")
