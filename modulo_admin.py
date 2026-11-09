@@ -1,4 +1,3 @@
-# Atualizacao de codigo
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -148,7 +147,9 @@ def renderizar_aba_admin(
                 st.session_state["sel_id_user"] = None
                 st.rerun()
                 
+            # Captura correta e imediata dos usuários selecionados baseada no data_editor atualizado
             sel_users = edit_users[edit_users["Selecionar"] == True]
+            
             col_salvar_niveis, col_esp = st.columns([1, 1])
             
             if col_salvar_niveis.button("💾 Salvar Alterações de Níveis de Acesso", use_container_width=True):
@@ -169,7 +170,8 @@ def renderizar_aba_admin(
                 
             st.markdown("")
             cu1, cu2, cu3 = st.columns(3)
-            if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True):
+            
+            if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True, key="btn_aprovar_acesso_adm"):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
                     conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -178,13 +180,13 @@ def renderizar_aba_admin(
                     conn.close()
                     if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
                     st.session_state["sel_id_user"] = None
-                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                    st.session_state["msg_sucesso"] = "✅ Acesso aprovado com sucesso!"
                     registrar_log_func("Administrador", "Todas", f"Aprovou acesso do usuário ID {uid}")
                     st.rerun()
                 else:
-                    st.warning("Selecione um usuário marcando o quadradinho.")
+                    st.warning("⚠️ Selecione apenas um usuário marcando o quadradinho.")
                     
-            if cu2.button("🚫 Bloquear Acesso Selecionado", use_container_width=True):
+            if cu2.button("🚫 Bloquear Acesso Selecionado", use_container_width=True, key="btn_bloquear_acesso_adm"):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
                     conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -193,23 +195,26 @@ def renderizar_aba_admin(
                     conn.close()
                     if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
                     st.session_state["sel_id_user"] = None
-                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                    st.session_state["msg_sucesso"] = "🚫 Acesso bloqueado com sucesso!"
                     registrar_log_func("Administrador", "Todas", f"Bloqueou acesso do usuário ID {uid}")
                     st.rerun()
                 else:
-                    st.warning("Selecione um usuário marcando o quadradinho.")
+                    st.warning("⚠️ Selecione apenas um usuário marcando o quadradinho.")
                     
-            if cu3.button("🗑️ Excluir Usuário", use_container_width=True):
+            if cu3.button("🗑️ Excluir Usuário", use_container_width=True, key="btn_excluir_usuario_adm"):
                 if len(sel_users) == 1:
                     uid = int(sel_users.iloc[0]["_id_banco"])
-                    st.session_state["modal_excluir_ativo"] = True
-                    st.session_state["modal_excluir_tabela"] = "usuarios_sistema"
-                    st.session_state["modal_excluir_id"] = uid
-                    st.session_state["modal_excluir_editor_key"] = "edit_users_acesso"
+                    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn.execute("DELETE FROM usuarios_sistema WHERE id = ?", (uid,))
+                    conn.commit()
+                    conn.close()
+                    if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
                     st.session_state["sel_id_user"] = None
+                    st.session_state["msg_sucesso"] = "🗑️ Usuário excluído com sucesso!"
+                    registrar_log_func("Administrador", "Todas", f"Excluiu usuário ID {uid}")
                     st.rerun()
                 else:
-                    st.warning("Selecione um usuário marcando o quadradinho.")
+                    st.warning("⚠️ Selecione apenas um usuário marcando o quadradinho.")
         else:
             st.info("Nenhum usuário cadastrado no sistema.")
 
@@ -219,7 +224,6 @@ def renderizar_aba_admin(
 
         conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
         try:
-            # Lê apenas as colunas que existem na tabela base_funcionarios
             query_func = "SELECT id, funcionario, empresa, cpf FROM base_funcionarios"
             df_func_cad = pd.read_sql(query_func, conn_func)
             df_func_cad["email"] = ""
@@ -271,58 +275,4 @@ def renderizar_aba_admin(
                             )
                             conn.commit()
                             conn.close()
-                            st.session_state["msg_sucesso"] = f"✅ Acesso ativado com sucesso para {f_nome}!"
-                            registrar_log_func("Administrador", f_empresa, f"Restaurou/Criou acesso via funcionário para {f_nome}")
-                            st.rerun()
-                        except Exception as e:
-                            conn.close()
-                            st.error(f"Erro ao salvar usuário: {e}")
-                    else:
-                        st.warning("⚠️ O funcionário selecionado precisa ter um CPF válido e você deve definir uma senha.")
-        else:
-            st.info("ℹ️ Nenhum funcionário cadastrado na base de dados para puxar os dados.")
-
-        st.markdown("---")
-        st.subheader("📋 Histórico de Logs e Acessos ao Sistema")
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        try:
-            df_logs = pd.read_sql("SELECT data_hora, usuario, empresa, acao FROM logs_sistema ORDER BY id DESC LIMIT 100", conn)
-        except Exception:
-            df_logs = pd.DataFrame()
-        conn.close()
-        
-        if not df_logs.empty:
-            df_logs_exib = df_logs.rename(columns={"data_hora": "Data / Hora", "usuario": "Nome do Usuário", "empresa": "Empresa", "acao": "Ação / Evento"})
-            df_logs_exib = adicionar_numeracao_func(df_logs_exib)
-            st.dataframe(df_logs_exib, use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhum log registrado até o momento.")
-
-            # --- ADIÇÃO DO BOTÃO DE BACKUP NA ADMINISTRAÇÃO ---
-    st.markdown("---")
-    st.subheader("💾 Cópia de Segurança (Backup do Banco de Dados)")
-    st.write("Faça o download do arquivo completo da base de dados (`.db`) para guardar no seu computador a qualquer momento.")
-
-    if os.path.exists(DB_NAME):
-        with open(DB_NAME, "rb") as f:
-            bytes_db = f.read()
-        
-        st.markdown("---")
-        st.subheader("💾 Cópia de Segurança (Backup do Banco de Dados)")
-        st.write("Faça o download do arquivo completo da base de dados (`.db`) para guardar no seu computador a qualquer momento.")
-        
-        if os.path.exists(DB_NAME):
-            # Lê o ficheiro apenas no momento em que o botão é gerado/clicado
-            with open(DB_NAME, "rb") as f:
-                bytes_db = f.read()
-    
-            st.download_button(
-                label="📥 Baixar Banco de Dados Completo (.db)",
-                data=bytes_db,
-                file_name=f"backup_cassilab_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db",
-                mime="application/octet-stream",
-                use_container_width=True
-            )
-        else:
-            st.warning("⚠️ Arquivo de banco de dados não encontrado no caminho atual.")
-
+                            st.session_state["msg_sucesso"] = f"✅ Acesso ativado com sucesso para
