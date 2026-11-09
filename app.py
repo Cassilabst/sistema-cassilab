@@ -2847,65 +2847,46 @@ if menu == "Cadastros Gerais":
 
     if aba_selecionada == "Cargos":
         st.subheader("Gerenciar Cargos por Empresa")
-        with st.form("form_cad_cargo_unico"):
-            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+        empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+        with st.form("form_cad_cargo_unico_geral"):
             empresa_cargo_sel = st.selectbox(
                 "Selecione a Empresa",
                 empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
                 key="sel_emp_cargo_geral",
             )
-        if aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            with st.form("form_cad_cargo_unico"):
-                empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-    
-        elif aba_selecionada == "Cargos":
-            st.subheader("Gerenciar Cargos por Empresa")
-            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-            with st.form("form_cad_cargo_unico_geral"):
-                empresa_cargo_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_cargo_geral",
-                )
-                novo_cargo = st.text_input("Novo Cargo")
-                btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
-                if btn_add_salvar_cargo:
-                    if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        cargo_fmt = formatar_titulo(novo_cargo)
+            novo_cargo = st.text_input("Novo Cargo")
+            btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
+            if btn_add_salvar_cargo:
+                if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    cursor = conn.cursor()
+                    cargo_fmt = formatar_titulo(novo_cargo)
+                    cursor.execute(
+                        "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
+                        (empresa_cargo_sel, cargo_fmt),
+                    )
+                    existe = cursor.fetchone()
+                    if existe:
+                        st.error(f"Este cargo já está cadastrado para a empresa {empresa_cargo_sel}.")
+                    else:
                         cursor.execute(
-                            "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
+                            "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
                             (empresa_cargo_sel, cargo_fmt),
                         )
-                        existe = cursor.fetchone()
-                        if existe:
-                            st.error(f"Este cargo já está cadastrado para a empresa {empresa_cargo_sel}.")
-                        else:
-                            cursor.execute(
-                                "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
-                                (empresa_cargo_sel, cargo_fmt),
-                            )
-                            conn.commit()
-                            if "edit_cargos_gerais_tbl_global" in st.session_state:
-                                del st.session_state["edit_cargos_gerais_tbl_global"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                empresa_cargo_sel,
-                                f"Adicionou cargo: {cargo_fmt}",
-                            )
-                            st.rerun()
-                        conn.close()
-                    else:
-                        st.error("Selecione a empresa e preencha o nome do cargo.")
+                        conn.commit()
+                        if "edit_cargos_gerais_tbl_global" in st.session_state:
+                            del st.session_state["edit_cargos_gerais_tbl_global"]
+                        st.cache_data.clear()
+                        st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Administrador"),
+                            empresa_cargo_sel,
+                            f"Adicionou cargo: {cargo_fmt}",
+                        )
+                        st.rerun()
+                    conn.close()
+                else:
+                    st.error("Selecione a empresa e preencha o nome do cargo.")
                         
             st.markdown("---")
             filtro_cargo_emp = st.selectbox(
