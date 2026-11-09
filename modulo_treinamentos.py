@@ -4,13 +4,9 @@ import sqlite3
 import streamlit as st
 import streamlit.components.v1 as components
 
-
 def renderizar_aba_treinamentos(*args, **kwargs):
     # Recuperação segura dos parâmetros e dependências do app principal
     DB_NAME = kwargs.get("DB_NAME") or (args[0] if len(args) > 0 else "cassilab_gestao.db")
-    is_admin = kwargs.get("is_admin") if "is_admin" in kwargs else (args[1] if len(args) > 1 else True)
-    emp_usuario = kwargs.get("emp_usuario") or (args[2] if len(args) > 2 else "Todas")
-    formatar_titulo = kwargs.get("formatar_titulo") or (args[3] if len(args) > 3 else lambda x: x)
     
     # --- SELETOR DE ORDENAÇÃO DA TABELA ---
     st.markdown("### 📋 Registros de Treinamentos")
@@ -31,76 +27,28 @@ def renderizar_aba_treinamentos(*args, **kwargs):
     df_exibir = pd.read_sql(f"SELECT * FROM cad_treinamentos {ordem_sql}", conn)
     conn.close()
           
-    # --- EXIBIÇÃO DA TABELA FILTRADA NO DATA EDITOR ---
-    # (Substitua a variável antiga da tabela por 'df_exibir' já tratada com a formatação e numeração)
-    is_admin = (
-        kwargs.get("is_admin")
-        if "is_admin" in kwargs
-        else (args[1] if len(args) > 1 else False)
-    )
-    emp_usuario = kwargs.get("emp_usuario") or (
-        args[2] if len(args) > 2 else ""
-    )
-    pode_lancar = (
-        kwargs.get("pode_lancar")
-        if "pode_lancar" in kwargs
-        else (args[3] if len(args) > 3 else True)
-    )
-    pode_editar = (
-        kwargs.get("pode_editar")
-        if "pode_editar" in kwargs
-        else (args[4] if len(args) > 4 else True)
-    )
-    pode_excluir = (
-        kwargs.get("pode_excluir")
-        if "pode_excluir" in kwargs
-        else (args[5] if len(args) > 5 else True)
-    )
+    # --- RECUPERAÇÃO DE DEPENDÊNCIAS E FUNÇÕES DO APP ---
+    is_admin = kwargs.get("is_admin") if "is_admin" in kwargs else (args[1] if len(args) > 1 else False)
+    emp_usuario = kwargs.get("emp_usuario") or (args[2] if len(args) > 2 else "")
+    pode_lancar = kwargs.get("pode_lancar") if "pode_lancar" in kwargs else (args[3] if len(args) > 3 else True)
+    pode_editar = kwargs.get("pode_editar") if "pode_editar" in kwargs else (args[4] if len(args) > 4 else True)
+    pode_excluir = kwargs.get("pode_excluir") if "pode_excluir" in kwargs else (args[5] if len(args) > 5 else True)
 
-    get_empresas_func = kwargs.get("get_empresas_func") or (
-        args[6] if len(args) > 6 else lambda: []
-    )
-    calcular_proximo_treinamento_func = kwargs.get(
-        "calcular_proximo_treinamento_func"
-    ) or (args[7] if len(args) > 7 else lambda d, v: d)
-    validar_e_formatar_data_input_func = (
-        kwargs.get("validar_e_formatar_data_input_func")
-        or (args[8] if len(args) > 8 else lambda x: x)
-    )
-    limpar_status_banco_func = kwargs.get("limpar_status_banco_func") or (
-        args[9] if len(args) > 9 else lambda x: x
-    )
-    sincronizar_status_treinamentos_func = kwargs.get(
-        "sincronizar_status_treinamentos_func"
-    ) or (args[10] if len(args) > 10 else lambda: None)
-    atualizar_filtro_empresa_func = kwargs.get(
-        "atualizar_filtro_empresa_func"
-    ) or (args[11] if len(args) > 11 else lambda x: None)
-    raw_registrar_log_func = kwargs.get("registrar_log_func") or (
-        args[12] if len(args) > 12 else None
-    )
-    formatar_data_br_func = kwargs.get("formatar_data_br_func") or (
-        args[13] if len(args) > 13 else lambda x: x
-    )
+    get_empresas_func = kwargs.get("get_empresas_func") or (args[6] if len(args) > 6 else lambda: [])
+    calcular_proximo_treinamento_func = kwargs.get("calcular_proximo_treinamento_func") or (args[7] if len(args) > 7 else lambda d, v: d)
+    validar_e_formatar_data_input_func = kwargs.get("validar_e_formatar_data_input_func") or (args[8] if len(args) > 8 else lambda x: x)
+    limpar_status_banco_func = kwargs.get("limpar_status_banco_func") or (args[9] if len(args) > 9 else lambda x: x)
+    sincronizar_status_treinamentos_func = kwargs.get("sincronizar_status_treinamentos_func") or (args[10] if len(args) > 10 else lambda: None)
+    atualizar_filtro_empresa_func = kwargs.get("atualizar_filtro_empresa_func") or (args[11] if len(args) > 11 else lambda x: None)
+    raw_registrar_log_func = kwargs.get("registrar_log_func") or (args[12] if len(args) > 12 else None)
+    formatar_data_br_func = kwargs.get("formatar_data_br_func") or (args[13] if len(args) > 13 else lambda x: x)
 
-    raw_formatar_status_visual_func = kwargs.get(
-        "formatar_status_visual_func"
-    ) or (args[14] if len(args) > 14 else None)
-    formatar_colunas_func = kwargs.get("formatar_colunas_func") or (
-        args[15] if len(args) > 15 else lambda df: df
-    )
-    adicionar_numeracao_func = kwargs.get("adicionar_numeracao_func") or (
-        args[16] if len(args) > 16 else lambda df: df
-    )
-    reset_tr_selection_func = kwargs.get("reset_tr_selection_func") or (
-        args[17] if len(args) > 17 else lambda: None
-    )
-    dialog_editar_treinamento_func = kwargs.get(
-        "dialog_editar_treinamento_func"
-    ) or (args[18] if len(args) > 18 else lambda x: None)
-    renderizar_matriz_treinamentos_func = kwargs.get(
-        "renderizar_matriz_treinamentos_func"
-    ) or (args[19] if len(args) > 19 else None)
+    raw_formatar_status_visual_func = kwargs.get("formatar_status_visual_func") or (args[14] if len(args) > 14 else None)
+    formatar_colunas_func = kwargs.get("formatar_colunas_func") or (args[15] if len(args) > 15 else lambda df: df)
+    adicionar_numeracao_func = kwargs.get("adicionar_numeracao_func") or (args[16] if len(args) > 16 else lambda df: df)
+    reset_tr_selection_func = kwargs.get("reset_tr_selection_func") or (args[17] if len(args) > 17 else lambda: None)
+    dialog_editar_treinamento_func = kwargs.get("dialog_editar_treinamento_func") or (args[18] if len(args) > 18 else lambda x: None)
+    renderizar_matriz_treinamentos_func = kwargs.get("renderizar_matriz_treinamentos_func") or (args[19] if len(args) > 19 else None)
 
     def registrar_log_func_seguro(*l_args, **l_kwargs):
         if not callable(raw_registrar_log_func):
@@ -524,7 +472,6 @@ def renderizar_aba_treinamentos(*args, **kwargs):
 
                 if pendencias:
                     df_pend = pd.DataFrame(pendencias)
-                    # Ordena o DataFrame de pendências por nome do funcionário em ordem alfabética
                     df_pend = df_pend.sort_values(by="Funcionário", ascending=True)
                     df_pend_fmt = adicionar_numeracao_func(formatar_colunas_func(df_pend))
                     st.warning(f"Foram encontrados {len(pendencias)} treinamento(s) obrigatório(s) em falta para os colaboradores.")
