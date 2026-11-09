@@ -3238,447 +3238,447 @@ elif menu == "Cadastros Gerais":
         else:
             st.info("ℹ️ Nenhum serviço cadastrado.")
                 
-        elif aba_selecionada == "Treinamentos":
-            st.subheader("Gerenciar Treinamentos por Empresa")
-            with st.form("form_cad_treinamento_geral_unico"):
-                empresa_trein_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_treinamento_geral",
-                )
-                
-                # Puxa os serviços/itens já cadastrados para servirem de base de escolha
-                conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
-                try:
-                    df_serv_base = pd.read_sql("SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", conn_base)
-                except:
-                    df_serv_base = pd.DataFrame()
-                conn_base.close()
-                lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
-
-                c_tr_1, c_tr_2, c_tr_3 = st.columns([0.4, 0.4, 0.2])
-                
-                if lista_base_servicos:
-                    novo_treinamento_geral = c_tr_1.selectbox("Selecionar do Catálogo de Serviços", ["-- Digitar Novo --"] + lista_base_servicos)
-                    if novo_treinamento_geral == "-- Digitar Novo --":
-                        novo_treinamento_geral = c_tr_2.text_input("Nome do Novo Treinamento")
-                else:
-                    novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
-                
-                nova_carga_horaria_geral = c_tr_3.text_input("Carga Horária", value="8 horas")
-                btn_add_treinamento_geral = st.form_submit_button("Adicionar e Salvar Treinamento")
-                
-                if btn_add_treinamento_geral:
-                    # Se escolheu no selectbox mas digitou no input alternativo, trata
-                    trein_para_salvar = novo_treinamento_geral if novo_treinamento_geral != "-- Digitar Novo --" else ""
-                    
-                    if empresa_trein_sel != "Nenhuma" and str(trein_para_salvar).strip():
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        trein_fmt = formatar_titulo(trein_para_salvar)
-                        
-                        try:
-                            cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN empresa TEXT;")
-                            conn.commit()
-                        except:
-                            pass
-                            
-                        try:
-                            cursor.execute(
-                                "SELECT id FROM cad_treinamentos WHERE empresa = ? AND treinamento = ?",
-                                (empresa_trein_sel, trein_fmt),
-                            )
-                            existe = cursor.fetchone()
-                            if existe:
-                                st.error(f"Este treinamento já está cadastrado para a empresa {empresa_trein_sel}.")
-                            else:
-                                cursor.execute(
-                                    "INSERT INTO cad_treinamentos (empresa, treinamento, carga_horaria) VALUES (?, ?, ?)",
-                                    (empresa_trein_sel, trein_fmt, nova_carga_horaria_geral.strip()),
-                                )
-                                conn.commit()
-                                if "edit_treinamentos_gerais_tbl" in st.session_state:
-                                    del st.session_state["edit_treinamentos_gerais_tbl"]
-                                st.cache_data.clear()
-                                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                                registrar_log(
-                                    st.session_state.get("nome_usuario", "Administrador"),
-                                    empresa_trein_sel,
-                                    f"Adicionou treinamento: {trein_fmt}",
-                                )
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao cadastrar treinamento: {e}")
-                        conn.close()
-                    else:
-                        st.error("Selecione a empresa e preencha ou escolha o nome do treinamento.")
-                        
-            st.markdown("---")
-            filtro_treinamento_emp = st.selectbox(
-                "Filtrar por Empresa",
-                ["Todas as Empresas"] + empresas_cadastradas,
-                key="filtro_treinamento_emp_view",
+    elif aba_selecionada == "Treinamentos":
+        st.subheader("Gerenciar Treinamentos por Empresa")
+        with st.form("form_cad_treinamento_geral_unico"):
+            empresa_trein_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_treinamento_geral",
             )
             
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+            # Puxa os serviços/itens já cadastrados para servirem de base de escolha
+            conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
             try:
-                df_tr_geral = pd.read_sql(
-                    "SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos ORDER BY empresa, treinamento ASC",
-                    conn,
-                )
+                df_serv_base = pd.read_sql("SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", conn_base)
             except:
-                try:
-                    df_temp = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
-                    df_temp["empresa"] = "Todas"
-                    df_tr_geral = df_temp[["id", "empresa", "treinamento", "carga_horaria"]]
-                except:
-                    df_tr_geral = pd.DataFrame()
-            conn.close()
+                df_serv_base = pd.DataFrame()
+            conn_base.close()
+            lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
 
-            if filtro_treinamento_emp != "Todas as Empresas" and not df_tr_geral.empty:
-                if "empresa" in df_tr_geral.columns:
-                    df_tr_geral = df_tr_geral[
-                        df_tr_geral["empresa"].astype(str).str.strip().str.lower()
-                        == str(filtro_treinamento_emp).strip().lower()
-                    ]
-
-            if not df_tr_geral.empty:
-                if "sel_id_tr_geral" not in st.session_state:
-                    st.session_state["sel_id_tr_geral"] = None
-                df_tr_geral["_id_banco"] = df_tr_geral["id"]
-                df_tr_geral["Selecionar"] = (
-                    df_tr_geral["_id_banco"] == st.session_state["sel_id_tr_geral"]
-                )
-                df_tr_geral = df_tr_geral[["Selecionar", "_id_banco", "empresa", "treinamento", "carga_horaria"]]
-                df_tr_ex = formatar_colunas_tabela(df_tr_geral)
-                df_tr_ex = adicionar_numeracao(df_tr_ex)
+            c_tr_1, c_tr_2, c_tr_3 = st.columns([0.4, 0.4, 0.2])
+            
+            if lista_base_servicos:
+                novo_treinamento_geral = c_tr_1.selectbox("Selecionar do Catálogo de Serviços", ["-- Digitar Novo --"] + lista_base_servicos)
+                if novo_treinamento_geral == "-- Digitar Novo --":
+                    novo_treinamento_geral = c_tr_2.text_input("Nome do Novo Treinamento")
+            else:
+                novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
+            
+            nova_carga_horaria_geral = c_tr_3.text_input("Carga Horária", value="8 horas")
+            btn_add_treinamento_geral = st.form_submit_button("Adicionar e Salvar Treinamento")
+            
+            if btn_add_treinamento_geral:
+                # Se escolheu no selectbox mas digitou no input alternativo, trata
+                trein_para_salvar = novo_treinamento_geral if novo_treinamento_geral != "-- Digitar Novo --" else ""
                 
-                edit_tr_geral = st.data_editor(
-                    df_tr_ex,
-                    hide_index=True,
-                    num_rows="fixed",
-                    key=f"edit_tr_geral_{filtro_treinamento_emp}",
-                    use_container_width=True,
-                    column_config={
-                        "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
-                        "_id_banco": None,
-                        "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                    },
-                )
-                
-                curr_trg = edit_tr_geral[edit_tr_geral["Selecionar"] == True]["_id_banco"].tolist()
-                new_trg = [uid for uid in curr_trg if uid != st.session_state["sel_id_tr_geral"]]
-                if new_trg:
-                    st.session_state["sel_id_tr_geral"] = new_trg[-1]
-                    st.rerun()
-                elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
-                    st.session_state["sel_id_tr_geral"] = None
-                    st.rerun()
-
-                # Botões de Salvar Alterações e Excluir
-                col_tr_1, col_tr_2 = st.columns(2)
-                
-                if col_tr_1.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key=f"btn_salvar_tr_geral_tbl_{filtro_treinamento_emp}"):
+                if empresa_trein_sel != "Nenhuma" and str(trein_para_salvar).strip():
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
-                    for _, row in edit_tr_geral.iterrows():
-                        t_id = row.get("_id_banco", row.get("id"))
-                        e_val = row.get("Empresa", row.get("empresa"))
-                        tr_val = row.get("Treinamento", row.get("treinamento"))
-                        ch_val = row.get("Carga Horária", row.get("carga_horaria"))
+                    trein_fmt = formatar_titulo(trein_para_salvar)
+                    
+                    try:
+                        cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN empresa TEXT;")
+                        conn.commit()
+                    except:
+                        pass
                         
-                        if pd.notna(e_val) and pd.notna(tr_val) and str(tr_val).strip():
-                            if pd.notna(t_id) and str(t_id).strip() not in ("", "nan", "None"):
-                                cursor.execute(
-                                    "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
-                                    (str(e_val).strip(), formatar_titulo(tr_val), str(ch_val), int(t_id)),
-                                )
+                    try:
+                        cursor.execute(
+                            "SELECT id FROM cad_treinamentos WHERE empresa = ? AND treinamento = ?",
+                            (empresa_trein_sel, trein_fmt),
+                        )
+                        existe = cursor.fetchone()
+                        if existe:
+                            st.error(f"Este treinamento já está cadastrado para a empresa {empresa_trein_sel}.")
+                        else:
+                            cursor.execute(
+                                "INSERT INTO cad_treinamentos (empresa, treinamento, carga_horaria) VALUES (?, ?, ?)",
+                                (empresa_trein_sel, trein_fmt, nova_carga_horaria_geral.strip()),
+                            )
+                            conn.commit()
+                            if "edit_treinamentos_gerais_tbl" in st.session_state:
+                                del st.session_state["edit_treinamentos_gerais_tbl"]
+                            st.cache_data.clear()
+                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                            registrar_log(
+                                st.session_state.get("nome_usuario", "Administrador"),
+                                empresa_trein_sel,
+                                f"Adicionou treinamento: {trein_fmt}",
+                            )
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao cadastrar treinamento: {e}")
+                    conn.close()
+                else:
+                    st.error("Selecione a empresa e preencha ou escolha o nome do treinamento.")
+                    
+        st.markdown("---")
+        filtro_treinamento_emp = st.selectbox(
+            "Filtrar por Empresa",
+            ["Todas as Empresas"] + empresas_cadastradas,
+            key="filtro_treinamento_emp_view",
+        )
+        
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        try:
+            df_tr_geral = pd.read_sql(
+                "SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos ORDER BY empresa, treinamento ASC",
+                conn,
+            )
+        except:
+            try:
+                df_temp = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
+                df_temp["empresa"] = "Todas"
+                df_tr_geral = df_temp[["id", "empresa", "treinamento", "carga_horaria"]]
+            except:
+                df_tr_geral = pd.DataFrame()
+        conn.close()
+
+        if filtro_treinamento_emp != "Todas as Empresas" and not df_tr_geral.empty:
+            if "empresa" in df_tr_geral.columns:
+                df_tr_geral = df_tr_geral[
+                    df_tr_geral["empresa"].astype(str).str.strip().str.lower()
+                    == str(filtro_treinamento_emp).strip().lower()
+                ]
+
+        if not df_tr_geral.empty:
+            if "sel_id_tr_geral" not in st.session_state:
+                st.session_state["sel_id_tr_geral"] = None
+            df_tr_geral["_id_banco"] = df_tr_geral["id"]
+            df_tr_geral["Selecionar"] = (
+                df_tr_geral["_id_banco"] == st.session_state["sel_id_tr_geral"]
+            )
+            df_tr_geral = df_tr_geral[["Selecionar", "_id_banco", "empresa", "treinamento", "carga_horaria"]]
+            df_tr_ex = formatar_colunas_tabela(df_tr_geral)
+            df_tr_ex = adicionar_numeracao(df_tr_ex)
+            
+            edit_tr_geral = st.data_editor(
+                df_tr_ex,
+                hide_index=True,
+                num_rows="fixed",
+                key=f"edit_tr_geral_{filtro_treinamento_emp}",
+                use_container_width=True,
+                column_config={
+                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
+                    "_id_banco": None,
+                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
+                },
+            )
+            
+            curr_trg = edit_tr_geral[edit_tr_geral["Selecionar"] == True]["_id_banco"].tolist()
+            new_trg = [uid for uid in curr_trg if uid != st.session_state["sel_id_tr_geral"]]
+            if new_trg:
+                st.session_state["sel_id_tr_geral"] = new_trg[-1]
+                st.rerun()
+            elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
+                st.session_state["sel_id_tr_geral"] = None
+                st.rerun()
+
+            # Botões de Salvar Alterações e Excluir
+            col_tr_1, col_tr_2 = st.columns(2)
+            
+            if col_tr_1.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key=f"btn_salvar_tr_geral_tbl_{filtro_treinamento_emp}"):
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                cursor = conn.cursor()
+                for _, row in edit_tr_geral.iterrows():
+                    t_id = row.get("_id_banco", row.get("id"))
+                    e_val = row.get("Empresa", row.get("empresa"))
+                    tr_val = row.get("Treinamento", row.get("treinamento"))
+                    ch_val = row.get("Carga Horária", row.get("carga_horaria"))
+                    
+                    if pd.notna(e_val) and pd.notna(tr_val) and str(tr_val).strip():
+                        if pd.notna(t_id) and str(t_id).strip() not in ("", "nan", "None"):
+                            cursor.execute(
+                                "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
+                                (str(e_val).strip(), formatar_titulo(tr_val), str(ch_val), int(t_id)),
+                            )
+                conn.commit()
+                conn.close()
+                
+                st.session_state["sel_id_tr_geral"] = None
+                st.cache_data.clear()
+                st.session_state["msg_sucesso"] = "✅ Treinamentos atualizados com sucesso!"
+                st.rerun()
+
+            if col_tr_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key=f"btn_excluir_tr_{filtro_treinamento_emp}"):
+                if st.session_state["sel_id_tr_geral"] is not None:
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM cad_treinamentos WHERE id=?", (int(st.session_state["sel_id_tr_geral"]),))
                     conn.commit()
                     conn.close()
                     
                     st.session_state["sel_id_tr_geral"] = None
                     st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "✅ Treinamentos atualizados com sucesso!"
+                    st.session_state["msg_sucesso"] = "🗑️ Treinamento excluído com sucesso!"
                     st.rerun()
-
-                if col_tr_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key=f"btn_excluir_tr_{filtro_treinamento_emp}"):
-                    if st.session_state["sel_id_tr_geral"] is not None:
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM cad_treinamentos WHERE id=?", (int(st.session_state["sel_id_tr_geral"]),))
-                        conn.commit()
-                        conn.close()
-                        
-                        st.session_state["sel_id_tr_geral"] = None
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "🗑️ Treinamento excluído com sucesso!"
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ Selecione um treinamento na caixa de seleção da tabela para excluir.")
-            else:
-                st.info("ℹ️ Nenhum treinamento cadastrado.")
+                else:
+                    st.warning("⚠️ Selecione um treinamento na caixa de seleção da tabela para excluir.")
+        else:
+            st.info("ℹ️ Nenhum treinamento cadastrado.")
         
-        elif aba_selecionada == "EPIs":
-            st.subheader("Gerenciar EPIs por Empresa (com CA e Tipo)")
-            with st.form("form_cad_epi_unico"):
-                empresa_epi_sel = st.selectbox(
-                    "Selecione a Empresa",
-                    empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                    key="sel_emp_epi_geral",
-                )
-                tipos_epi_lista = [
-                    "Calçados de Segurança",
-                    "Óculos",
-                    "Protetor Auricular",
-                    "Trabalho em Altura",
-                    "Máscaras",
-                    "Respiradores",
-                    "Luvas",
-                    "Diversos",
-                ]
-                c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
-                novo_epi_nome = c_epi_1.text_input("Nome do EPI")
-                novo_epi_ca = c_epi_2.text_input("Número do CA")
-                tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
-                
-                btn_add_salvar_epi = c_epi_1.form_submit_button(
-                    "Adicionar e Salvar EPI e CA"
-                )
-                if btn_add_salvar_epi:
-                    if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        try:
-                            conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
-                        except:
-                            pass
-                            
-                        try:
-                            epi_fmt = formatar_titulo(novo_epi_nome)
-                            conn.execute(
-                                "INSERT INTO cad_epis (empresa, epi, ca, tipo) VALUES (?, ?, ?, ?)",
-                                (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel),
-                            )
-                            conn.commit()
-                            if "edit_epis_tbl" in st.session_state:
-                                del st.session_state["edit_epis_tbl"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                empresa_epi_sel,
-                                f"Adicionou EPI: {epi_fmt} (Tipo: {tipo_epi_sel})",
-                            )
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao cadastrar EPI: {e}")
-                        conn.close()
-                    else:
-                        st.error("Selecione a empresa e preencha o nome do EPI.")
-                        
-            st.markdown("---")
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                filtro_epi_geral_emp = st.selectbox(
-                    "Filtrar por Empresa",
-                    ["Todas as Empresas"] + empresas_cadastradas,
-                    key="filtro_epi_geral_emp_view",
-                )
-            with col_f2:
-                tipos_epi_filtro_lista = [
-                    "Todos os Tipos",
-                    "Calçados de Segurança",
-                    "Óculos",
-                    "Protetor Auricular",
-                    "Trabalho em Altura",
-                    "Máscaras",
-                    "Respiradores",
-                    "Luvas",
-                    "Diversos",
-                ]
-                filtro_tipo_epi_sel = st.selectbox(
-                    "Filtrar por Tipo de EPI",
-                    tipos_epi_filtro_lista,
-                    key="filtro_epi_tipo_view",
-                )
-
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            try:
-                df_epis_geral = pd.read_sql(
-                    "SELECT id, empresa, epi, ca, tipo FROM cad_epis ORDER BY empresa, epi ASC",
-                    conn,
-                )
-            except:
-                df_epis_geral = pd.read_sql(
-                    "SELECT id, empresa, epi, ca FROM cad_epis ORDER BY empresa, epi ASC",
-                    conn,
-                )
-                if "tipo" not in df_epis_geral.columns:
-                    df_epis_geral["tipo"] = "Diversos"
-            conn.close()
-
-            if filtro_epi_geral_emp != "Todas as Empresas" and not df_epis_geral.empty:
-                df_epis_geral = df_epis_geral[
-                    df_epis_geral["empresa"].astype(str).str.strip().str.lower()
-                    == str(filtro_epi_geral_emp).strip().lower()
-                ]
-
-            if filtro_tipo_epi_sel != "Todos os Tipos" and not df_epis_geral.empty:
-                df_epis_geral = df_epis_geral[
-                    df_epis_geral["tipo"].astype(str).str.strip().str.lower()
-                    == str(filtro_tipo_epi_sel).strip().lower()
-                ]
-
-            if not df_epis_geral.empty:
-                if "sel_id_epi_geral" not in st.session_state:
-                    st.session_state["sel_id_epi_geral"] = None
-                df_epis_geral["_id_banco"] = df_epis_geral["id"]
-                df_epis_geral["Selecionar"] = (
-                    df_epis_geral["_id_banco"] == st.session_state["sel_id_epi_geral"]
-                )
-                
-                cols_epi_exib = ["Selecionar", "_id_banco", "empresa"]
-                if "tipo" in df_epis_geral.columns:
-                    cols_epi_exib.append("tipo")
-                cols_epi_exib.extend(["epi", "ca"])
-                
-                df_epis_geral = df_epis_geral[cols_epi_exib]
-
-                df_epis_ex = formatar_colunas_tabela(df_epis_geral)
-                df_epis_ex = adicionar_numeracao(df_epis_ex)
-
-                tipos_epi_lista = [
-                    "Calçados de Segurança",
-                    "Óculos",
-                    "Protetor Auricular",
-                    "Trabalho em Altura",
-                    "Máscaras",
-                    "Respiradores",
-                    "Luvas",
-                    "Diversos",
-                ]
-
-                edit_epis = st.data_editor(
-                    df_epis_ex,
-                    hide_index=True,
-                    num_rows="fixed",
-                    key="edit_epis_tbl",
-                    use_container_width=True,
-                    column_config={
-                        "Selecionar": st.column_config.CheckboxColumn(
-                            "Selecionar", required=True
-                        ),
-                        "_id_banco": None,
-                        "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                        "tipo": st.column_config.SelectboxColumn(
-                            "Tipo",
-                            options=tipos_epi_lista,
-                            required=True,
-                        ),
-                        "Tipo": st.column_config.SelectboxColumn(
-                            "Tipo",
-                            options=tipos_epi_lista,
-                            required=True,
-                        ),
-                    },
-                )
-                curr_ep_geral = edit_epis[edit_epis["Selecionar"] == True][
-                    "_id_banco"
-                ].tolist()
-                new_ep_geral = [
-                    uid
-                    for uid in curr_ep_geral
-                    if uid != st.session_state["sel_id_epi_geral"]
-                ]
-                if new_ep_geral:
-                    st.session_state["sel_id_epi_geral"] = new_ep_geral[-1]
-                    st.rerun()
-                elif not curr_ep_geral and st.session_state["sel_id_epi_geral"] is not None:
-                    st.session_state["sel_id_epi_geral"] = None
-                    st.rerun()
-
-                linhas_sel_epi_geral = edit_epis[edit_epis["Selecionar"] == True]
-                col_ep_1, col_ep_2 = st.columns(2)
-                if col_ep_1.button(
-                    "💾 Salvar Alterações na Tabela de EPIs", use_container_width=True
-                ):
+    elif aba_selecionada == "EPIs":
+        st.subheader("Gerenciar EPIs por Empresa (com CA e Tipo)")
+        with st.form("form_cad_epi_unico"):
+            empresa_epi_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_epi_geral",
+            )
+            tipos_epi_lista = [
+                "Calçados de Segurança",
+                "Óculos",
+                "Protetor Auricular",
+                "Trabalho em Altura",
+                "Máscaras",
+                "Respiradores",
+                "Luvas",
+                "Diversos",
+            ]
+            c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
+            novo_epi_nome = c_epi_1.text_input("Nome do EPI")
+            novo_epi_ca = c_epi_2.text_input("Número do CA")
+            tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
+            
+            btn_add_salvar_epi = c_epi_1.form_submit_button(
+                "Adicionar e Salvar EPI e CA"
+            )
+            if btn_add_salvar_epi:
+                if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    erro_integridade = False
-                    
-                    for _, row in edit_epis.iterrows():
-                        epi_id = row.get("_id_banco", row.get("id"))
-                        e_val = row.get("Empresa", row.get("empresa"))
-                        epi_val = row.get("EPI", row.get("epi"))
-                        ca_val = row.get("CA", row.get("ca"))
-                        tipo_val = row.get("Tipo", row.get("tipo", "Diversos"))
+                    try:
+                        conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
+                    except:
+                        pass
                         
-                        if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
-                            if pd.notna(epi_id) and str(epi_id).strip() not in (
-                                "",
-                                "nan",
-                                "None",
-                            ):
-                                try:
-                                    cursor.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
-                                except:
-                                    pass
-                                
-                                try:
-                                    cursor.execute(
-                                        "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=? WHERE id=?",
-                                        (
-                                            str(e_val).strip(),
-                                            formatar_titulo(epi_val),
-                                            str(ca_val).strip(),
-                                            str(tipo_val).strip(),
-                                            int(epi_id),
-                                        ),
-                                    )
-                                except sqlite_original.IntegrityError:
-                                    erro_integridade = True
-                                    st.error(f"❌ Conflito: Já existe um EPI chamado '{formatar_titulo(epi_val)}' cadastrado para a empresa '{str(e_val).strip()}'.")
-
-                    if not erro_integridade:
+                    try:
+                        epi_fmt = formatar_titulo(novo_epi_nome)
+                        conn.execute(
+                            "INSERT INTO cad_epis (empresa, epi, ca, tipo) VALUES (?, ?, ?, ?)",
+                            (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel),
+                        )
                         conn.commit()
-                        conn.close()
                         if "edit_epis_tbl" in st.session_state:
                             del st.session_state["edit_epis_tbl"]
-                        st.session_state["sel_id_epi_geral"] = None
                         st.cache_data.clear()
                         st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
                         registrar_log(
                             st.session_state.get("nome_usuario", "Administrador"),
-                            "Todas",
-                            "Atualização na tabela de EPIs cadastrados",
+                            empresa_epi_sel,
+                            f"Adicionou EPI: {epi_fmt} (Tipo: {tipo_epi_sel})",
                         )
                         st.rerun()
-                    else:
-                        conn.rollback()
-                        conn.close()
-                if col_ep_2.button(
-                    "🗑️ Excluir EPI Selecionado", use_container_width=True
-                ):
-                    if len(linhas_sel_epi_geral) == 1:
-                        epi_id_exc = int(linhas_sel_epi_geral.iloc[0]["_id_banco"])
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        conn.execute("DELETE FROM cad_epis WHERE id = ?", (epi_id_exc,))
-                        conn.commit()
-                        conn.close()
-                        if "edit_epis_tbl" in st.session_state:
-                            del st.session_state["edit_epis_tbl"]
-                        st.session_state["sel_id_epi_geral"] = None
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "🗑️ EPI excluído com sucesso!"
-                        registrar_log(
-                            st.session_state.get("nome_usuario", "Administrador"),
-                            "Todas",
-                            f"Excluiu EPI cadastrado ID {epi_id_exc}",
-                        )
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
-            else:
-                st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
+                    except Exception as e:
+                        st.error(f"Erro ao cadastrar EPI: {e}")
+                    conn.close()
+                else:
+                    st.error("Selecione a empresa e preencha o nome do EPI.")
+                    
+        st.markdown("---")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            filtro_epi_geral_emp = st.selectbox(
+                "Filtrar por Empresa",
+                ["Todas as Empresas"] + empresas_cadastradas,
+                key="filtro_epi_geral_emp_view",
+            )
+        with col_f2:
+            tipos_epi_filtro_lista = [
+                "Todos os Tipos",
+                "Calçados de Segurança",
+                "Óculos",
+                "Protetor Auricular",
+                "Trabalho em Altura",
+                "Máscaras",
+                "Respiradores",
+                "Luvas",
+                "Diversos",
+            ]
+            filtro_tipo_epi_sel = st.selectbox(
+                "Filtrar por Tipo de EPI",
+                tipos_epi_filtro_lista,
+                key="filtro_epi_tipo_view",
+            )
+
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        try:
+            df_epis_geral = pd.read_sql(
+                "SELECT id, empresa, epi, ca, tipo FROM cad_epis ORDER BY empresa, epi ASC",
+                conn,
+            )
+        except:
+            df_epis_geral = pd.read_sql(
+                "SELECT id, empresa, epi, ca FROM cad_epis ORDER BY empresa, epi ASC",
+                conn,
+            )
+            if "tipo" not in df_epis_geral.columns:
+                df_epis_geral["tipo"] = "Diversos"
+        conn.close()
+
+        if filtro_epi_geral_emp != "Todas as Empresas" and not df_epis_geral.empty:
+            df_epis_geral = df_epis_geral[
+                df_epis_geral["empresa"].astype(str).str.strip().str.lower()
+                == str(filtro_epi_geral_emp).strip().lower()
+            ]
+
+        if filtro_tipo_epi_sel != "Todos os Tipos" and not df_epis_geral.empty:
+            df_epis_geral = df_epis_geral[
+                df_epis_geral["tipo"].astype(str).str.strip().str.lower()
+                == str(filtro_tipo_epi_sel).strip().lower()
+            ]
+
+        if not df_epis_geral.empty:
+            if "sel_id_epi_geral" not in st.session_state:
+                st.session_state["sel_id_epi_geral"] = None
+            df_epis_geral["_id_banco"] = df_epis_geral["id"]
+            df_epis_geral["Selecionar"] = (
+                df_epis_geral["_id_banco"] == st.session_state["sel_id_epi_geral"]
+            )
+            
+            cols_epi_exib = ["Selecionar", "_id_banco", "empresa"]
+            if "tipo" in df_epis_geral.columns:
+                cols_epi_exib.append("tipo")
+            cols_epi_exib.extend(["epi", "ca"])
+            
+            df_epis_geral = df_epis_geral[cols_epi_exib]
+
+            df_epis_ex = formatar_colunas_tabela(df_epis_geral)
+            df_epis_ex = adicionar_numeracao(df_epis_ex)
+
+            tipos_epi_lista = [
+                "Calçados de Segurança",
+                "Óculos",
+                "Protetor Auricular",
+                "Trabalho em Altura",
+                "Máscaras",
+                "Respiradores",
+                "Luvas",
+                "Diversos",
+            ]
+
+            edit_epis = st.data_editor(
+                df_epis_ex,
+                hide_index=True,
+                num_rows="fixed",
+                key="edit_epis_tbl",
+                use_container_width=True,
+                column_config={
+                    "Selecionar": st.column_config.CheckboxColumn(
+                        "Selecionar", required=True
+                    ),
+                    "_id_banco": None,
+                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
+                    "tipo": st.column_config.SelectboxColumn(
+                        "Tipo",
+                        options=tipos_epi_lista,
+                        required=True,
+                    ),
+                    "Tipo": st.column_config.SelectboxColumn(
+                        "Tipo",
+                        options=tipos_epi_lista,
+                        required=True,
+                    ),
+                },
+            )
+            curr_ep_geral = edit_epis[edit_epis["Selecionar"] == True][
+                "_id_banco"
+            ].tolist()
+            new_ep_geral = [
+                uid
+                for uid in curr_ep_geral
+                if uid != st.session_state["sel_id_epi_geral"]
+            ]
+            if new_ep_geral:
+                st.session_state["sel_id_epi_geral"] = new_ep_geral[-1]
+                st.rerun()
+            elif not curr_ep_geral and st.session_state["sel_id_epi_geral"] is not None:
+                st.session_state["sel_id_epi_geral"] = None
+                st.rerun()
+
+            linhas_sel_epi_geral = edit_epis[edit_epis["Selecionar"] == True]
+            col_ep_1, col_ep_2 = st.columns(2)
+            if col_ep_1.button(
+                "💾 Salvar Alterações na Tabela de EPIs", use_container_width=True
+            ):
+                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                cursor = conn.cursor()
+                erro_integridade = False
+                
+                for _, row in edit_epis.iterrows():
+                    epi_id = row.get("_id_banco", row.get("id"))
+                    e_val = row.get("Empresa", row.get("empresa"))
+                    epi_val = row.get("EPI", row.get("epi"))
+                    ca_val = row.get("CA", row.get("ca"))
+                    tipo_val = row.get("Tipo", row.get("tipo", "Diversos"))
+                    
+                    if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
+                        if pd.notna(epi_id) and str(epi_id).strip() not in (
+                            "",
+                            "nan",
+                            "None",
+                        ):
+                            try:
+                                cursor.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
+                            except:
+                                pass
+                            
+                            try:
+                                cursor.execute(
+                                    "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=? WHERE id=?",
+                                    (
+                                        str(e_val).strip(),
+                                        formatar_titulo(epi_val),
+                                        str(ca_val).strip(),
+                                        str(tipo_val).strip(),
+                                        int(epi_id),
+                                    ),
+                                )
+                            except sqlite_original.IntegrityError:
+                                erro_integridade = True
+                                st.error(f"❌ Conflito: Já existe um EPI chamado '{formatar_titulo(epi_val)}' cadastrado para a empresa '{str(e_val).strip()}'.")
+
+                if not erro_integridade:
+                    conn.commit()
+                    conn.close()
+                    if "edit_epis_tbl" in st.session_state:
+                        del st.session_state["edit_epis_tbl"]
+                    st.session_state["sel_id_epi_geral"] = None
+                    st.cache_data.clear()
+                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                    registrar_log(
+                        st.session_state.get("nome_usuario", "Administrador"),
+                        "Todas",
+                        "Atualização na tabela de EPIs cadastrados",
+                    )
+                    st.rerun()
+                else:
+                    conn.rollback()
+                    conn.close()
+            if col_ep_2.button(
+                "🗑️ Excluir EPI Selecionado", use_container_width=True
+            ):
+                if len(linhas_sel_epi_geral) == 1:
+                    epi_id_exc = int(linhas_sel_epi_geral.iloc[0]["_id_banco"])
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    conn.execute("DELETE FROM cad_epis WHERE id = ?", (epi_id_exc,))
+                    conn.commit()
+                    conn.close()
+                    if "edit_epis_tbl" in st.session_state:
+                        del st.session_state["edit_epis_tbl"]
+                    st.session_state["sel_id_epi_geral"] = None
+                    st.cache_data.clear()
+                    st.session_state["msg_sucesso"] = "🗑️ EPI excluído com sucesso!"
+                    registrar_log(
+                        st.session_state.get("nome_usuario", "Administrador"),
+                        "Todas",
+                        f"Excluiu EPI cadastrado ID {epi_id_exc}",
+                    )
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
+        else:
+            st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
