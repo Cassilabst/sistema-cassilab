@@ -2059,6 +2059,17 @@ if not st.session_state["autenticado"]:
                     "Acessar Sistema", use_container_width=True
                 )
 
+            # --- AVISO DE CONFORMIDADE LGPD NA TELA DE LOGIN ---
+            st.markdown(
+                """
+                <div style='text-align: center; font-size: 11px; color: #666; line-height: 1.4; margin-top: 15px;'>
+                    🔒 <b>Conformidade com a LGPD (Lei nº 13.709/2018)</b><br>
+                    Os dados de saúde e segurança do trabalho (SST) armazenados neste sistema são confidenciais, protegidos e utilizados exclusivamente para o cumprimento das Normas Regulamentadoras.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
             if btn_login:
                 if usuario_input == "admin" and senha_input == "Disc@5232":
                     st.session_state["autenticado"] = True
