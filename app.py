@@ -3549,10 +3549,18 @@ if menu == "Cadastros Gerais":
                 df_epis_geral["tipo"] = "Diversos"
         conn.close()
 
+        # FILTRO ROBUSTO POR EMPRESA (ignora maiúsculas/minúsculas e espaços)
         if filtro_epi_geral_emp != "Todas as Empresas" and not df_epis_geral.empty:
             df_epis_geral = df_epis_geral[
                 df_epis_geral["empresa"].astype(str).str.strip().str.lower()
                 == str(filtro_epi_geral_emp).strip().lower()
+            ]
+
+        # FILTRO POR TIPO DE EPI
+        if filtro_tipo_epi_sel != "Todos os Tipos" and not df_epis_geral.empty:
+            df_epis_geral = df_epis_geral[
+                df_epis_geral["tipo"].astype(str).str.strip().str.lower()
+                == str(filtro_tipo_epi_sel).strip().lower()
             ]
 
         if filtro_tipo_epi_sel != "Todos os Tipos" and not df_epis_geral.empty:
