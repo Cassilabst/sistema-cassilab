@@ -457,6 +457,8 @@ def renderizar_aba_epis(*args, **kwargs):
                             empresa_selecionada,
                             f"Cadastrou EPI ({epi_sel}) para {func_escolhido} [{status_gravacao}]",
                         )
+                        if "pin_lanc_epi_input" in st.session_state:
+                            st.session_state["pin_lanc_epi_input"] = ""
                         st.rerun()
                     else:
                         st.error("Preencha todos os campos obrigatórios.")
