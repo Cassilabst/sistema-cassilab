@@ -868,7 +868,7 @@ def dialog_editar_funcionario(id_alvo):
                         f"Edição do funcionário: {formatar_titulo(novo_nome)}",
                     )
                     st.rerun()
-                    else:
+
                         st.error("⚠️ O PIN temporário deve conter exatamente 4 dígitos numéricos.")
                         conn.close()
                         sucesso_ok = False
