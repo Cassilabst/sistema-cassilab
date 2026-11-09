@@ -129,45 +129,4 @@ def renderizar_aba_admin(
                 column_config={
                     "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
                     "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                    "Nível de Acesso": st.column_config.SelectboxColumn(
-                        "Nível de Acesso",
-                        options=["Somente Visualizar", "Lançar", "Editar", "Fazer Tudo"],
-                        required=True
-                    )
-                }
-            )
-            
-            curr_u = edit_users[edit_users["Selecionar"] == True]["_id_banco"].tolist()
-            new_u = [uid for uid in curr_u if uid != st.session_state["sel_id_user"]]
-            if new_u:
-                st.session_state["sel_id_user"] = new_u[-1]
-                st.rerun()
-            elif not curr_u and st.session_state["sel_id_user"] is not None:
-                st.session_state["sel_id_user"] = None
-                st.rerun()
-                
-            sel_users = edit_users[edit_users["Selecionar"] == True]
-            
-            col_salvar_niveis, col_esp = st.columns([1, 1])
-            
-            if col_salvar_niveis.button("💾 Salvar Alterações de Níveis de Acesso", use_container_width=True):
-                conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                for _, row in edit_users.iterrows():
-                    u_id = row.get("_id_banco")
-                    novo_nivel = row.get("Nível de Acesso")
-                    if pd.notna(u_id) and pd.notna(novo_nivel):
-                        cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = ? WHERE id = ?", (str(novo_nivel), int(u_id)))
-                conn.commit()
-                conn.close()
-                if "edit_users_acesso" in st.session_state: del st.session_state["edit_users_acesso"]
-                st.session_state["sel_id_user"] = None
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log_func("Administrador", "Todas", "Atualização de níveis de permissão de usuários")
-                st.rerun()
-                
-            st.markdown("")
-            cu1, cu2, cu3 = st.columns(3)
-            
-            if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True, key="btn_aprovar_acesso_adm"):
+                    "Nº": st.column_config.NumberColumn
