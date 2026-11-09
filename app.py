@@ -3764,7 +3764,108 @@ if menu == "Cadastros Gerais":
                 else:
                     st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
         else:
+            else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
+
+        # --- BOTÃO PARA GERAR RELATÓRIO EM PDF DOS EPIS ---
+        st.markdown("---")
+        st.subheader("📄 Relatório em PDF de EPIs Cadastrados")
+        st.markdown("Gere um documento em PDF listando todos os EPIs e CAs cadastrados para uma empresa específica.")
+
+        col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
+        empresa_rel_epi_geral = col_pdf_e1.selectbox(
+            "Selecione a Empresa para o Relatório", 
+            empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+            key="sel_emp_rel_epi_geral_pdf"
+        )
+        
+        with col_pdf_e2:
+            st.write("")
+            st.write("")
+            btn_gerar_pdf_cad_epis = st.button("📥 Baixar PDF de EPIs", use_container_width=True, key="btn_exec_pdf_cad_epis")
+
+        if btn_gerar_pdf_cad_epis:
+            if empresa_rel_epi_geral == "Nenhuma":
+                st.warning("⚠️ Selecione uma empresa válida para gerar o relatório.")
+            else:
+                conn_pdf_e = sqlite_original.connect(DB_NAME, timeout=10.0)
+                try:
+                    df_pdf_epis = pd.read_sql(
+                        "SELECT tipo, epi, ca FROM cad_epis WHERE empresa = ? ORDER BY tipo, epi ASC",
+                        conn_pdf_e,
+                        params=(empresa_rel_epi_geral,)
+                    )
+                except:
+                    df_pdf_epis = pd.DataFrame()
+                conn_pdf_e.close()
+
+                if df_pdf_epis.empty:
+                    st.warning(f"⚠️ Não há EPIs cadastrados para a empresa **{empresa_rel_epi_geral}**.")
+                else:
+                    import io
+                    from reportlab.lib.pagesizes import A4
+                    from reportlab.lib import colors
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+                    buffer = io.BytesIO()
+                    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+                    elements = []
+                    
+                    styles = getSampleStyleSheet()
+                    normal_style = styles['Normal']
+                    
+                    titulo_style = ParagraphStyle(
+                        'TituloRelatorio', parent=normal_style,
+                        fontName='Helvetica-Bold', fontSize=15,
+                        textColor=colors.HexColor('#1b365d'), alignment=1, spaceAfter=8
+                    )
+                    subtitulo_style = ParagraphStyle(
+                        'SubTituloRelatorio', parent=normal_style,
+                        fontName='Helvetica', fontSize=10,
+                        textColor=colors.HexColor('#555555'), alignment=1, spaceAfter=15
+                    )
+                    
+                    elements.append(Paragraph(f"<b>Relatório de EPIs e CAs Cadastrados</b>", titulo_style))
+                    elements.append(Paragraph(f"<b>Empresa:</b> {empresa_rel_epi_geral} | <b>Emitido em:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitulo_style))
+                    elements.append(Spacer(1, 10))
+                    
+                    tabela_dados = [["Tipo / Categoria", "Nome do EPI", "Número do CA"]]
+                    for _, row in df_pdf_epis.iterrows():
+                        tabela_dados.append([
+                            str(row.get("tipo", "Diversos")),
+                            str(row.get("epi", "")),
+                            str(row.get("ca", ""))
+                        ])
+                        
+                    t_pdf = Table(tabela_dados, colWidths=[160, 225, 110])
+                    t_pdf.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1b365d')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                        ('TOPPADDING', (0, 0), (-1, 0), 8),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dcdcdc')),
+                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 9),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ]))
+                    
+                    elements.append(t_pdf)
+                    doc.build(elements)
+                    buffer.seek(0)
+                    
+                    st.success("✅ Relatório em PDF gerado com sucesso!")
+                    st.download_button(
+                        label=f"📥 Baixar PDF - {empresa_rel_epi_geral}",
+                        data=buffer,
+                        file_name=f"epis_cadastrados_{empresa_rel_epi_geral.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
