@@ -2,6 +2,21 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import base64
+
+def garantir_coluna_logo(DB_NAME):
+    """Garante que a coluna de logo exista na tabela de empresas"""
+    try:
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(empresas)")
+        colunas = [col[1] for col in cursor.fetchall()]
+        if "logo_empresa" not in colunas:
+            cursor.execute("ALTER TABLE empresas ADD COLUMN logo_empresa TEXT")
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def renderizar_aba_empresas(
     DB_NAME, 
@@ -18,6 +33,9 @@ def renderizar_aba_empresas(
     atualizar_filtro_empresa_func, 
     registrar_log_func
 ):
+    # Garante que a coluna de logo existe no banco
+    garantir_coluna_logo(DB_NAME)
+
     col_h1, col_h2 = st.columns([0.8, 0.2])
     with col_h1: st.title("🏢 Cadastro de Empresas Clientes")
     with col_h2:
@@ -25,7 +43,7 @@ def renderizar_aba_empresas(
         if st.button("🔄 Atualizar Aba", key="btn_atualizar_empresas"): st.rerun()
 
     if is_admin:
-        with st.expander("➕ Adicionar Nova Empresa", expanded=False):
+        with st.expander("➕ Adicionar Nova Empresa & Logomarca", expanded=False):
             if "form_emp_nome" not in st.session_state: st.session_state["form_emp_nome"] = ""
             if "form_emp_cnpj" not in st.session_state: st.session_state["form_emp_cnpj"] = ""
             if "form_cep" not in st.session_state: st.session_state["form_cep"] = ""
@@ -91,6 +109,8 @@ def renderizar_aba_empresas(
                     "Porte (ME, EPP...)", value=st.session_state["form_porte"]
                 )
 
+                logo_file_novo = st.file_uploader("🖼️ Logotipo da Empresa (PNG, JPG)", type=["png", "jpg", "jpeg"], key="logo_novo_cad")
+
                 btn_salvar_empresa = st.form_submit_button("💾 Salvar Empresa", use_container_width=False)
 
                 if btn_buscar_cnpj:
@@ -132,12 +152,19 @@ def renderizar_aba_empresas(
                         nome_fmt = formatar_titulo_func(nome_empresa)
                         cnpj_formatado = formatar_cnpj_func(cnpj)
                         data_registro_atual = datetime.now().strftime("%d/%m/%Y")
+                        
+                        logo_b64 = None
+                        if logo_file_novo is not None:
+                            b_logo = logo_file_novo.getvalue()
+                            tipo_img = logo_file_novo.type.split("/")[-1]
+                            logo_b64 = f"data:image/{tipo_img};base64,{base64.b64encode(b_logo).decode()}"
+
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
                         try:
                             cursor.execute("""
-                                INSERT INTO empresas (data_registro, nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO empresas (data_registro, nome_empresa, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte, logo_empresa) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
                                 data_registro_atual, 
                                 nome_fmt, 
@@ -152,7 +179,8 @@ def renderizar_aba_empresas(
                                 str(st.session_state["form_cnae_consulta"]).strip(),
                                 str(grau_risco).strip(), 
                                 int(qtd_funcionarios),
-                                str(porte_empresa).strip()
+                                str(porte_empresa).strip(),
+                                logo_b64
                             ))
                             conn.commit()
                             st.session_state["form_emp_nome"] = ""
@@ -172,8 +200,8 @@ def renderizar_aba_empresas(
                             
                             atualizar_filtro_empresa_func(nome_fmt)
                             
-                            st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                            registrar_log_func(st.session_state.get("nome_usuario", "Administrador"), nome_fmt, "Cadastro de nova empresa")
+                            st.session_state["msg_sucesso"] = "✅ Empresa e logomarca salvas com sucesso!"
+                            registrar_log_func(st.session_state.get("nome_usuario", "Administrador"), nome_fmt, "Cadastro de nova empresa com logo")
                             st.rerun()
                         except sqlite3.IntegrityError:
                             st.error("Esta empresa já está cadastrada (nome ou CNPJ já existente no sistema).")
@@ -182,9 +210,34 @@ def renderizar_aba_empresas(
                     else:
                         st.error("O campo 'Nome da Empresa' é obrigatório.")
 
+        # SEÇÃO PARA ATUALIZAR LOGO DE EMPRESAS JÁ CADASTRADAS
+        with st.expander("🖼️ Gerenciar / Atualizar Logotipo de Empresas Existentes", expanded=False):
+            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            df_empresas_lista = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa ASC", conn)
+            conn.close()
+
+            if not df_empresas_lista.empty:
+                empresa_escolhida_logo = st.selectbox("Selecione a empresa para alterar/adicionar a logo:", df_empresas_lista["nome_empresa"].tolist(), key="sel_emp_logo_up")
+                logo_file_existente = st.file_uploader("Enviar nova Logo (PNG, JPG)", type=["png", "jpg", "jpeg"], key="logo_existente_up")
+                
+                if st.button("💾 Salvar Logomarca para esta Empresa", key="btn_salvar_logo_existente"):
+                    if empresa_escolhida_logo and logo_file_existente is not None:
+                        b_logo = logo_file_existente.getvalue()
+                        tipo_img = logo_file_existente.type.split("/")[-1]
+                        logo_b64 = f"data:image/{tipo_img};base64,{base64.b64encode(b_logo).decode()}"
+
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE empresas SET logo_empresa = ? WHERE nome_empresa = ?", (logo_b64, empresa_escolhida_logo))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Logomarca da empresa '{empresa_escolhida_logo}' atualizada com sucesso!")
+                        st.rerun()
+                    else:
+                        st.warning("Selecione a empresa e envie um arquivo de imagem.")
+
     st.subheader("Empresas Cadastradas")
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    # ATUALIZADO: Incluído 'porte' na consulta SQL para exibir e editar na tabela
     df_emp = pd.read_sql("SELECT id, data_registro, nome_empresa, cnpj, endereco, bairro, cep, cidade, email, telefone, responsavel, cnae, grau_risco, qtd_funcionarios, porte FROM empresas ORDER BY nome_empresa ASC", conn)
     conn.close()
 
@@ -225,7 +278,6 @@ def renderizar_aba_empresas(
                             porte_val = str(row.get("Porte", row.get("porte", ""))).strip()
                             try:
                                 if pd.notna(emp_id) and str(emp_id).strip() not in ("", "nan", "None"):
-                                    # ATUALIZADO: Incluído update do porte na tabela
                                     cursor.execute("""
                                         UPDATE empresas SET data_registro=?, nome_empresa=?, cnpj=?, cep=?, cidade=?, bairro=?, endereco=?, telefone=?, email=?, responsavel=?, cnae=?, grau_risco=?, qtd_funcionarios=?, porte=?
                                         WHERE id=?
