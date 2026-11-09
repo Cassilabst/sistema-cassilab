@@ -286,9 +286,15 @@ def renderizar_aba_funcionarios(
             ]
             df_func_sel = df_edit[[c for c in cols_func_ord if c in df_edit.columns]]
 
-            df_fmt = formatar_colunas_tabela(df_func_sel)
-            df_fmt = adicionar_numeracao(df_fmt)
+                  # --- MASCARAR O PIN NA TABELA PARA SEGURANÇA E COMPLIANCE ---
+                  if "pin_colaborador" in df_func_sel.columns:
+                      df_func_sel["pin_colaborador"] = df_func_sel["pin_colaborador"].apply(
+                          lambda x: "****" if pd.notna(x) and str(x).strip() and str(x) != "None" else "Não Cadastrado"
+                      )
 
+                  df_fmt = formatar_colunas_tabela(df_func_sel)
+                  df_fmt = adicionar_numeracao(df_fmt)
+            
             edit_df = st.data_editor(
                 df_fmt,
                 hide_index=True,
