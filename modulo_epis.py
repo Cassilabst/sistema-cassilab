@@ -504,28 +504,35 @@ def renderizar_aba_epis(*args, **kwargs):
           )
 
           linhas_ficha_html = ""
-          tot_linhas = 15  # Exatamente 15 linhas mantidas
+          tot_linhas = 15  # Linhas por página da ficha padrão
           c_reg = 0
 
           for _, r_hist in historico_func.iterrows():
-            if c_reg < tot_linhas:
               e_nome = str(r_hist.get("epi", ""))
               e_quant = str(r_hist.get("quantidade", "1"))
               e_data = str(r_hist.get("data_entrega", ""))
               e_ca = str(r_hist.get("ca", ""))
+              e_status = str(r_hist.get("status", ""))
+              
+              # Se foi assinado por PIN, exibe a validação eletrônica na coluna de assinatura
+              texto_assinatura_celula = ""
+              if "Assinado Eletronicamente" in e_status or "PIN" in e_status:
+                  texto_assinatura_celula = f"<span style='font-size: 7.5px; color: #1b365d;'><b>✓ Validação PIN</b><br>{e_status.replace('Assinado Eletronicamente via PIN ', '')}</span>"
+
               linhas_ficha_html += f"""
                             <tr>
                                 <td style="padding: 4px 6px; font-size: 9.5px; height: 21px;">{e_nome}</td>
                                 <td style="text-align: center; padding: 4px 6px; font-size: 9.5px; height: 21px;">{e_quant}</td>
                                 <td style="text-align: center; padding: 4px 6px; font-size: 9.5px; height: 21px;">{e_data}</td>
-                                <td style="padding: 4px 6px; height: 21px;"></td>
+                                <td style="text-align: center; padding: 2px 4px; height: 21px;">{texto_assinatura_celula}</td>
                                 <td style="text-align: center; padding: 4px 6px; font-size: 9.5px; height: 21px;">{e_ca}</td>
                             </tr>
                             """
               c_reg += 1
 
+          # Completa o restante da página com linhas em branco para manter o layout físico padrão
           while c_reg < tot_linhas:
-            linhas_ficha_html += """
+              linhas_ficha_html += """
                         <tr>
                             <td style="height: 23px;"></td>
                             <td></td>
@@ -534,7 +541,7 @@ def renderizar_aba_epis(*args, **kwargs):
                             <td></td>
                         </tr>
                         """
-            c_reg += 1
+              c_reg += 1
 
           html_ficha = f"""
                     <!DOCTYPE html>
