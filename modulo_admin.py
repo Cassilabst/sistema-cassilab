@@ -219,7 +219,7 @@ def renderizar_aba_admin(
 
         st.markdown("---")
         st.subheader("➕ Cadastrar ou Restaurar Acesso Puxando da Base de Funcionários")
-        st.markdown("Selecione um funcionário já cadastrado no sistema para recriar o acesso dele de forma rápida e com status **Ativo**.")
+        st.markdown("Selecione um funcionário já cadastrado no sistema para recriar o acesso dele de forma rápida e com status **Ativo**. (Se deixar a senha em branco, o sistema gerará a padrão `Cassilab@2026`).")
 
         conn_func = sqlite3.connect(DB_NAME, timeout=10.0)
         try:
@@ -240,7 +240,7 @@ def renderizar_aba_admin(
                 func_selecionado_rotulo = st.selectbox("Selecione o Funcionário", lista_funcs_opcoes)
                 
                 c_cad5, c_cad6 = st.columns(2)
-                m_senha = c_cad5.text_input("Definir ou Manter a Senha de Acesso", type="password", placeholder="Digite a senha")
+                m_senha = c_cad5.text_input("Definir Senha de Acesso (Opcional)", type="password", placeholder="Mín. 6 chars, 1 maiúscula, 1 símbolo")
                 m_nivel = c_cad6.selectbox("Nível de Permissão", ["Somente Visualizar", "Lançar", "Editar", "Fazer Tudo"])
 
                 btn_salvar_via_func = st.form_submit_button("💾 Gerar/Restaurar Acesso Ativo para o Funcionário", use_container_width=True)
@@ -254,34 +254,73 @@ def renderizar_aba_admin(
                     f_email = ""
                     f_celular = ""
 
-                    if f_cpf and m_senha:
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        try:
-                            cursor.execute(
-                                """INSERT OR REPLACE INTO usuarios_sistema 
-                                   (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
-                                   VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?)""",
-                                (
-                                    f_nome,
-                                    f_cpf,
-                                    f_empresa,
-                                    f_email,
-                                    f_celular,
-                                    m_senha,
-                                    m_nivel,
-                                ),
-                            )
-                            conn.commit()
-                            conn.close()
-                            st.session_state["msg_sucesso"] = f"✅ Acesso ativado com sucesso para {f_nome}!"
-                            registrar_log_func("Administrador", f_empresa, f"Restaurou/Criou acesso via funcionário para {f_nome}")
-                            st.rerun()
-                        except Exception as e:
-                            conn.close()
-                            st.error(f"Erro ao salvar usuário: {e}")
+                    if f_cpf:
+                        cpf_limpo = "".join([c for c in f_cpf if c.isdigit()])
+                        senha_final = m_senha.strip()
+                        senha_valida = True
+                        mensagem_erro_senha = ""
+
+                        if senha_final:
+                            # 1. Valida tamanho mínimo (6 dígitos)
+                            if len(senha_final) < 6:
+                                senha_valida = False
+                                mensagem_erro_senha = "❌ A senha deve ter pelo menos 6 caracteres."
+                            
+                            # 2. Valida letra maiúscula
+                            elif not any(c.isupper() for c in senha_final):
+                                senha_valida = False
+                                mensagem_erro_senha = "❌ A senha deve conter pelo menos uma letra maiúscula."
+                            
+                            # 3. Valida símbolo / caractere especial
+                            elif not any(not c.isalnum() for c in senha_final):
+                                senha_valida = False
+                                mensagem_erro_senha = "❌ A senha deve conter pelo menos um símbolo/caractere especial (ex: @, #, $, !, etc.)."
+                            
+                            # 4. Valida sequências óbvias
+                            elif senha_final in ["123456", "12345", "654321", "111111", "222222", "333333", "444444", "555555", "666666", "777777", "888888", "999999", "000000"]:
+                                senha_valida = False
+                                mensagem_erro_senha = "❌ A senha não pode ser uma sequência óbvia (ex: 123456)."
+                            
+                            # 5. Valida se é igual ao CPF
+                            elif cpf_limpo and senha_final == cpf_limpo:
+                                senha_valida = False
+                                mensagem_erro_senha = "❌ A senha não pode ser igual ao número do CPF."
+                        else:
+                            # Senha padrão que já atende a todos os critérios (6+ caracteres, maiúscula e símbolo)
+                            senha_final = "Cassilab@2026"
+
+                        if not senha_valida:
+                            st.error(mensagem_erro_senha)
+                        else:
+                            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                            cursor = conn.cursor()
+                            try:
+                                cursor.execute(
+                                    """INSERT OR REPLACE INTO usuarios_sistema 
+                                       (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
+                                       VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?)""",
+                                    (
+                                        f_nome,
+                                        f_cpf,
+                                        f_empresa,
+                                        f_email,
+                                        f_celular,
+                                        senha_final,
+                                        m_nivel,
+                                    ),
+                                )
+                                conn.commit()
+                                conn.close()
+                                
+                                aviso_extra = f" (Senha padrão gerada: **Cassilab@2026**)" if not m_senha.strip() else ""
+                                st.session_state["msg_sucesso"] = f"✅ Acesso ativado com sucesso para {f_nome}!{aviso_extra}"
+                                registrar_log_func("Administrador", f_empresa, f"Restaurou/Criou acesso via funcionário para {f_nome}")
+                                st.rerun()
+                            except Exception as e:
+                                conn.close()
+                                st.error(f"Erro ao salvar usuário: {e}")
                     else:
-                        st.warning("⚠️ O funcionário selecionado precisa ter um CPF válido e você deve definir uma senha.")
+                        st.warning("⚠️ O funcionário selecionado precisa ter um CPF válido cadastrado na base.")
         else:
             st.info("ℹ️ Nenhum funcionário cadastrado na base de dados para puxar os dados.")
 
