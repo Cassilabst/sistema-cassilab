@@ -306,11 +306,11 @@ def renderizar_aba_funcionarios(
                     "funcionario": st.column_config.TextColumn(
                         "Funcionário", disabled=True, pinned=True
                     ),
-                    # --- CAMPOS PARA A ASSINATURA ELETRÔNICA ---
+                    # --- CAMPOS PARA A ASSINATURA ELETRÔNICA (Exibição Segura) ---
                     "pin_colaborador": st.column_config.TextColumn(
-                        "PIN (4 Dígitos)", 
-                        help="Digite a senha numérica de 4 dígitos do colaborador",
-                        max_chars=4,
+                        "PIN Cadastrado", 
+                        help="Senha confidencial do colaborador (Protegida contra edição direta)",
+                        disabled=True,
                         width="small"
                     ),
                     "termo_adesao": st.column_config.CheckboxColumn(
@@ -321,7 +321,7 @@ def renderizar_aba_funcionarios(
                 },
             )
 
-            # Gestão de seleção única
+            # Gestão de seleção única (Evita conflitos e loop de abertura do pop-up)
             curr_f = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
             new_f = [f_id for f_id in curr_f if f_id != st.session_state["sel_id_func"]]
             if new_f:
@@ -329,22 +329,21 @@ def renderizar_aba_funcionarios(
                 st.rerun()
             elif not curr_f and st.session_state["sel_id_func"] is not None:
                 st.session_state["sel_id_func"] = None
-                st.rerun()
 
             sel_funcs = edit_df[edit_df["Selecionar"] == True]
 
             st.markdown("")
             col_btn_ed, col_btn_ex = st.columns(2)
 
-            # BOTÃO EDITAR (Abre o Pop-up)
+            # BOTÃO EDITAR (Abre o Pop-up com segurança)
             if col_btn_ed.button("✏️ Editar Funcionário Selecionado", use_container_width=True):
                 if pode_editar:
                     if len(sel_funcs) == 1:
                         id_para_editar = int(sel_funcs.iloc[0]["_id_banco"])
-                        st.session_state["sel_id_func"] = None
+                        st.session_state["modal_edit_func_id"] = id_para_editar
                         if "editor_selecao_funcionarios" in st.session_state:
                             del st.session_state["editor_selecao_funcionarios"]
-                        dialog_editar_funcionario(id_para_editar)
+                        st.rerun()
                     else:
                         st.warning("⚠️ Selecione um único funcionário marcando o quadradinho.")
                 else:
@@ -373,4 +372,124 @@ def renderizar_aba_funcionarios(
                         
                         cursor.execute("SELECT funcionario FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
                         row_func = cursor.fetchone()
-                        nome_colaborador = row
+                        nome_colaborador = row_func[0] if row_func else None
+                        
+                        cursor.execute("DELETE FROM base_funcionarios WHERE id = ?", (id_a_apagar,))
+                        
+                        if nome_colaborador:
+                            cursor.execute("DELETE FROM exames WHERE funcionario = ?", (nome_colaborador,))
+                            cursor.execute("DELETE FROM cad_treinamentos WHERE funcionario = ?", (nome_colaborador,))
+                            cursor.execute("DELETE FROM cad_epis WHERE funcionario = ?", (nome_colaborador,))
+                            cursor.execute("DELETE FROM absenteismo WHERE funcionario = ?", (nome_colaborador,))
+                        
+                        conn.commit()
+                        conn.close()
+
+                        if "editor_selecao_funcionarios" in st.session_state:
+                            del st.session_state["editor_selecao_funcionarios"]
+                        st.session_state["sel_id_func"] = None
+                        
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Desconhecido"),
+                            empresa_selecionada,
+                            f"Excluiu colaborador ID {id_a_apagar} ({nome_colaborador}) em cascata",
+                        )
+                        st.success("✅ Funcionário excluído com sucesso de todo o sistema!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Por favor, marque o quadradinho (checkbox) do funcionário que deseja excluir.")
+
+            # DISPARADOR SEGURO DO MODAL DE EDIÇÃO (Evita o fechamento indesejado)
+            if st.session_state.get("modal_edit_func_id"):
+                id_ed = st.session_state["modal_edit_func_id"]
+                st.session_state["modal_edit_func_id"] = None
+                if callable(dialog_editar_funcionario):
+                    dialog_editar_funcionario(id_ed)
+
+    with aba_novo:
+        st.markdown("### ➕ Cadastrar Novo Funcionário")
+        if not pode_lancar:
+            st.warning("🔒 Seu perfil não possui permissão para realizar lançamentos.")
+        else:
+            if is_admin:
+                emp_global_atual = st.session_state.get("empresa_global", "Todas")
+                emp_alvo_novo = (
+                    emp_global_atual
+                    if emp_global_atual != "Todas"
+                    else (empresas_cad[0] if empresas_cad else "")
+                )
+            else:
+                emp_alvo_novo = emp_usuario
+
+            with st.form("form_novo_funcionario"):
+                mat_in = st.text_input("Matrícula")
+                nome_in = st.text_input("Nome Completo")
+
+                cargos_emp = get_cargos_por_empresa(emp_alvo_novo)
+                if cargos_emp:
+                    cargo_in = st.selectbox("Cargo", cargos_emp)
+                else:
+                    cargo_in = st.text_input("Cargo")
+
+                setores_emp = get_setores_por_empresa(emp_alvo_novo)
+                if setores_emp:
+                    setor_in = st.selectbox("Setor", setores_emp)
+                else:
+                    setor_in = st.text_input("Setor")
+
+                cpf_in = st.text_input("CPF")
+                dt_adm = st.text_input(
+                    "Data de Admissão", value=datetime.today().strftime("%d/%m/%Y")
+                )
+                dt_nasc = st.text_input("Data de Nascimento (DD/MM/AAAA)", value="")
+                
+                # --- CAMPOS PARA ASSINATURA ELETRÔNICA NO NOVO CADASTRO ---
+                st.markdown("---")
+                st.markdown("#### 🔑 Configuração de Assinatura Eletrônica (Opcional)")
+                pin_in = st.text_input("PIN Inicial (4 Dígitos)", max_chars=4, help="Senha numérica de 4 dígitos para assinatura eletrônica de EPIs")
+                termo_in = st.checkbox("Termo de Adesão ao EPI Eletrônico Assinado", value=False)
+
+                btn_salvar_f = st.form_submit_button("Salvar Novo Funcionário")
+                if btn_salvar_f:
+                    if nome_in.strip():
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        try:
+                            conn.execute("ALTER TABLE base_funcionarios ADD COLUMN pin_colaborador TEXT;")
+                        except:
+                            pass
+                        try:
+                            conn.execute("ALTER TABLE base_funcionarios ADD COLUMN termo_adesao INTEGER DEFAULT 0;")
+                        except:
+                            pass
+
+                        conn.execute(
+                            """
+                            INSERT INTO base_funcionarios (empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status, data_nascimento, pin_colaborador, termo_adesao)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'Ativo', ?, ?, ?)
+                            """,
+                            (
+                                emp_alvo_novo,
+                                str(mat_in).strip(),
+                                formatar_titulo(nome_in),
+                                formatar_titulo(cargo_in),
+                                formatar_titulo(setor_in),
+                                formatar_cpf(cpf_in),
+                                validar_e_formatar_data_input(dt_adm),
+                                validar_e_formatar_data_input(dt_nasc) if dt_nasc else "",
+                                str(pin_in).strip(),
+                                1 if termo_in else 0,
+                            ),
+                        )
+                        conn.commit()
+                        conn.close()
+                        st.session_state["msg_sucesso"] = (
+                            "✅ Funcionário cadastrado com sucesso!"
+                        )
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Desconhecido"),
+                            empresa_selecionada,
+                            f"Cadastrou funcionário: {formatar_titulo(nome_in)}",
+                        )
+                        st.rerun()
+                    else:
+                        st.error("Preencha o nome do funcionário.")
