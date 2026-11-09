@@ -394,10 +394,16 @@ def gerar_html_termo_adesao(empresa, nome, matricula, cargo, setor, cpf):
     </html>
     """
     return html_content
-import streamlit.components.v1 as components
+    import streamlit.components.v1 as components
 
 def renderizar_botao_imprimir_termo(empresa, nome, matricula, cargo, setor, cpf):
+    # Gera o HTML do termo
     html_termo = gerar_html_termo_adesao(empresa, nome, matricula, cargo, setor, cpf)
     
-    if st.button(f"🖨️ Imprimir Termo de Adesão", key=f"btn_termo_imprimir_{matricula}"):
-        st.components.v1.html(html_termo, height=600, scrolling=True)
+    st.markdown("---")
+    st.markdown("#### 📄 Documento Oficial")
+    
+    # Em vez de st.button (que dá erro dentro do form), usamos um expander ou 
+    # exibimos diretamente o botão de visualização/impressão via HTML/JS injetado de forma segura:
+    with st.expander(f"🖨️ Clique para visualizar/imprimir o Termo de Adesão ({nome})"):
+        st.components.v1.html(html_termo, height=500, scrolling=True)
