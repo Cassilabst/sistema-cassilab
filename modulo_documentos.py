@@ -399,6 +399,5 @@ import streamlit.components.v1 as components
 def renderizar_botao_imprimir_termo(empresa, nome, matricula, cargo, setor, cpf):
     html_termo = gerar_html_termo_adesao(empresa, nome, matricula, cargo, setor, cpf)
     
-    # Botão do Streamlit para abrir ou exibir o relatório de impressão
-    if st.button(f"🖨️ Imprimir Termo de Adesão ({nome})", key=f"btn_termo_{matricula}"):
+    if st.button(f"🖨️ Imprimir Termo de Adesão", key=f"btn_termo_imprimir_{matricula}"):
         st.components.v1.html(html_termo, height=600, scrolling=True)
