@@ -273,10 +273,7 @@ def renderizar_aba_treinamentos(*args, **kwargs):
 
     if st.session_state.get("modal_edit_tr_id"):
         id_ed = st.session_state["modal_edit_tr_id"]
-        st.session_state["modal_edit_tr_id"] = None
-        st.session_state["sel_id_tr"] = None
-        if "editor_selecao_treinamentos" in st.session_state:
-            del st.session_state["editor_selecao_treinamentos"]
+        # Mantém o ID ativo para o pop-up não fechar sozinho durante as interações
         dialog_editar_treinamento_func(id_ed)
 
     with aba_novo:
