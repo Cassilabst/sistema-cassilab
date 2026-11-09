@@ -39,7 +39,20 @@ def renderizar_aba_epis(*args, **kwargs):
                     return raw_registrar_log_func(l_args[0], l_args[1])
             except Exception:
                 pass
-
+    def buscar_logo_empresa(db_name, nome_empresa):
+        """Busca a logomarca salva no cadastro da empresa ou retorna vazio"""
+        try:
+            conn = sqlite3.connect(db_name, timeout=10.0)
+            cursor = conn.cursor()
+            cursor.execute("SELECT logo_empresa FROM empresas WHERE nome_empresa = ?", (nome_empresa,))
+            res = cursor.fetchone()
+            conn.close()
+            if res and res[0]:
+                return f'<img src="{res[0]}" style="max-height: 50px; max-width: 180px; object-fit: contain; display: block;" />'
+        except Exception:
+            pass
+        return '<div style="font-size: 9px; color: #666;">[ Logo da Empresa ]</div>'
+    
     def formatar_status_visual_seguro(val, tipo="epi"):
         if pd.isna(val) or not str(val).strip():
             return "🟢 Entregue"
@@ -452,11 +465,7 @@ def renderizar_aba_epis(*args, **kwargs):
                 calcado_num = col_f_cfg2.text_input(
                     "Calçado nº (Opcional para a Ficha)", value="", key="ficha_calcado"
                 )
-                logo_ficha_file = st.file_uploader(
-                    "📂 Inserir Logo da Empresa (Opcional para a Ficha)",
-                    type=["png", "jpg", "jpeg"],
-                    key="logo_ficha_epi_unif",
-                )
+                logo_ficha_html = buscar_logo_empresa(DB_NAME, empresa_selecionada)
 
                 if st.button(
                     "📄 Gerar e Exibir Ficha de EPI do Colaborador Selecionado",
@@ -472,22 +481,7 @@ def renderizar_aba_epis(*args, **kwargs):
                     admissao_func = f_dados.get("data_admissao", "")
                     if not admissao_func or pd.isna(admissao_func):
                         admissao_func = ""
-
-                    logo_ficha_html = ""
-                    if logo_ficha_file:
-                        b_logo = logo_ficha_file.getvalue()
-                        enc_logo = base64.b64encode(b_logo).decode()
-                        t_arq = logo_ficha_file.type.split("/")[-1]
-                        logo_ficha_html = (
-                            f'<img src="data:image/{t_arq};base64,{enc_logo}"'
-                            ' style="max-height: 50px; max-width: 180px; object-fit:'
-                            ' contain; display: block;" />'
-                        )
-                    else:
-                        logo_ficha_html = (
-                            '<div style="font-size: 9px; color: #666;">[ Logo da Empresa ]</div>'
-                        )
-
+                    
                     historico_func = (
                         df_historico_epi[
                             df_historico_epi["funcionario"]
