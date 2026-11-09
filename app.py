@@ -831,7 +831,7 @@ def dialog_editar_funcionario(id_alvo):
                 
                 pin_para_salvar = str(novo_pin_input).strip()
                 
-                # Se digitou algo no PIN, valida se tem 4 dígitos
+                # Validação do PIN (se preenchido, deve ter 4 dígitos)
                 if pin_para_salvar and not (len(pin_para_salvar) == 4 and pin_para_salvar.isdigit()):
                     st.error("⚠️ O PIN deve conter exatamente 4 dígitos numéricos.")
                 else:
