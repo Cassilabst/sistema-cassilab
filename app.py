@@ -178,28 +178,62 @@ def calcular_proximo_exame(data_str, meses_str):
 def calcular_proximo_treinamento(data_str, validade_str):
     if not data_str or not validade_str:
         return data_str
+    
+    # Tenta ler se a validade já é uma data válida formatada
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt_val = datetime.strptime(str(validade_str).strip(), fmt)
+            return dt_val.strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+            
     try:
         val_lower = str(validade_str).lower()
         numeros = "".join(filter(str.isdigit, val_lower))
         qtd = int(numeros) if numeros else 12
         dt = None
+        
         for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
             try:
                 dt = datetime.strptime(str(data_str).strip(), fmt)
                 break
             except ValueError:
                 continue
+                
         if not dt:
             return data_str
+            
         if "ano" in val_lower:
-            qtd = qtd * 12
-        mes_novo = dt.month - 1 + qtd
-        ano_novo = dt.year + mes_novo // 12
-        mes_novo = mes_novo % 12 + 1
-        ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-        dia_novo = min(dt.day, ultimo_dia_mes)
-        dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-        return dt_futura.strftime("%d/%m/%Y")
+            ano_novo = dt.year + qtd
+            try:
+                dt_futura = dt.replace(year=ano_novo)
+            except ValueError:
+                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+        elif "mes" in val_lower or "mês" in val_lower:
+            mes_novo = dt.month - 1 + qtd
+            ano_novo = dt.year + mes_novo // 12
+            mes_novo = mes_novo % 12 + 1
+            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+            dia_novo = min(dt.day, ultimo_dia_mes)
+            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+        elif "dia" in val_lower:
+            dt_futura = dt + timedelta(days=qtd)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+        else:
+            # Padrão caso venha apenas o número (ex: "12") -> assume meses
+            mes_novo = dt.month - 1 + qtd
+            ano_novo = dt.year + mes_novo // 12
+            mes_novo = mes_novo % 12 + 1
+            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+            dia_novo = min(dt.day, ultimo_dia_mes)
+            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+            return dt_futura.strftime("%d/%m/%Y")
+            
     except:
         return data_str
 
