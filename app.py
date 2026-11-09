@@ -800,17 +800,17 @@ def dialog_editar_funcionario(id_alvo):
             st.markdown("---")
             st.markdown("#### 🔑 Assinatura Eletrônica e Termo")
             if f_pin and str(f_pin).strip() and str(f_pin) != "None":
-                st.info("🔒 O PIN do colaborador está cadastrado e protegido por sigilo de compliance.")
+                st.info(f"🔒 PIN cadastrado atualmente: **{f_pin}**")
             else:
                 st.warning("⚠️ Este colaborador ainda não possui PIN de assinatura eletrônica cadastrado.")
 
-            # Caixinha de redefinição
-            resetar_pin = st.checkbox("🔄 Gerar / Redefinir PIN Temporário (Caso tenha esquecido)", key=f"chk_reset_pin_{id_alvo}")
-            
-            # Campo de texto condicional
-            novo_pin_input = ""
-            if resetar_pin:
-                novo_pin_input = st.text_input("Digite o Novo PIN Temporário (4 Dígitos)", max_chars=4, type="default", key=f"input_novo_pin_{id_alvo}")
+            # Campo único para cadastrar ou alterar o PIN a qualquer momento
+            novo_pin_input = st.text_input(
+                "Cadastrar / Alterar PIN (4 Dígitos Numéricos)", 
+                value=str(f_pin) if f_pin and str(f_pin) != "None" else "", 
+                max_chars=4, 
+                key=f"input_pin_func_{id_alvo}"
+            )
 
             novo_termo = st.checkbox("Termo de Adesão ao EPI Eletrônico Assinado", value=bool(f_termo), key=f"chk_termo_{id_alvo}")
 
