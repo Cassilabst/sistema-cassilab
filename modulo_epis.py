@@ -577,4 +577,4 @@ def renderizar_aba_epis(*args, **kwargs):
                             f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>"
                             "<tr>"
                             f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>"
-                            f"<td style='width: 24%;'><b>
+                            f"<td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>"
