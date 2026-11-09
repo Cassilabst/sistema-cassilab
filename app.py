@@ -2985,8 +2985,8 @@ elif menu == "Cadastros Gerais":
                                         )
                             conn.commit()
                             conn.close()
-                       
-        elif aba_selecionada == "Setores":
+        
+        if aba_selecionada == "Setores":
             st.subheader("Gerenciar Setores por Empresa")
             with st.form("form_cad_setor_unico"):
                 empresa_setor_sel = st.selectbox(
