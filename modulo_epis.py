@@ -282,4 +282,299 @@ def renderizar_aba_epis(*args, **kwargs):
                             conn_exc.close()
 
                             st.session_state["sel_id_epi"] = None
-                            if "editor_sele
+                            if "editor_selecao_epis" in st.session_state:
+                                del st.session_state["editor_selecao_epis"]
+                            st.session_state["msg_sucesso"] = "🗑️ Registro de EPI excluído com sucesso!"
+                            registrar_log_func_seguro(
+                                st.session_state.get("nome_usuario", "Desconhecido"),
+                                empresa_selecionada if empresa_selecionada != "Todas" else "Geral",
+                                f"Excluiu EPI ({reg_exc[0] if reg_exc else ''}) de {reg_exc[1] if reg_exc else ''}",
+                            )
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Selecione um registro marcando o quadradinho para excluir.")
+
+    with aba_gestao_ficha:
+        st.markdown(
+            "### ➕ Registrar Entrega e Gerar Ficha Individual de EPI"
+        )
+
+        if empresa_selecionada == "Todas":
+            st.warning(
+                "⚠️ Selecione uma empresa específica no filtro superior para"
+                " realizar lançamentos e gerar fichas."
+            )
+        else:
+            conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            df_funcs = pd.read_sql(
+                "SELECT funcionario, matricula, cargo, setor, data_admissao, armario, calcado FROM base_funcionarios WHERE empresa = ?",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            df_cad_epis = pd.read_sql(
+                "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            df_historico_epi = pd.read_sql(
+                "SELECT epi, ca, data_entrega, quantidade, funcionario, status FROM epis"
+                " WHERE empresa = ?",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            conn.close()
+
+            lista_f = (
+                df_funcs["funcionario"].tolist() if not df_funcs.empty else []
+            )
+            lista_epis_cad = (
+                df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
+            )
+            mapa_ca = (
+                dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
+                if not df_cad_epis.empty
+                else {}
+            )
+
+            if not lista_f:
+                st.info("ℹ️ Nenhum funcionário cadastrado para esta empresa.")
+            else:
+                if "ultimo_epi_selecionado" not in st.session_state:
+                    st.session_state["ultimo_epi_selecionado"] = None
+                if "unificado_ca" not in st.session_state:
+                    st.session_state["unificado_ca"] = ""
+
+                col_l1, col_l2 = st.columns(2)
+                func_escolhido = col_l1.selectbox(
+                    "Funcionário", lista_f, key="unificado_func"
+                )
+
+                if lista_epis_cad:
+                    epi_sel = col_l2.selectbox(
+                        "EPI", lista_epis_cad, key="unificado_epi"
+                    )
+                    
+                    if st.session_state["ultimo_epi_selecionado"] != epi_sel:
+                        st.session_state["ultimo_epi_selecionado"] = epi_sel
+                        st.session_state["unificado_ca"] = str(mapa_ca.get(epi_sel, ""))
+                        st.rerun()
+                    
+                    ca_sug = st.session_state["unificado_ca"]
+                else:
+                    epi_sel = col_l2.text_input(
+                        "EPI", value="Óculos de Proteção", key="unificado_epi_txt"
+                    )
+                    ca_sug = ""
+
+                col_l3, col_l4, col_l5 = st.columns(3)
+                ca_in = col_l3.text_input(
+                    "Número do CA", key="unificado_ca"
+                )
+                data_ent = col_l4.text_input(
+                    "Data de Entrega",
+                    value=datetime.today().strftime("%d/%m/%Y"),
+                    key="unificado_data",
+                )
+                qtd_in = col_l5.number_input(
+                    "Quantidade", min_value=1, value=1, key="unificado_qtd"
+                )
+
+                tipo_assinatura_lanc = st.radio(
+                    "🔑 Forma de Validação / Assinatura",
+                    ["Física (Assinatura manual na ficha impressa)", "Eletrônica (Validar com PIN de 4 dígitos do colaborador)"],
+                    key="tipo_ass_lanc_epi"
+                )
+                
+                pin_informado = ""
+                if "Eletrônica" in tipo_assinatura_lanc:
+                    pin_informado = st.text_input("Digite o PIN (4 dígitos) do Colaborador para Confirmar", type="password", max_chars=4, key="pin_lanc_epi_input")
+
+                if st.button("Salvar Entrega de EPI", type="primary", key="btn_salvar_epi_unif"):
+                    if func_escolhido and epi_sel:
+                        mat_f, cargo_f, setor_f, pin_cadastrado, termo_aceito = "", "", "", "", 0
+                        
+                        conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
+                        df_f_info = pd.read_sql(
+                            "SELECT matricula, cargo, setor, pin_colaborador, termo_adesao FROM base_funcionarios WHERE empresa = ? AND funcionario = ?",
+                            conn_f,
+                            params=(empresa_selecionada, func_escolhido)
+                        )
+                        conn_f.close()
+
+                        if not df_f_info.empty:
+                            mat_f = df_f_info.iloc[0].get("matricula", "")
+                            cargo_f = df_f_info.iloc[0].get("cargo", "")
+                            setor_f = df_f_info.iloc[0].get("setor", "")
+                            pin_cadastrado = str(df_f_info.iloc[0].get("pin_colaborador", "")).strip()
+                            termo_aceito = int(df_f_info.iloc[0].get("termo_adesao", 0) or 0)
+
+                        status_gravacao = 'Entregue'
+                        if "Eletrônica" in tipo_assinatura_lanc:
+                            if not termo_aceito:
+                                st.error("⚠️ O colaborador selecionado ainda não possui o Termo de Adesão ao EPI Eletrônico assinado no cadastro!")
+                                st.stop()
+                            if pin_informado.strip() != pin_cadastrado or len(pin_cadastrado) != 4:
+                                st.error("❌ PIN incorreto ou colaborador sem PIN de 4 dígitos cadastrado!")
+                                st.stop()
+                            status_gravacao = f"Assinado Eletronicamente via PIN ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
+
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn.execute(
+                            """
+                            INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                empresa_selecionada,
+                                str(mat_f),
+                                func_escolhido,
+                                str(cargo_f),
+                                str(setor_f),
+                                epi_sel,
+                                ca_in.strip(),
+                                validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent,
+                                int(qtd_in),
+                                status_gravacao,
+                            ),
+                        )
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Entrega de EPI cadastrada com sucesso!")
+                        registrar_log_func_seguro(
+                            st.session_state.get("nome_usuario", "Desconhecido"),
+                            empresa_selecionada,
+                            f"Cadastrou EPI ({epi_sel}) para {func_escolhido} [{status_gravacao}]",
+                        )
+                        if "pin_lanc_epi_input" in st.session_state:
+                            st.session_state["pin_lanc_epi_input"] = ""
+                        st.rerun()
+                    else:
+                        st.error("Preencha todos os campos obrigatórios.")
+                st.markdown("---")
+                st.markdown(
+                    "### 📄 Configuração e Geração da Ficha Individual (Paisagem)"
+                )
+
+                # Busca dados salvos de armário e calçado do colaborador atual
+                f_atual = df_funcs[df_funcs["funcionario"] == func_escolhido].iloc[0] if not df_funcs.empty else {}
+                val_armario_salvo = str(f_atual.get("armario", "") or "")
+                val_calcado_salvo = str(f_atual.get("calcado", "") or "")
+
+                col_f_cfg1, col_f_cfg2 = st.columns(2)
+                armario_num = col_f_cfg1.text_input(
+                    "Armário nº (Opcional para a Ficha)", value=val_armario_salvo, key="ficha_armario"
+                )
+                calcado_num = col_f_cfg2.text_input(
+                    "Calçado nº (Opcional para a Ficha)", value=val_calcado_salvo, key="ficha_calcado"
+                )
+                logo_ficha_html = buscar_logo_empresa(DB_NAME, empresa_selecionada)
+
+                if st.button(
+                    "📄 Gerar e Exibir Ficha de EPI do Colaborador Selecionado",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_gerar_ficha_unif",
+                ):
+                    # Salva automaticamente o armário e calçado no cadastro do funcionário
+                    if armario_num or calcado_num:
+                        conn_up = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn_up.execute(
+                            """
+                            UPDATE base_funcionarios 
+                            SET armario = ?, calcado = ? 
+                            WHERE empresa = ? AND funcionario = ?
+                            """,
+                            (armario_num, calcado_num, empresa_selecionada, func_escolhido)
+                        )
+                        conn_up.commit()
+                        conn_up.close()
+
+                    f_dados = df_funcs[
+                        df_funcs["funcionario"] == func_escolhido
+                    ].iloc[0]
+                    cargo_func = f_dados.get("cargo", "")
+                    setor_func = f_dados.get("setor", "")
+                    admissao_func = f_dados.get("data_admissao", "")
+                    if not admissao_func or pd.isna(admissao_func):
+                        admissao_func = ""
+                    
+                    historico_func = (
+                        df_historico_epi[
+                            df_historico_epi["funcionario"]
+                            .astype(str)
+                            .str.strip()
+                            .str.lower()
+                            == str(func_escolhido).strip().lower()
+                        ]
+                        if not df_historico_epi.empty
+                        else pd.DataFrame()
+                    )
+
+                    # Paginação dinâmica: blocos de 12 itens por página da ficha
+                    itens_por_pagina = 12
+                    total_registros = len(historico_func)
+                    total_paginas = max(1, math.ceil(total_registros / itens_por_pagina))
+
+                    html_paginas_acumulado = ""
+
+                    for pagina_idx in range(total_paginas):
+                        inicio_slice = pagina_idx * itens_por_pagina
+                        fim_slice = inicio_slice + itens_por_pagina
+                        fatia_historico = historico_func.iloc[inicio_slice:fim_slice]
+
+                        linhas_ficha_html = ""
+                        c_reg = 0
+
+                        for _, r_hist in fatia_historico.iterrows():
+                            e_nome = str(r_hist.get("epi", ""))
+                            e_quant = str(r_hist.get("quantidade", "1"))
+                            e_data = str(r_hist.get("data_entrega", ""))
+                            e_ca = str(r_hist.get("ca", ""))
+                            e_status = str(r_hist.get("status", ""))
+                            
+                            if "Assinado Eletronicamente" in e_status or "PIN" in e_status:
+                                texto_assinatura_celula = (
+                                    "<div style='font-size: 7px; color: #0b2545; line-height: 1.1; font-weight: bold; text-align: center;'>"
+                                    "Assinado Eletronicamente via PIN<br>(Validade Jurídica)"
+                                    "</div>"
+                                )
+                            else:
+                                texto_assinatura_celula = ""
+
+                            linhas_ficha_html += (
+                                "<tr>"
+                                f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>"
+                                f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>"
+                                "</tr>"
+                            )
+                            c_reg += 1
+
+                        while c_reg < itens_por_pagina:
+                            linhas_ficha_html += (
+                                "<tr>"
+                                "<td style='height: 18px;'></td>"
+                                "<td></td><td></td><td></td><td></td>"
+                                "</tr>"
+                            )
+                            c_reg += 1
+
+                        num_pagina_atual = pagina_idx + 1
+                        indicador_pagina = f"<b>Página {num_pagina_atual} de {total_paginas}</b>" if total_paginas > 1 else ""
+
+                        html_paginas_acumulado += (
+                            "<div class='sheet'>"
+                            "<div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>"
+                            f"<div>{logo_ficha_html}</div>"
+                            f"<div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>"
+                            "</div>"
+                            "<div class='cabecalho-principal-ficha'>"
+                            "CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I."
+                            "</div>"
+                            "<table class='tabela-ficha'>"
+                            f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>"
+                            "<tr>"
+                            f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>"
+                            f"<td style='width: 24%;'><b>
