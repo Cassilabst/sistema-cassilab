@@ -3757,14 +3757,13 @@ if menu == "Cadastros Gerais":
                     st.session_state["msg_sucesso"] = "🗑️ EPI excluído com sucesso!"
                     registrar_log(
                         st.session_state.get("nome_usuario", "Administrador"),
-                        "Todas",
-                        f"Excluiu EPI cadastrado ID {epi_id_exc}",
-                    )
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
-        else:
+                    "Todas",
+                    f"Excluiu EPI cadastrado ID {epi_id_exc}",
+                )
+                st.rerun()
             else:
+                st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
+        else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
         # --- BOTÃO PARA GERAR RELATÓRIO EM PDF DOS EPIS ---
