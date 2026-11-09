@@ -168,4 +168,6 @@ def renderizar_aba_admin(
                 st.rerun()
                 
             st.markdown("")
-            cu1, cu2, cu3 = st.
+            cu1, cu2, cu3 = st.columns(3)
+            
+            if cu1.button("✅ Aprovar Acesso Selecionado", use_container_width=True, key="btn_aprovar_acesso_adm"):
