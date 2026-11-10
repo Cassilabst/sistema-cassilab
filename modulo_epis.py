@@ -103,7 +103,6 @@ def renderizar_aba_epis(*args, **kwargs):
                 pass
 
     def buscar_logo_empresa(db_name, nome_empresa):
-        """Busca a logomarca salva no cadastro da empresa ou retorna vazio"""
         try:
             conn = sqlite3.connect(db_name, timeout=10.0)
             cursor = conn.cursor()
@@ -139,6 +138,69 @@ def renderizar_aba_epis(*args, **kwargs):
         if "substituído" in v_low or "substituido" in v_low:
             return f"🟡 {v}"
         return f"🟢 {v}"
+
+    # DIALOG DE EDIÇÃO PROTEGIDO POR PIN DO COLABORADOR
+    @st.dialog("✏️ Corrigir Lançamento de EPI (Autorização por PIN)")
+    def modal_editar_registro_pin(id_registro, empresa_atual):
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        df_reg = pd.read_sql("SELECT * FROM epis WHERE id = ?", conn, params=(id_registro,))
+        conn.close()
+
+        if df_reg.empty:
+            st.error("Registro não encontrado.")
+            if st.button("Fechar"):
+                st.rerun()
+            return
+
+        r_atual = df_reg.iloc[0]
+        func_nome = r_atual["funcionario"]
+        epi_atual = r_atual["epi"]
+        ca_atual = r_atual["ca"]
+        qtd_atual = r_atual["quantidade"]
+
+        st.markdown(f"**Colaborador:** {func_nome}")
+        st.markdown("Preencha os novos dados e solicite que o colaborador digite o seu PIN pessoal de 4 dígitos para autorizar a alteração.")
+
+        with st.form("form_edicao_pin_epi"):
+            novo_epi = st.text_input("Novo EPI", value=str(epi_atual))
+            novo_ca = st.text_input("Novo CA", value=str(ca_atual))
+            nova_qtd = st.number_input("Nova Quantidade", min_value=1, value=int(qtd_atual))
+            
+            pin_autorizacao = st.text_input("PIN de 4 dígitos do Colaborador", type="password", max_chars=4)
+
+            btn_salvar_alt = st.form_submit_button("💾 Salvar Correção Autorizada", type="primary")
+            if btn_salvar_alt:
+                # Busca o PIN oficial do colaborador no banco
+                conn_p = sqlite3.connect(DB_NAME, timeout=10.0)
+                cur_p = conn_p.cursor()
+                cur_p.execute("SELECT pin_colaborador FROM base_funcionarios WHERE empresa = ? AND funcionario = ?", (empresa_atual, func_nome))
+                res_p = cur_p.fetchone()
+                conn_p.close()
+
+                pin_cadastrado = str(res_p[0]).strip() if res_p and res_p[0] is not None else ""
+
+                if not pin_cadastrado or len(pin_cadastrado) != 4:
+                    st.error("❌ Este colaborador não possui um PIN de 4 dígitos cadastrado no sistema!")
+                elif pin_autorizacao.strip() != pin_cadastrado:
+                    st.error("❌ PIN incorreto! A correção não pode ser salva sem a autorização correta do colaborador.")
+                else:
+                    status_corrigido = f"Corrigido via PIN em {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    conn_upd = sqlite3.connect(DB_NAME, timeout=10.0)
+                    conn_upd.execute(
+                        "UPDATE epis SET epi = ?, ca = ?, quantidade = ?, status = ? WHERE id = ?",
+                        (novo_epi.strip(), novo_ca.strip(), int(nova_qtd), status_corrigido, id_registro)
+                    )
+                    conn_upd.commit()
+                    conn_upd.close()
+
+                    st.success("✅ Correção realizada e autorizada com sucesso!")
+                    registrar_log_func_seguro(
+                        st.session_state.get("nome_usuario", "Desconhecido"),
+                        empresa_atual,
+                        f"Corrigiu registro de EPI ID {id_registro} para {func_nome} com autorização por PIN",
+                    )
+                    st.session_state["modal_edit_epi_id"] = None
+                    st.rerun()
 
     st.title("🦺 Controle e Ficha de EPIs")
 
@@ -357,9 +419,7 @@ def renderizar_aba_epis(*args, **kwargs):
 
                 if st.session_state.get("modal_edit_epi_id"):
                     id_ed = st.session_state["modal_edit_epi_id"]
-                    st.session_state["modal_edit_epi_id"] = None
-                    if callable(dialog_editar_epi_func):
-                        dialog_editar_epi_func(id_ed)
+                    modal_editar_registro_pin(id_ed, empresa_selecionada)
 
                 if pode_excluir:
                     if col_acao2.button(
@@ -419,7 +479,6 @@ def renderizar_aba_epis(*args, **kwargs):
         else:
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
 
-            # Garante que as colunas armario e calcado existem na tabela base_funcionarios
             try:
                 conn.execute(
                     "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
@@ -643,7 +702,6 @@ def renderizar_aba_epis(*args, **kwargs):
                     "### 📄 Configuração e Geração da Ficha Individual (Paisagem)"
                 )
 
-                # Busca dados salvos de armário e calçado do colaborador atual
                 f_atual = (
                     df_funcs[df_funcs["funcionario"] == func_escolhido].iloc[
                         0
@@ -676,7 +734,6 @@ def renderizar_aba_epis(*args, **kwargs):
                     use_container_width=True,
                     key="btn_gerar_ficha_unif",
                 ):
-                    # Salva automaticamente o armário e calçado no cadastro do funcionário
                     if armario_num or calcado_num:
                         conn_up = sqlite3.connect(DB_NAME, timeout=10.0)
                         conn_up.execute(
@@ -716,7 +773,6 @@ def renderizar_aba_epis(*args, **kwargs):
                         else pd.DataFrame()
                     )
 
-                    # Paginação dinâmica: blocos de 12 itens por página da ficha
                     itens_por_pagina = 12
                     total_registros = len(historico_func)
                     total_paginas = max(
@@ -745,13 +801,13 @@ def renderizar_aba_epis(*args, **kwargs):
                             if (
                                 "Assinado Eletronicamente" in e_status
                                 or "PIN" in e_status
+                                or "Corrigido" in e_status
                             ):
                                 texto_assinatura_celula = (
                                     "<div style='font-size: 7px; color:"
                                     " #0b2545; line-height: 1.1; font-weight:"
-                                    " bold; text-align: center;'>Assinado"
-                                    " Eletronicamente via PIN<br>(Validade"
-                                    " Jurídica)</div>"
+                                    " bold; text-align: center;'>Validado"
+                                    " via PIN<br>(Validade Jurídica)</div>"
                                 )
                             else:
                                 texto_assinatura_celula = ""
@@ -793,7 +849,6 @@ def renderizar_aba_epis(*args, **kwargs):
                             else ""
                         )
 
-                        # Acumula o HTML de cada página corretamente
                         html_paginas_acumulado += f"""
                         <div class='sheet'>
                             <div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>
@@ -843,7 +898,6 @@ def renderizar_aba_epis(*args, **kwargs):
                         </div>
                         """
 
-                    # MONTAGEM FINAL DA FICHA SEGURA (SEM CONFLITO DE F-STRING)
                     html_conteudo_bruto = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<style>"
@@ -860,11 +914,13 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
                         "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
-                        + html_paginas_acumulado +
-                        "</body></html>"
+                        + html_paginas_acumulado
+                        + "</body></html>"
                     )
 
-                    html_base64 = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
+                    html_base64 = base64.b64encode(
+                        html_conteudo_bruto.encode("utf-8")
+                    ).decode("utf-8")
 
                     html_ficha = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
@@ -883,13 +939,4 @@ def renderizar_aba_epis(*args, **kwargs):
                         "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
                         "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
-                        f"<button onclick=\"var win = window.open('data:text/html;base64,{html_base64}', '_blank'); setTimeout(function(){{ win.print(); }}, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
-                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
-                        "</button>"
-                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
-                        "</div>"
-                        + html_paginas_acumulado +
-                        "</body></html>"
-                    )
-
-                    components.html(html_ficha, height=850, scrolling=True)
+                        f"<button onclick=\"var win = window.open('data:text/html;base64,{html_base64}', '_blank'); setTimeout(function(){{ win.print(); }}, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size:
