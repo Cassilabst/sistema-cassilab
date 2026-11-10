@@ -886,7 +886,6 @@ def renderizar_aba_epis(*args, **kwargs):
                         </div>
                         """
 
-                    # MONTAGEM DO HTML DA FICHA LIMPA
                     html_ficha_limpa = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<title>Ficha de EPI - " + str(func_escolhido) + "</title>"
@@ -909,17 +908,20 @@ def renderizar_aba_epis(*args, **kwargs):
                     )
 
                     html_bytes = html_ficha_limpa.encode("utf-8")
-                    b64_str = base64.b64encode(html_bytes).decode("utf-8")
+                    st.session_state["b64_ficha_epi"] = base64.b64encode(html_bytes).decode("utf-8")
+                    st.success("✅ Ficha gerada com sucesso!")
 
+                # Se a ficha já foi gerada, exibe o botão verde fixo na tela
+                if st.session_state.get("b64_ficha_epi"):
+                    b64_str = st.session_state["b64_ficha_epi"]
                     trecho_botao_impressao = f"""
-                    <div style='background: #e9ecef; padding: 20px; margin-bottom: 15px; border-radius: 8px; text-align: center; border: 1px solid #cbd3da;'>
+                    <div style='background: #e9ecef; padding: 20px; margin: 15px 0; border-radius: 8px; text-align: center; border: 1px solid #cbd3da;'>
                         <a href="data:text/html;charset=utf-8;base64,{b64_str}" target="_blank" style='background-color: #28a745; color: white; padding: 12px 24px; font-size: 15px; font-weight: bold; text-decoration: none; border-radius: 6px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                             🖨️ ABRIR FICHA DE EPI PARA IMPRESSÃO (A4 PAISAGEM)
                         </a>
-                        <p style='margin: 10px 0 0 0; font-size: 12px; color: #333;'>Clique no botão acima. A ficha abrirá limpa em uma nova aba, <b>já configurada em Paisagem</b>, pronta para você imprimir ou salvar em PDF!</p>
+                        <p style='margin: 10px 0 0 0; font-size: 12px; color: #333;'>Clique no botão acima. A ficha abrirá limpa em uma nova aba, <b>já configurada em Paisagem</b>, pronta para impressão!</p>
                     </div>
                     """
-
                     st.markdown(trecho_botao_impressao, unsafe_allow_html=True)
 
     st.markdown("---")
