@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import math
 import sqlite3
 import pandas as pd
@@ -139,6 +139,9 @@ def renderizar_aba_epis(*args, **kwargs):
             return f"🟡 {v}"
         return f"🟢 {v}"
 
+    # Fuso horário do Brasil (UTC-3)
+    fuso_brasil = timezone(timedelta(hours=-3))
+
     # DIALOG DE EDIÇÃO PROTEGIDO POR PIN DO COLABORADOR
     @st.dialog("✏️ Corrigir Lançamento de EPI (Autorização por PIN)")
     def modal_editar_registro_pin(id_registro, empresa_atual):
@@ -183,7 +186,8 @@ def renderizar_aba_epis(*args, **kwargs):
                 elif pin_autorizacao.strip() != pin_cadastrado:
                     st.error("❌ PIN incorreto! A correção não pode ser salva sem a autorização correta do colaborador.")
                 else:
-                    status_corrigido = f"Corrigido via PIN em {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    data_hora_br = datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')
+                    status_corrigido = f"Corrigido via PIN em {data_hora_br}"
                     conn_upd = sqlite3.connect(DB_NAME, timeout=10.0)
                     conn_upd.execute(
                         "UPDATE epis SET epi = ?, ca = ?, quantidade = ?, status = ? WHERE id = ?",
@@ -566,7 +570,7 @@ def renderizar_aba_epis(*args, **kwargs):
                 ca_in = col_l3.text_input("Número do CA", key="unificado_ca")
                 data_ent = col_l4.text_input(
                     "Data de Entrega",
-                    value=datetime.today().strftime("%d/%m/%Y"),
+                    value=datetime.now(fuso_brasil).strftime("%d/%m/%Y"),
                     key="unificado_data",
                 )
                 qtd_in = col_l5.number_input(
@@ -654,10 +658,10 @@ def renderizar_aba_epis(*args, **kwargs):
                                 st.stop()
                             status_gravacao = (
                                 f"Assinado Eletronicamente via PIN"
-                                f" ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
+                                f" ({datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')})"
                             )
 
-                        data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now().strftime('%H:%M')}"
+                        data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now(fuso_brasil).strftime('%H:%M')}"
 
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         conn.execute(
@@ -769,7 +773,7 @@ def renderizar_aba_epis(*args, **kwargs):
                         else pd.DataFrame()
                     )
 
-                    # 15 linhas por página para aproveitar bem o espaço
+                    # 15 linhas por página para aproveitar perfeitamente o espaço
                     itens_por_pagina = 15
                     total_registros = len(historico_func)
                     total_paginas = max(
@@ -882,14 +886,19 @@ def renderizar_aba_epis(*args, **kwargs):
                                 &nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>
                                 &nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>
                                 Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>
-                                Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
+                                Declaro, alnda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
                             </div>
-                            <div class='assinatura-area' style='padding: 10px 6px;'>
-                                <div style='margin-bottom: 8px; font-size: 10px;'>
-                                    _____ de _________________________ de 20_____
+                            <div class='assinatura-area' style='padding: 14px 10px; display: flex; justify-content: space-between; align-items: flex-end;'>
+                                <div style='font-size: 9px; color: #333; text-align: left; width: 45%; padding-top: 15px;'>
+                                    <i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>
                                 </div>
-                                <div style="display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px;">
-                                    <b>{func_escolhido}</b><br>Assinatura do Funcionário
+                                <div style='text-align: right; width: 50%;'>
+                                    <div style='margin-bottom: 12px; font-size: 10px;'>
+                                        ___________, _____ de _________________________ de 20_____
+                                    </div>
+                                    <div style="display: inline-block; border-top: 1px solid #000; width: 320px; padding-top: 3px;">
+                                        <b>{func_escolhido}</b><br>Assinatura do Funcionário
+                                    </div>
                                 </div>
                             </div>
                         </div>
