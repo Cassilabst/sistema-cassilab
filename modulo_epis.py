@@ -919,10 +919,12 @@ def renderizar_aba_epis(*args, **kwargs):
 
                     trecho_botao_impressao = (
                         "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
-                        "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); setTimeout(function(){ win.print(); }, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
+                        "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); "
+                        "setTimeout(function(){ win.document.close(); win.focus(); win.print(); }, 800);\" "
+                        "style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
                         "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
                         "</button>"
-                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
+                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b> e as Margens como <b>Padrão</b> ou <b>Nenhuma</b>.</p>"
                         "</div>"
                     )
 
