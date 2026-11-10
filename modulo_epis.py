@@ -886,24 +886,25 @@ def renderizar_aba_epis(*args, **kwargs):
                                 &nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>
                                 &nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>
                                 Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>
-                                Declaro, alnda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
+                                Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
                             </div>
-                            <div class='assinatura-area' style='padding: 14px 10px; display: flex; justify-content: space-between; align-items: flex-end;'>
-                                <div style='font-size: 9px; color: #333; text-align: left; width: 45%; padding-top: 15px;'>
-                                    <i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>
-                                </div>
-                                <div style='text-align: right; width: 50%;'>
-                                    <div style='margin-bottom: 12px; font-size: 10px;'>
+                            <div class='assinatura-area' style='padding: 10px 10px; border: 1px solid #000; border-top: none;'>
+                                <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;'>
+                                    <div style='font-size: 9px; color: #333; text-align: left;'>
+                                        <i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>
+                                    </div>
+                                    <div style='font-size: 9px; text-align: right;'>
                                         ___________, _____ de _________________________ de 20_____
                                     </div>
-                                    <div style="display: inline-block; border-top: 1px solid #000; width: 320px; padding-top: 3px;">
+                                </div>
+                                <div style='text-align: center; padding-top: 5px;'>
+                                    <div style="display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px; text-align: center;">
                                         <b>{func_escolhido}</b><br>Assinatura do Funcionário
                                     </div>
                                 </div>
                             </div>
                         </div>
                         """
-
                     html_conteudo_bruto = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<title>Ficha de EPI - " + str(func_escolhido) + "</title>"
