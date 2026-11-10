@@ -400,7 +400,13 @@ def renderizar_aba_funcionarios(
                                 except Exception:
                                     pass
                 
-                            cursor.execute("DELETE FROM absenteismo WHERE funcionario = ?", (nome_colaborador,))
+                            try:
+                                cursor.execute("DELETE FROM absenteismo WHERE funcionario = ?", (nome_colaborador,))
+                            except Exception:
+                                try:
+                                    cursor.execute("DELETE FROM absenteismo WHERE nome = ?", (nome_colaborador,))
+                                except Exception:
+                                    pass
                         
                         conn.commit()
                         conn.close()
