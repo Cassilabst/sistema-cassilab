@@ -580,8 +580,13 @@ def renderizar_aba_epis(*args, **kwargs):
                 tipo_assinatura_lanc = st.radio(
                     "🔑 Forma de Validação / Assinatura",
                     [
-                        "Eletrônica (Validar com PIN de 4 dígitos do colaborador)",
-                        "Física (Assinatura manual na ficha impressa)",
+                        (
+                            "Física (Assinatura manual na ficha impressa)"
+                        ),
+                        (
+                            "Eletrônica (Validar com PIN de 4 dígitos do"
+                            " colaborador)"
+                        ),
                     ],
                     key="tipo_ass_lanc_epi",
                 )
@@ -589,32 +594,32 @@ def renderizar_aba_epis(*args, **kwargs):
                 pin_informado = ""
                 if "Eletrônica" in tipo_assinatura_lanc:
                     pin_informado = st.text_input(
-                        "Digite o PIN (4 dígitos) do Colaborador para Confirmar",
+                        "Digite o PIN (4 dígitos) do Colaborador para"
+                        " Confirmar",
                         type="password",
                         max_chars=4,
                         key="pin_lanc_epi_input",
                     )
 
-                # Aviso em verde e caixinha de confirmação de segurança para o salvamento
-                st.markdown(
-                    "<div style='background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; border: 1px solid #c3e6cb; margin-bottom: 10px; font-size: 13px;'>"
-                    "<b>✅ Confirmação de Segurança:</b> Marque a caixa abaixo para habilitar o salvamento e evitar cliques acidentais."
-                    "</div>",
-                    unsafe_allow_html=True
-                )
-                confirmar_salvamento = st.checkbox(
-                    "🟢 Confirmo que conferi os dados e desejo salvar este lançamento de EPI",
-                    key="chk_confirma_salvar_epi"
-                )
+                if st.button(
+                    "Salvar Entrega de EPI",
+                    type="primary",
+                    key="btn_salvar_epi_unif",
+                ):
+                    if func_escolhido and epi_sel:
+                        mat_f, cargo_f, setor_f, pin_cadastrado, termo_aceito = (
+                            "",
+                            "",
+                            "",
+                            "",
+                            0,
+                        )
 
-                # Botão de Salvar Entrega protegido pelo checkbox
-                if st.button("💾 Cadastrar Entrega de EPI", type="primary", use_container_width=True):
-                    if not confirmar_salvamento:
-                        st.warning("⚠️ Você precisa marcar a caixinha verde de confirmação de segurança acima para salvar o lançamento.")
-                    else:
                         conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
                         df_f_info = pd.read_sql(
-                            "SELECT matricula, cargo, setor, pin_colaborador, termo_adesao FROM base_funcionarios WHERE empresa = ? AND funcionario = ?",
+                            "SELECT matricula, cargo, setor, pin_colaborador,"
+                            " termo_adesao FROM base_funcionarios WHERE empresa"
+                            " = ? AND funcionario = ?",
                             conn_f,
                             params=(empresa_selecionada, func_escolhido),
                         )
@@ -624,59 +629,84 @@ def renderizar_aba_epis(*args, **kwargs):
                             mat_f = df_f_info.iloc[0].get("matricula", "")
                             cargo_f = df_f_info.iloc[0].get("cargo", "")
                             setor_f = df_f_info.iloc[0].get("setor", "")
-                            pin_cadastrado = str(df_f_info.iloc[0].get("pin_colaborador", "")).strip()
-                            termo_aceito = int(df_f_info.iloc[0].get("termo_adesao", 0) or 0)
-
-                            status_gravacao = "Entregue"
-                            if "Eletrônica" in tipo_assinatura_lanc:
-                                if not termo_aceito:
-                                    st.error("⚠️ O colaborador selecionado ainda não possui o Termo de Adesão ao EPI Eletrônico assinado no cadastro!")
-                                    st.stop()
-                                if pin_informado.strip() != pin_cadastrado or len(pin_cadastrado) != 4:
-                                    st.error("❌ PIN incorreto ou colaborador sem PIN de 4 dígitos cadastrado!")
-                                    st.stop()
-                                status_gravacao = f"Assinado Eletronicamente via PIN ({datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')})"
-
-                            data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now(fuso_brasil).strftime('%H:%M')}"
-
-                            conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                            conn.execute(
-                                """
-                                INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    empresa_selecionada,
-                                    str(mat_f),
-                                    func_escolhido,
-                                    str(cargo_f),
-                                    str(setor_f),
-                                    epi_sel,
-                                    ca_in.strip(),
-                                    data_hora_atual_str,
-                                    int(qtd_in),
-                                    status_gravacao,
-                                ),
+                            pin_cadastrado = str(
+                                df_f_info.iloc[0].get(
+                                    "pin_colaborador", ""
+                                )
+                            ).strip()
+                            termo_aceito = int(
+                                df_f_info.iloc[0].get("termo_adesao", 0) or 0
                             )
-                            conn.commit()
-                            conn.close()
-                            st.success("✅ Entrega de EPI cadastrada com sucesso!")
-                            registrar_log_func_seguro(
-                                st.session_state.get("nome_usuario", "Desconhecido"),
+
+                        status_gravacao = "Entregue"
+                        if "Eletrônica" in tipo_assinatura_lanc:
+                            if not termo_aceito:
+                                st.error(
+                                    "⚠️ O colaborador selecionado ainda não"
+                                    " possui o Termo de Adesão ao EPI Eletrônico"
+                                    " assinado no cadastro!"
+                                )
+                                st.stop()
+                            if (
+                                pin_informado.strip() != pin_cadastrado
+                                or len(pin_cadastrado) != 4
+                            ):
+                                st.error(
+                                    "❌ PIN incorreto ou colaborador sem PIN"
+                                    " de 4 dígitos cadastrado!"
+                                )
+                                st.stop()
+                            status_gravacao = (
+                                f"Assinado Eletronicamente via PIN"
+                                f" ({datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')})"
+                            )
+
+                        data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now(fuso_brasil).strftime('%H:%M')}"
+
+                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        conn.execute(
+                            """
+                            INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
                                 empresa_selecionada,
-                                f"Cadastrou EPI ({epi_sel}) para {func_escolhido} [{status_gravacao}]",
-                            )
-                            st.rerun()
-                        else:
-                            st.error("Preencha todos os campos obrigatórios.")
-
+                                str(mat_f),
+                                func_escolhido,
+                                str(cargo_f),
+                                str(setor_f),
+                                epi_sel,
+                                ca_in.strip(),
+                                data_hora_atual_str,
+                                int(qtd_in),
+                                status_gravacao,
+                            ),
+                        )
+                        conn.commit()
+                        conn.close()
+                        st.success(
+                            "✅ Entrega de EPI cadastrada com sucesso!"
+                        )
+                        registrar_log_func_seguro(
+                            st.session_state.get(
+                                "nome_usuario", "Desconhecido"
+                            ),
+                            empresa_selecionada,
+                            f"Cadastrou EPI ({epi_sel}) para"
+                            f" {func_escolhido} [{status_gravacao}]",
+                        )
+                        st.rerun()
+                    else:
+                        st.error("Preencha todos os campos obrigatórios.")
                 st.markdown("---")
                 st.markdown(
                     "### 📄 Configuração e Geração da Ficha Individual (Paisagem)"
                 )
 
                 f_atual = (
-                    df_funcs[df_funcs["funcionario"] == func_escolhido].iloc[0]
+                    df_funcs[df_funcs["funcionario"] == func_escolhido].iloc[
+                        0
+                    ]
                     if not df_funcs.empty
                     else {}
                 )
@@ -743,6 +773,7 @@ def renderizar_aba_epis(*args, **kwargs):
                         else pd.DataFrame()
                     )
 
+                    # 15 linhas por página para aproveitar perfeitamente o espaço
                     itens_por_pagina = 15
                     total_registros = len(historico_func)
                     total_paginas = max(
@@ -855,19 +886,17 @@ def renderizar_aba_epis(*args, **kwargs):
                                 &nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>
                                 &nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>
                                 Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>
-                                Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
+                                Declaro, alnda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
                             </div>
-                            <div class='assinatura-area' style='padding: 10px 10px; border: 1px solid #000; border-top: none;'>
-                                <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;'>
-                                    <div style='font-size: 9px; color: #333; text-align: left;'>
-                                        <i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>
-                                    </div>
-                                    <div style='font-size: 9px; text-align: right;'>
+                            <div class='assinatura-area' style='padding: 14px 10px; display: flex; justify-content: space-between; align-items: flex-end;'>
+                                <div style='font-size: 9px; color: #333; text-align: left; width: 45%; padding-top: 15px;'>
+                                    <i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>
+                                </div>
+                                <div style='text-align: right; width: 50%;'>
+                                    <div style='margin-bottom: 12px; font-size: 10px;'>
                                         ___________, _____ de _________________________ de 20_____
                                     </div>
-                                </div>
-                                <div style='text-align: center; padding-top: 5px;'>
-                                    <div style="display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px; text-align: center;">
+                                    <div style="display: inline-block; border-top: 1px solid #000; width: 320px; padding-top: 3px;">
                                         <b>{func_escolhido}</b><br>Assinatura do Funcionário
                                     </div>
                                 </div>
