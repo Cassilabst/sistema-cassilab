@@ -885,8 +885,10 @@ def renderizar_aba_epis(*args, **kwargs):
                         </div>
                         """
 
+                    # Criação do HTML limpo completo
                     html_conteudo_bruto = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
+                        "<title>Ficha de EPI - " + str(func_escolhido) + "</title>"
                         "<style>"
                         "@page { size: A4 landscape !important; margin: 5mm !important; }"
                         "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
@@ -905,21 +907,25 @@ def renderizar_aba_epis(*args, **kwargs):
                         + "</body></html>"
                     )
 
-                    html_base64 = base64.b64encode(
-                        html_conteudo_bruto.encode("utf-8")
-                    ).decode("utf-8")
+                    # Codificamos o HTML em Base64 para segurança na injeção por script
+                    html_b64_seguro = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
 
-                    # Botão profissional embutido na tela que abre a pré-visualização limpa em nova aba
-                    trecho_botao_impressao = (
-                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
-                        "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); "
-                        "setTimeout(function(){ win.document.close(); win.focus(); win.print(); }, 800);\" "
-                        "style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
-                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
-                        "</button>"
-                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Clique para abrir o painel de impressão em A4 Paisagem.</p>"
-                        "</div>"
-                    )
+                    # Botão profissional com injeção limpa via Blob/document.write (Garante que nunca saia em branco)
+                    trecho_botao_impressao = f"""
+                    <div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>
+                        <button onclick="
+                            var win = window.open('', '_blank');
+                            var htmlContent = decodeURIComponent(escape(window.atob('{html_b64_seguro}')));
+                            win.document.open();
+                            win.document.write(htmlContent);
+                            win.document.close();
+                            setTimeout(function(){ win.focus(); win.print(); }, 800);
+                        " style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>
+                            🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)
+                        </button>
+                        <p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Clique para abrir a ficha completa direto na janela de impressão em A4 Paisagem.</p>
+                    </div>
+                    """
 
                     html_ficha = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
