@@ -2,7 +2,6 @@ from datetime import datetime
 import pandas as pd
 import sqlite3
 import streamlit as st
-cursor.execute("D
 
 @st.dialog("👥 Painel Executivo — Funcionários e Headcount", width="large")
 def abrir_dashboard_funcionarios(df_func, empresa_nome):
