@@ -170,7 +170,6 @@ def renderizar_aba_epis(*args, **kwargs):
 
             btn_salvar_alt = st.form_submit_button("💾 Salvar Correção Autorizada", type="primary")
             if btn_salvar_alt:
-                # Busca o PIN oficial do colaborador no banco
                 conn_p = sqlite3.connect(DB_NAME, timeout=10.0)
                 cur_p = conn_p.cursor()
                 cur_p.execute("SELECT pin_colaborador FROM base_funcionarios WHERE empresa = ? AND funcionario = ?", (empresa_atual, func_nome))
@@ -658,6 +657,9 @@ def renderizar_aba_epis(*args, **kwargs):
                                 f" ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
                             )
 
+                        # Salva data com hora atual inclusa automaticamente
+                        data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now().strftime('%H:%M')}"
+
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         conn.execute(
                             """
@@ -672,11 +674,7 @@ def renderizar_aba_epis(*args, **kwargs):
                                 str(setor_f),
                                 epi_sel,
                                 ca_in.strip(),
-                                validar_e_formatar_data_input_func(data_ent)
-                                if callable(
-                                    validar_e_formatar_data_input_func
-                                )
-                                else data_ent,
+                                data_hora_atual_str,
                                 int(qtd_in),
                                 status_gravacao,
                             ),
@@ -812,22 +810,19 @@ def renderizar_aba_epis(*args, **kwargs):
                             else:
                                 texto_assinatura_celula = ""
 
+                            # ORDEM DA TABELA NA FICHA:
+                            # 1. Tipo de E.P.I. (e_nome)
+                            # 2. Quant. (e_quant)
+                            # 3. Data / Hora da Entrega (e_data)
+                            # 4. Assinatura do Funcionário (texto_assinatura_celula)
+                            # 5. C.A. (e_ca)
                             linhas_ficha_html += (
                                 "<tr>"
-                                f"<td style='padding: 3px 5px; font-size: 9px;"
-                                f" height: 18px;'>{e_nome}</td>"
-                                f"<td style='text-align: center; padding: 3px"
-                                f" 5px; font-size: 9px; height:"
-                                f" 18px;'>{e_quant}</td>"
-                                f"<td style='text-align: center; padding: 3px"
-                                f" 5px; font-size: 9px; height:"
-                                f" 18px;'>{e_data}</td>"
-                                f"<td style='text-align: center; padding: 2px"
-                                f" 3px; height: 18px; vertical-align:"
-                                f" middle;'>{texto_assinatura_celula}</td>"
-                                f"<td style='text-align: center; padding: 3px"
-                                f" 5px; font-size: 9px; height:"
-                                f" 18px;'>{e_ca}</td>"
+                                f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>"
+                                f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>"
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>"
                                 "</tr>"
                             )
                             c_reg += 1
@@ -876,11 +871,11 @@ def renderizar_aba_epis(*args, **kwargs):
                             <table class='tabela-itens'>
                                 <thead>
                                     <tr>
-                                        <th>Equipamento (EPI)</th>
-                                        <th>Qtd</th>
-                                        <th>Data Entrega</th>
-                                        <th>Assinatura / Validação</th>
-                                        <th>C.A.</th>
+                                        <th style="width: 44%;">Tipo de E.P.I.</th>
+                                        <th style="width: 8%;">Quant.</th>
+                                        <th style="width: 18%;">Data / Hora da Entrega</th>
+                                        <th style="width: 20%;">Assinatura do Funcionário</th>
+                                        <th style="width: 10%;">C.A.</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -914,13 +909,14 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
                         "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
-                        + html_paginas_acumulado +
-                        "</body></html>"
+                        + html_paginas_acumulado
+                        + "</body></html>"
                     )
 
-                    html_base64 = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
+                    html_base64 = base64.b64encode(
+                        html_conteudo_bruto.encode("utf-8")
+                    ).decode("utf-8")
 
-                    # Botão construído com string limpa (sem f-string gigante para evitar conflito de chaves)
                     trecho_botao_impressao = (
                         "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
                         "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); setTimeout(function(){ win.print(); }, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
@@ -946,9 +942,29 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
                         "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
-                        + trecho_botao_impressao +
-                        html_paginas_acumulado +
-                        "</body></html>"
+                        + trecho_botao_impressao
+                        + html_paginas_acumulado
+                        + "</body></html>"
                     )
 
                     components.html(html_ficha, height=850, scrolling=True)
+
+    st.markdown("---")
+    st.subheader("📋 Histórico de Entregas Cadastradas")
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    df_hist = pd.read_sql(
+        "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    conn.close()
+
+    if not df_hist.empty:
+        df_hist["_id_banco"] = df_hist["id"]
+        if "Selecionar" not in df_hist.columns:
+            df_hist.insert(0, "Selecionar", False)
+
+        df_hist_exib = adicionar_numeracao_func(formatar_colunas_func(df_hist))
+        st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma entrega registrada para esta empresa.")
