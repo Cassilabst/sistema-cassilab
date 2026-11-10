@@ -726,7 +726,7 @@ def renderizar_aba_epis(*args, **kwargs):
                 )
 
                 if st.button(
-                    "📄 Gerar e Exibir Ficha de EPI do Colaborador Selecionado",
+                    "📄 Gerar Ficha de EPI (Pronta para Baixar e Imprimir)",
                     type="primary",
                     use_container_width=True,
                     key="btn_gerar_ficha_unif",
@@ -907,22 +907,20 @@ def renderizar_aba_epis(*args, **kwargs):
                         "</body></html>"
                     )
 
-                    html_bytes = html_ficha_limpa.encode("utf-8")
-                    st.session_state["b64_ficha_epi"] = base64.b64encode(html_bytes).decode("utf-8")
-                    st.success("✅ Ficha gerada com sucesso!")
+                    st.session_state["html_bytes_epi"] = html_ficha_limpa.encode("utf-8")
+                    st.session_state["nome_arq_epi"] = f"Ficha_EPI_{func_escolhido.replace(' ', '_')}.html"
+                    st.success("✅ Ficha gerada com sucesso! Clique no botão de download abaixo.")
 
-                # Se a ficha já foi gerada, exibe o botão verde fixo na tela
-                if st.session_state.get("b64_ficha_epi"):
-                    b64_str = st.session_state["b64_ficha_epi"]
-                    trecho_botao_impressao = f"""
-                    <div style='background: #e9ecef; padding: 20px; margin: 15px 0; border-radius: 8px; text-align: center; border: 1px solid #cbd3da;'>
-                        <a href="data:text/html;charset=utf-8;base64,{b64_str}" target="_blank" style='background-color: #28a745; color: white; padding: 12px 24px; font-size: 15px; font-weight: bold; text-decoration: none; border-radius: 6px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            🖨️ ABRIR FICHA DE EPI PARA IMPRESSÃO (A4 PAISAGEM)
-                        </a>
-                        <p style='margin: 10px 0 0 0; font-size: 12px; color: #333;'>Clique no botão acima. A ficha abrirá limpa em uma nova aba, <b>já configurada em Paisagem</b>, pronta para impressão!</p>
-                    </div>
-                    """
-                    st.markdown(trecho_botao_impressao, unsafe_allow_html=True)
+                if "html_bytes_epi" in st.session_state:
+                    st.download_button(
+                        label="📥 BAIXAR FICHA DE EPI OFICIAL (PRONTA PARA IMPRESSÃO)",
+                        data=st.session_state["html_bytes_epi"],
+                        file_name=st.session_state["nome_arq_epi"],
+                        mime="text/html",
+                        type="primary",
+                        use_container_width=True
+                    )
+                    st.info("💡 **Dica:** Abra o arquivo baixado no seu navegador e aperte **Ctrl + P**. Lembre-se de configurar o Layout como **Paisagem**.")
 
     st.markdown("---")
     st.subheader("📋 Histórico de Entregas Cadastradas")
