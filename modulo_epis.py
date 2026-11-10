@@ -769,7 +769,8 @@ def renderizar_aba_epis(*args, **kwargs):
                         else pd.DataFrame()
                     )
 
-                    itens_por_pagina = 12
+                    # 15 linhas por página para aproveitar bem o espaço
+                    itens_por_pagina = 15
                     total_registros = len(historico_func)
                     total_paginas = max(
                         1, math.ceil(total_registros / itens_por_pagina)
@@ -875,17 +876,25 @@ def renderizar_aba_epis(*args, **kwargs):
                                 </tbody>
                             </table>
                             <div class='termo-legal'>
-                                Declaro que recebi os EPIs acima indicados, em perfeito estado de conservação, comprometendo-me a usá-los permanentemente, zelar pela sua guarda e limpeza, e devolvê-los ao término do uso ou quando exigido. Estou ciente de que a falta de uso constitui falta grave passível de punição conforme a CLT.
+                                Declaro, para os devidos fins, que recebi os E.P.I.s acima descritos e me comprometo:<br>
+                                &nbsp;&nbsp;&bull; Usá-los apenas para a finalidade a que se destinam;<br>
+                                &nbsp;&nbsp;&bull; Responsabilizar-me por sua guarda e conservação;<br>
+                                &nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>
+                                &nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>
+                                Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>
+                                Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
                             </div>
-                            <div class='assinatura-area'>
-                                <div style="display: inline-block; border-top: 1px solid #000; width: 300px; padding-top: 2px;">
-                                    <b>{func_escolhido}</b><br>Assinatura do Colaborador
+                            <div class='assinatura-area' style='padding: 10px 6px;'>
+                                <div style='margin-bottom: 8px; font-size: 10px;'>
+                                    _____ de _________________________ de 20_____
+                                </div>
+                                <div style="display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px;">
+                                    <b>{func_escolhido}</b><br>Assinatura do Funcionário
                                 </div>
                             </div>
                         </div>
                         """
 
-                    # Criação do HTML limpo completo
                     html_conteudo_bruto = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<title>Ficha de EPI - " + str(func_escolhido) + "</title>"
@@ -907,10 +916,8 @@ def renderizar_aba_epis(*args, **kwargs):
                         + "</body></html>"
                     )
 
-                    # Codificamos o HTML em Base64 para segurança na injeção por script
                     html_b64_seguro = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
 
-                    # Botão profissional com injeção limpa via script (Chaves do JS duplicadas para evitar conflito com o Python)
                     trecho_botao_impressao = (
                         "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
                         "<button onclick=\""
@@ -926,7 +933,7 @@ def renderizar_aba_epis(*args, **kwargs):
                         "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Clique para abrir a ficha completa direto na janela de impressão em A4 Paisagem.</p>"
                         "</div>"
                     )
-                    
+
                     html_ficha = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<style>"
@@ -948,7 +955,6 @@ def renderizar_aba_epis(*args, **kwargs):
                         + "</body></html>"
                     )
 
-                    # Exibe a pré-visualização completa direto na tela do sistema
                     components.html(html_ficha, height=850, scrolling=True)
 
     st.markdown("---")
