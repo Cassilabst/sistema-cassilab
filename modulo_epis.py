@@ -914,13 +914,21 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
                         "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
-                        + html_paginas_acumulado
-                        + "</body></html>"
+                        + html_paginas_acumulado +
+                        "</body></html>"
                     )
 
-                    html_base64 = base64.b64encode(
-                        html_conteudo_bruto.encode("utf-8")
-                    ).decode("utf-8")
+                    html_base64 = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
+
+                    # Botão construído com string limpa (sem f-string gigante para evitar conflito de chaves)
+                    trecho_botao_impressao = (
+                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
+                        "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); setTimeout(function(){ win.print(); }, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
+                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
+                        "</button>"
+                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
+                        "</div>"
+                    )
 
                     html_ficha = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
@@ -938,5 +946,9 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
                         "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
-                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
-                        f"<button onclick=\"var win = window.open('data:text/html;base64,{html_base64}', '_blank'); setTimeout(function(){{ win.print(); }}, 500);\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size:
+                        + trecho_botao_impressao +
+                        html_paginas_acumulado +
+                        "</body></html>"
+                    )
+
+                    components.html(html_ficha, height=850, scrolling=True)
