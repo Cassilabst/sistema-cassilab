@@ -4,7 +4,6 @@ import math
 import sqlite3
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 def renderizar_aba_epis(*args, **kwargs):
@@ -657,7 +656,6 @@ def renderizar_aba_epis(*args, **kwargs):
                                 f" ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
                             )
 
-                        # Salva data com hora atual inclusa automaticamente
                         data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now().strftime('%H:%M')}"
 
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -810,12 +808,6 @@ def renderizar_aba_epis(*args, **kwargs):
                             else:
                                 texto_assinatura_celula = ""
 
-                            # ORDEM DA TABELA NA FICHA:
-                            # 1. Tipo de E.P.I. (e_nome)
-                            # 2. Quant. (e_quant)
-                            # 3. Data / Hora da Entrega (e_data)
-                            # 4. Assinatura do Funcionário (texto_assinatura_celula)
-                            # 5. C.A. (e_ca)
                             linhas_ficha_html += (
                                 "<tr>"
                                 f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>"
@@ -893,41 +885,7 @@ def renderizar_aba_epis(*args, **kwargs):
                         </div>
                         """
 
-                    html_conteudo_bruto = (
-                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
-                        "<style>"
-                        "@page { size: A4 landscape !important; margin: 5mm !important; }"
-                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
-                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }"
-                        ".tabela-ficha { width: 100%; border-collapse: collapse; }"
-                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }"
-                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }"
-                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }"
-                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }"
-                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
-                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
-                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
-                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
-                        "</style></head><body>"
-                        + html_paginas_acumulado
-                        + "</body></html>"
-                    )
-
-                    html_base64 = base64.b64encode(
-                        html_conteudo_bruto.encode("utf-8")
-                    ).decode("utf-8")
-
-                    trecho_botao_impressao = (
-                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
-                        "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); "
-                        "setTimeout(function(){ win.document.close(); win.focus(); win.print(); }, 800);\" "
-                        "style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
-                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
-                        "</button>"
-                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b> e as Margens como <b>Padrão</b> ou <b>Nenhuma</b>.</p>"
-                        "</div>"
-                    )
-
+                    # CONTEÚDO HTML COMPLETO DA FICHA PARA DOWNLOAD DIRETO
                     html_ficha = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<style>"
@@ -942,14 +900,25 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
                         ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
-                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
+                        "@media print { body { -webkit-print-color-adjust: exact; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
-                        + trecho_botao_impressao
-                        + html_paginas_acumulado
-                        + "</body></html>"
+                        + html_paginas_acumulado +
+                        "</body></html>"
                     )
 
-                    components.html(html_ficha, height=850, scrolling=True)
+                    st.success("✅ Ficha de EPI gerada com sucesso!")
+                    
+                    # Botão de Download Direto em vez de abrir em branco
+                    st.download_button(
+                        label="📥 BAIXAR FICHA DE EPI OFICIAL (PRONTA PARA IMPRESSÃO)",
+                        data=html_ficha,
+                        file_name=f"Ficha_EPI_{func_escolhido.replace(' ', '_')}.html",
+                        mime="text/html",
+                        type="primary",
+                        use_container_width=True
+                    )
+                    
+                    st.info("💡 **Como imprimir:** Após baixar o arquivo, abra-o no seu navegador. Ao mandar imprimir (`Ctrl + P`), lembre-se de configurar o Layout como **Paisagem**.")
 
     st.markdown("---")
     st.subheader("📋 Histórico de Entregas Cadastradas")
