@@ -577,16 +577,12 @@ def renderizar_aba_epis(*args, **kwargs):
                     "Quantidade", min_value=1, value=1, key="unificado_qtd"
                 )
 
+                # Ordem invertida: Eletrônica em cima e Física embaixo para evitar cliques acidentais
                 tipo_assinatura_lanc = st.radio(
                     "🔑 Forma de Validação / Assinatura",
                     [
-                        (
-                            "Física (Assinatura manual na ficha impressa)"
-                        ),
-                        (
-                            "Eletrônica (Validar com PIN de 4 dígitos do"
-                            " colaborador)"
-                        ),
+                        "Eletrônica (Validar com PIN de 4 dígitos do colaborador)",
+                        "Física (Assinatura manual na ficha impressa)",
                     ],
                     key="tipo_ass_lanc_epi",
                 )
@@ -601,19 +597,17 @@ def renderizar_aba_epis(*args, **kwargs):
                         key="pin_lanc_epi_input",
                     )
 
-                if st.button(
-                    "Salvar Entrega de EPI",
-                    type="primary",
-                    key="btn_salvar_epi_unif",
-                ):
-                    if func_escolhido and epi_sel:
-                        mat_f, cargo_f, setor_f, pin_cadastrado, termo_aceito = (
-                            "",
-                            "",
-                            "",
-                            "",
-                            0,
-                        )
+                # Aviso em verde e caixinha de confirmação de segurança
+                st.markdown(
+                    "<div style='background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; border: 1px solid #c3e6cb; margin-bottom: 10px; font-size: 13px;'>"
+                    "<b>✅ Confirmação de Segurança:</b> Certifique-se de que os dados acima estão corretos antes de salvar."
+                    "</div>",
+                    unsafe_allow_html=True
+                )
+                confirmar_salvamento = st.checkbox(
+                    "🟢 Confirmo que conferi os dados e desejo salvar este lançamento de EPI",
+                    key="chk_confirma_salvar_epi"
+                )
 
                         conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
                         df_f_info = pd.read_sql(
