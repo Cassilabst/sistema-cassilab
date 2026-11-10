@@ -609,6 +609,7 @@ def renderizar_aba_epis(*args, **kwargs):
                     key="chk_confirma_salvar_epi"
                 )
 
+                if confirmar_salvamento:
                     conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
                     df_f_info = pd.read_sql(
                         "SELECT matricula, cargo, setor, pin_colaborador,"
@@ -619,18 +620,18 @@ def renderizar_aba_epis(*args, **kwargs):
                     )
                     conn_f.close()
 
-                        if not df_f_info.empty:
-                            mat_f = df_f_info.iloc[0].get("matricula", "")
-                            cargo_f = df_f_info.iloc[0].get("cargo", "")
-                            setor_f = df_f_info.iloc[0].get("setor", "")
-                            pin_cadastrado = str(
-                                df_f_info.iloc[0].get(
-                                    "pin_colaborador", ""
-                                )
-                            ).strip()
-                            termo_aceito = int(
-                                df_f_info.iloc[0].get("termo_adesao", 0) or 0
+                    if not df_f_info.empty:
+                        mat_f = df_f_info.iloc[0].get("matricula", "")
+                        cargo_f = df_f_info.iloc[0].get("cargo", "")
+                        setor_f = df_f_info.iloc[0].get("setor", "")
+                        pin_cadastrado = str(
+                            df_f_info.iloc[0].get(
+                                "pin_colaborador", ""
                             )
+                        ).strip()
+                        termo_aceito = int(
+                            df_f_info.iloc[0].get("termo_adesao", 0) or 0
+                        )
 
                         status_gravacao = "Entregue"
                         if "Eletrônica" in tipo_assinatura_lanc:
