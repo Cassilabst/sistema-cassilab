@@ -609,15 +609,15 @@ def renderizar_aba_epis(*args, **kwargs):
                     key="chk_confirma_salvar_epi"
                 )
 
-                        conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
-                        df_f_info = pd.read_sql(
-                            "SELECT matricula, cargo, setor, pin_colaborador,"
-                            " termo_adesao FROM base_funcionarios WHERE empresa"
-                            " = ? AND funcionario = ?",
-                            conn_f,
-                            params=(empresa_selecionada, func_escolhido),
-                        )
-                        conn_f.close()
+                    conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
+                    df_f_info = pd.read_sql(
+                        "SELECT matricula, cargo, setor, pin_colaborador,"
+                        " termo_adesao FROM base_funcionarios WHERE empresa"
+                        " = ? AND funcionario = ?",
+                        conn_f,
+                        params=(empresa_selecionada, func_escolhido),
+                    )
+                    conn_f.close()
 
                         if not df_f_info.empty:
                             mat_f = df_f_info.iloc[0].get("matricula", "")
