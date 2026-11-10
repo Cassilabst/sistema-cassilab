@@ -726,8 +726,7 @@ def renderizar_aba_epis(*args, **kwargs):
                 )
 
                 if st.button(
-                    "📄 Gerar e Exibir Ficha de EPI do Colaborador"
-                    " Selecionado",
+                    "📄 Gerar e Exibir Ficha de EPI do Colaborador Selecionado",
                     type="primary",
                     use_container_width=True,
                     key="btn_gerar_ficha_unif",
@@ -887,42 +886,7 @@ def renderizar_aba_epis(*args, **kwargs):
                         </div>
                         """
 
-                    html_conteudo_bruto = (
-                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
-                        "<style>"
-                        "@page { size: A4 landscape !important; margin: 5mm !important; }"
-                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
-                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }"
-                        ".tabela-ficha { width: 100%; border-collapse: collapse; }"
-                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }"
-                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }"
-                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }"
-                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }"
-                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
-                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
-                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
-                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
-                        "</style></head><body>"
-                        + html_paginas_acumulado
-                        + "</body></html>"
-                    )
-
-                    html_base64 = base64.b64encode(
-                        html_conteudo_bruto.encode("utf-8")
-                    ).decode("utf-8")
-
-                    trecho_botao_impressao = (
-                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>"
-                        "<button onclick=\"var win = window.open('data:text/html;base64," + html_base64 + "', '_blank'); "
-                        "setTimeout(function(){ win.document.close(); win.focus(); win.print(); }, 1000);\" "
-                        "style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>"
-                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)"
-                        "</button>"
-                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Dica: Na janela de impressão, certifique-se de configurar o Layout como <b>Paisagem</b>.</p>"
-                        "</div>"
-                    )
-
-                    # Criação do HTML limpo focado exclusivamente na impressão da ficha
+                    # MONTAGEM DO HTML DA FICHA LIMPA
                     html_ficha_limpa = (
                         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
                         "<title>Ficha de EPI - " + str(func_escolhido) + "</title>"
@@ -938,17 +902,15 @@ def renderizar_aba_epis(*args, **kwargs):
                         ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }"
                         ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }"
                         ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }"
-                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
+                        "@media print { body { -webkit-print-color-adjust: exact; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }"
                         "</style></head><body>"
                         + html_paginas_acumulado +
                         "</body></html>"
                     )
 
-                    # Codifica o conteúdo em Base64 para abrir de forma limpa em nova aba
                     html_bytes = html_ficha_limpa.encode("utf-8")
                     b64_str = base64.b64encode(html_bytes).decode("utf-8")
 
-                    # Botão em formato de link direto (Inalcançável por bloqueios de popup do navegador)
                     trecho_botao_impressao = f"""
                     <div style='background: #e9ecef; padding: 20px; margin-bottom: 15px; border-radius: 8px; text-align: center; border: 1px solid #cbd3da;'>
                         <a href="data:text/html;charset=utf-8;base64,{b64_str}" target="_blank" style='background-color: #28a745; color: white; padding: 12px 24px; font-size: 15px; font-weight: bold; text-decoration: none; border-radius: 6px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
@@ -959,3 +921,23 @@ def renderizar_aba_epis(*args, **kwargs):
                     """
 
                     st.markdown(trecho_botao_impressao, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("📋 Histórico de Entregas Cadastradas")
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    df_hist = pd.read_sql(
+        "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    conn.close()
+
+    if not df_hist.empty:
+        df_hist["_id_banco"] = df_hist["id"]
+        if "Selecionar" not in df_hist.columns:
+            df_hist.insert(0, "Selecionar", False)
+
+        df_hist_exib = adicionar_numeracao_func(formatar_colunas_func(df_hist))
+        st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma entrega registrada para esta empresa.")
