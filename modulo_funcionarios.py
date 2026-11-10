@@ -383,6 +383,7 @@ def renderizar_aba_funcionarios(
                         
                         if nome_colaborador:
                             cursor.execute("DELETE FROM exames WHERE funcionario = ?", (nome_colaborador,))
+                            
                             try:
                                 cursor.execute("DELETE FROM cad_treinamentos WHERE funcionario = ?", (nome_colaborador,))
                             except Exception:
@@ -390,13 +391,16 @@ def renderizar_aba_funcionarios(
                                     cursor.execute("DELETE FROM cad_treinamentos WHERE nome = ?", (nome_colaborador,))
                                 except Exception:
                                     pass
+                
                             try:
-                            cursor.execute("DELETE FROM cad_epis WHERE funcionario = ?", (nome_colaborador,))
+                                cursor.execute("DELETE FROM cad_epis WHERE funcionario = ?", (nome_colaborador,))
                             except Exception:
-                            try:
-                                cursor.execute("DELETE FROM cad_epis WHERE nome = ?", (nome_colaborador,))
-                            except Exception:
-                                pass
+                                try:
+                                    cursor.execute("DELETE FROM cad_epis WHERE nome = ?", (nome_colaborador,))
+                                except Exception:
+                                    pass
+                
+                            cursor.execute("DELETE FROM absenteismo WHERE funcionario = ?", (nome_colaborador,))
                         
                         conn.commit()
                         conn.close()
