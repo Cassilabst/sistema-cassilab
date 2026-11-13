@@ -35,7 +35,12 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
     with col_h1: st.title("📋 Gerador de Lista de Presença de Treinamento")
     with col_h2:
         st.write("")
-        if st.button("🔄 Atualizar Aba", key="btn_atualizar_lp"): st.rerun()
+        if st.button("🔄 Nova Lista / Limpar Campos", key="btn_atualizar_lp"):
+            # Limpa estados salvos para forçar campos em branco
+            for k in ["lp_treinamento_txt", "lp_carga_txt", "lp_data_txt", "lp_local_txt", "lp_horario_txt", "lp_tema_txt"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
 
     empresas = get_empresas_func() if callable(get_empresas_func) else []
     
@@ -50,7 +55,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
         df_cad_tr = pd.DataFrame()
     conn.close()
 
-    lista_treinamentos_opcoes = df_cad_tr["treinamento"].tolist() if not df_cad_tr.empty else []
+    lista_treinamentos_opcoes = ["-- Digitar ou Selecionar --"] + (df_cad_tr["treinamento"].tolist() if not df_cad_tr.empty else [])
     mapa_carga_horaria = dict(zip(df_cad_tr["treinamento"], df_cad_tr["carga_horaria"])) if not df_cad_tr.empty else {}
 
     with st.expander("⚙️ Configurações da Lista de Presença", expanded=True):
@@ -65,23 +70,23 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
 
         c_p3, c_p4, c_p5 = st.columns(3)
         
-        if lista_treinamentos_opcoes:
-            treinamento_nome = c_p3.selectbox("Treinamento", lista_treinamentos_opcoes, key="lp_sel_treinamento")
-            carga_sugerida = mapa_carga_horaria.get(treinamento_nome, "4 horas")
-        else:
-            treinamento_nome = c_p3.text_input("Treinamento", value="Treinamento de Integração / NR")
-            carga_sugerida = "4 horas"
-
-        carga_horaria = c_p4.text_input("Carga Horária", value=str(carga_sugerida))
+        sel_trein = c_p3.selectbox("Treinamento Cadastrado", lista_treinamentos_opcoes, key="lp_sel_treinamento")
         
-        # ALTERADO PARA TEXTO LIVRE (DEIXA VAZIO POR PADRÃO OU DIGITÁVEL)
-        data_treinamento = c_p5.text_input("Data do Treinamento", value="", placeholder="Ex: 15/10/2026 ou deixe em branco")
+        # Campos com valores padrão em branco para que sempre iniciem limpos numa nova lista
+        default_trein_val = "" if sel_trein == "-- Digitar ou Selecionar --" else sel_trein
+        default_carga_val = "" if sel_trein == "-- Digitar ou Selecionar --" else str(mapa_carga_horaria.get(sel_trein, ""))
+
+        treinamento_nome = c_p3.text_input("Nome do Treinamento", value=default_trein_val, placeholder="Ex: Integração / DDS", key="lp_treinamento_txt")
+        carga_horaria = c_p4.text_input("Carga Horária", value=default_carga_val, placeholder="Ex: 4 horas", key="lp_carga_txt")
+        
+        # Campo de data em branco por padrão
+        data_treinamento = c_p5.text_input("Data do Treinamento", value="", placeholder="Ex: 15/10/2026 ou em branco", key="lp_data_txt")
 
         c_p6, c_p7 = st.columns(2)
-        local_treinamento = c_p6.text_input("Local", value="Sala de Treinamentos / Refeitório")
-        horario_treinamento = c_p7.text_input("Horário", value="08:00 às 12:00")
+        local_treinamento = c_p6.text_input("Local", value="", placeholder="Ex: Sala de Reuniões", key="lp_local_txt")
+        horario_treinamento = c_p7.text_input("Horário", value="", placeholder="Ex: 08:00 às 12:00", key="lp_horario_txt")
 
-        tema_treinamento = st.text_area("Tema (Descrição longa)", value="Abordagem prática sobre segurança preventiva, diretrizes operacionais e uso adequado dos dispositivos de proteção.", height=70)
+        tema_treinamento = st.text_area("Tema (Descrição longa)", value="", placeholder="Digite o tema ou descrição do treinamento...", height=70, key="lp_tema_txt")
 
         c_p9, c_p10 = st.columns(2)
         tipo_instrutor = c_p9.selectbox("Instrutores", ["( X ) Interno    (    ) Externo", "(    ) Interno    ( X ) Externo"])
