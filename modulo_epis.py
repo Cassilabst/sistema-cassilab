@@ -140,6 +140,7 @@ def renderizar_aba_epis(*args, **kwargs):
 
     fuso_brasil = timezone(timedelta(hours=-3))
 
+    # DIALOG DE EDIÇÃO PROTEGIDO POR PIN DO COLABORADOR
     @st.dialog("✏️ Corrigir Lançamento de EPI (Autorização por PIN)")
     def modal_editar_registro_pin(id_registro, empresa_atual):
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -202,6 +203,68 @@ def renderizar_aba_epis(*args, **kwargs):
                     st.session_state["modal_edit_epi_id"] = None
                     st.rerun()
 
+    # DIALOG DE EXCLUSÃO PROTEGIDO POR PIN DO COLABORADOR (1 ou múltiplos lançamentos)
+    @st.dialog("🗑️ Excluir Lançamento(s) de EPI (Autorização por PIN)")
+    def modal_excluir_registros_pin(ids_lista, empresa_atual):
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        placeholders = ','.join(['?'] * len(ids_lista))
+        df_alvo = pd.read_sql(f"SELECT id, funcionario, epi FROM epis WHERE id IN ({placeholders})", conn, params=tuple(ids_lista))
+        conn.close()
+
+        if df_alvo.empty:
+            st.error("Registros não encontrados.")
+            if st.button("Fechar"):
+                st.session_state["modal_del_epi_ids"] = None
+                st.rerun()
+            return
+
+        funcionarios = df_alvo["funcionario"].unique().tolist()
+        st.markdown(f"**Total de registros selecionados:** {len(ids_lista)}")
+        st.markdown(f"**Colaborador(es):** {', '.join(str(f) for f in funcionarios)}")
+        st.markdown("Para autorizar a exclusão, digite o PIN de 4 dígitos do colaborador:")
+
+        with st.form("form_exclusao_pin_epi"):
+            pin_autorizacao = st.text_input("PIN de 4 dígitos", type="password", max_chars=4)
+            btn_confirmar_del = st.form_submit_button("🗑️ Confirmar Exclusão Autorizada", type="primary")
+
+            if btn_confirmar_del:
+                conn_p = sqlite3.connect(DB_NAME, timeout=10.0)
+                cur_p = conn_p.cursor()
+                
+                autorizado = False
+                colaborador_autorizador = ""
+                for func in funcionarios:
+                    cur_p.execute("SELECT pin_colaborador FROM base_funcionarios WHERE empresa = ? AND funcionario = ?", (empresa_atual, func))
+                    res_p = cur_p.fetchone()
+                    pin_cadastrado = str(res_p[0]).strip() if res_p and res_p[0] is not None else ""
+                    if pin_cadastrado and len(pin_cadastrado) == 4 and pin_autorizacao.strip() == pin_cadastrado:
+                        autorizado = True
+                        colaborador_autorizador = func
+                        break
+                conn_p.close()
+
+                if not autorizado:
+                    st.error("❌ PIN incorreto ou colaborador sem PIN cadastrado!")
+                else:
+                    conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
+                    cursor_exc = conn_exc.cursor()
+                    cursor_exc.execute(f"DELETE FROM epis WHERE id IN ({placeholders})", tuple(ids_lista))
+                    conn_exc.commit()
+                    conn_exc.close()
+
+                    st.session_state["sel_id_epi"] = None
+                    st.session_state["modal_del_epi_ids"] = None
+                    if "editor_selecao_epis" in st.session_state:
+                        del st.session_state["editor_selecao_epis"]
+
+                    st.success(f"✅ {len(ids_lista)} registro(s) excluído(s) com sucesso com autorização de {colaborador_autorizador}!")
+                    registrar_log_func_seguro(
+                        st.session_state.get("nome_usuario", "Desconhecido"),
+                        empresa_atual if empresa_atual != "Todas" else "Geral",
+                        f"Excluiu {len(ids_lista)} registros de EPI com autorização por PIN de {colaborador_autorizador}",
+                    )
+                    st.rerun()
+
     st.title("🦺 Controle e Ficha de EPIs")
 
     empresas_cad = get_empresas_func() if callable(get_empresas_func) else []
@@ -245,6 +308,7 @@ def renderizar_aba_epis(*args, **kwargs):
         df_cad_tipos = pd.read_sql(
             "SELECT empresa, epi, tipo FROM cad_epis", conn
         )
+        df_cad_tipos = df_cad_tipos.drop_duplicates(subset=["empresa", "epi"])
     except:
         df_cad_tipos = pd.DataFrame()
 
@@ -423,48 +487,22 @@ def renderizar_aba_epis(*args, **kwargs):
 
                 if pode_excluir:
                     if col_acao2.button(
-                        "🗑️ Excluir Registro Selecionado",
+                        "🗑️ Excluir Registro(s) Selecionado(s)",
                         use_container_width=True,
                         key="btn_del_epi",
                     ):
-                        if st.session_state["sel_id_epi"] is not None:
-                            id_exc = int(st.session_state["sel_id_epi"])
-                            conn_exc = sqlite3.connect(DB_NAME, timeout=10.0)
-                            cursor_exc = conn_exc.cursor()
-                            cursor_exc.execute(
-                                "SELECT epi, funcionario FROM epis WHERE id ="
-                                " ?",
-                                (id_exc,),
-                            )
-                            reg_exc = cursor_exc.fetchone()
-                            cursor_exc.execute(
-                                "DELETE FROM epis WHERE id = ?", (id_exc,)
-                            )
-                            conn_exc.commit()
-                            conn_exc.close()
-
-                            st.session_state["sel_id_epi"] = None
-                            if "editor_selecao_epis" in st.session_state:
-                                del st.session_state["editor_selecao_epis"]
-                            st.session_state["msg_sucesso"] = (
-                                "🗑️ Registro de EPI excluído com sucesso!"
-                            )
-                            registrar_log_func_seguro(
-                                st.session_state.get(
-                                    "nome_usuario", "Desconhecido"
-                                ),
-                                empresa_selecionada
-                                if empresa_selecionada != "Todas"
-                                else "Geral",
-                                f"Excluiu EPI ({reg_exc[0] if reg_exc else ''})"
-                                f" de {reg_exc[1] if reg_exc else ''}",
-                            )
+                        linhas_para_excluir = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
+                        if linhas_para_excluir:
+                            st.session_state["modal_del_epi_ids"] = linhas_para_excluir
                             st.rerun()
                         else:
                             st.warning(
-                                "⚠️ Selecione um registro marcando o"
+                                "⚠️ Selecione pelo menos um registro marcando o"
                                 " quadradinho para excluir."
                             )
+
+                if st.session_state.get("modal_del_epi_ids"):
+                    modal_excluir_registros_pin(st.session_state["modal_del_epi_ids"], empresa_selecionada)
 
     with aba_gestao_ficha:
         st.markdown(
@@ -505,6 +543,8 @@ def renderizar_aba_epis(*args, **kwargs):
                 conn,
                 params=(empresa_selecionada,),
             )
+            df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
+
             df_historico_epi = pd.read_sql(
                 "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
                 " FROM epis WHERE empresa = ?",
