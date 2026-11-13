@@ -188,7 +188,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                         f'<td style="text-align: left; width: 26%; padding-left: 6px;">{nome}</td>'
                         f'<td style="text-align: left; width: 16%; padding-left: 6px;">{area}</td>'
                         f'<td style="text-align: center; width: 14%;">{cpf}</td>'
-                        f'<td style="text-align: center; width: 30%; height: 15px;"></td>'
+                        f'<td style="text-align: center; width: 30%; height: 25px;"></td>'  # <--- ALTURA AJUSTADA PARA 25px
                         "</tr>"
                     )
 
@@ -267,7 +267,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                             f'<td style="text-align: left; width: 26%; padding-left: 6px;">{nome}</td>'
                             f'<td style="text-align: left; width: 16%; padding-left: 6px;">{area}</td>'
                             f'<td style="text-align: center; width: 14%;">{cpf}</td>'
-                            f'<td style="text-align: center; width: 30%; height: 20px;"></td>'
+                            f'<td style="text-align: center; width: 30%; height: 25px;"></td>'  # <--- ALTURA AJUSTADA PARA 25px
                             "</tr>"
                         )
 
@@ -291,85 +291,4 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                         '<table class="borda-tabela" style="margin-top: 4px;">'
                         '<thead><tr>'
                         '<th style="width: 4%;">N°</th>'
-                        '<th style="width: 10%;">MATRÍCULA</th>'
-                        '<th style="width: 26%;">NOME COMPLETO</th>'
-                        '<th style="width: 16%;">ÁREA</th>'
-                        '<th style="width: 14%;">RG/CPF</th>'
-                        '<th style="width: 30%;">ASSINATURA</th>'
-                        '</tr></thead>'
-                        f'<tbody>{bloco_linhas_html}</tbody>'
-                        '</table>'
-                        '</div>'
-                        '<div class="page-break"></div>'
-                    )
-
-                itens_detalhe_html = ""
-                for item in detalhamento_conteudo.split("\n"):
-                    if item.strip():
-                        itens_detalhe_html += f"<li>{item.strip()}</li>"
-
-                data_hoje_str = datetime.today().strftime('%d/%m/%Y')
-
-                paginas_html += (
-                    '<div class="sheet">'
-                    '<table class="cabecalho-principal"><tr>'
-                    f'<td style="width: 20%; text-align: center;">{logo_html}</td>'
-                    '<td style="width: 45%; text-align: center; font-size: 14px; font-weight: bold;">LISTA DE PRESENÇA (CONTEÚDO E ENCERRAMENTO)</td>'
-                    f'<td style="width: 35%; font-size: 9.5px;"><b>Empresa:</b> {empresa_selecionada}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
-                    '</tr></table>'
-                    '<div class="secao-titulo" style="margin-top: 15px;">DETALHAMENTO DE CONTEÚDO:</div>'
-                    '<div class="detalhes-box" style="font-size: 11px; padding: 10px;">'
-                    f'<ul>{itens_detalhe_html}</ul>'
-                    '</div>'
-                    '<div class="secao-titulo" style="margin-top: 25px;">REGISTRO DE INSTRUTORES E CONTRATANTE:</div>'
-                    '<table class="rodape-assinaturas" style="margin-top: 5px;"><tr>'
-                    f'<td style="width: 50%; padding: 10px;"><b>INSTRUTOR:</b> {instrutor_nome}<br><b>ÁREA:</b> {instrutor_area}<br><br><b>ASSINATURA:</b><br><br></td>'
-                    f'<td style="width: 50%; padding: 10px;"><b>CONTRATANTE / REPRESENTANTE:</b> {contratante_nome_final}<br><br><b>ASSINATURA:</b><br><br></td>'
-                    '</tr></table>'
-                    '</div>'
-                )
-
-            css_estilos = (
-                "<style>"
-                "@page { size: A4 landscape; margin: 6mm; }"
-                "body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
-                ".sheet { width: 100%; box-sizing: border-box; }"
-                ".page-break { page-break-after: always; break-after: page; }"
-                "table.borda-tabela { width: 100%; border-collapse: collapse; margin-bottom: 4px; }"
-                "table.borda-tabela th, table.borda-tabela td { border: 1px solid #000; padding: 2.5px 4px; font-size: 10px; line-height: 1.1; }"
-                "table.borda-tabela th { background-color: #f2f2f2; text-align: center; font-weight: bold; padding: 3px 4px; }"
-                ".cabecalho-principal { width: 100%; border-collapse: collapse; margin-bottom: 4px; }"
-                ".cabecalho-principal td { border: 1px solid #000; padding: 4px; vertical-align: middle; }"
-                ".secao-titulo { background-color: #e6e6e6; font-weight: bold; padding: 4px 6px; border: 1px solid #000; margin-top: 10px; margin-bottom: 0px; font-size: 10px; }"
-                ".detalhes-box { border: 1px solid #000; border-top: none; padding: 8px; font-size: 10px; margin-bottom: 10px; }"
-                ".detalhes-box ul { margin: 0; padding-left: 20px; }"
-                ".detalhes-box li { margin-bottom: 4px; }"
-                ".rodape-assinaturas { width: 100%; border-collapse: collapse; }"
-                ".rodape-assinaturas td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 10px; }"
-                "@media print {"
-                "    body { -webkit-print-color-adjust: exact; }"
-                "    .no-print { display: none !important; }"
-                "    .page-break { page-break-after: always; break-after: page; }"
-                "}"
-                "</style>"
-            )
-
-            html_documento = (
-                "<!DOCTYPE html>"
-                '<html lang="pt-BR">'
-                f"<head><meta charset=\"UTF-8\">{css_estilos}</head>"
-                "<body>"
-                '<div class="no-print" style="background: #e9ecef; padding: 12px; margin-bottom: 15px; border-radius: 6px; text-align: center;">'
-                '<button onclick="window.print()" style="background-color: #28a745; color: white; border: none; padding: 12px 25px; font-size: 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">'
-                '🖨️ IMPRIMIR / SALVAR EM PDF (A4 PAISAGEM)'
-                '</button>'
-                '<p style="margin: 5px 0 0 0; font-size: 12px; color: #555;">Dica: Na janela de impressão, certifique-se de configurar o Destino como <b>"Salvar como PDF"</b> e Layout como <b>"Paisagem"</b>.</p>'
-                '</div>'
-                f"{paginas_html}"
-                "</body></html>"
-            )
-
-            st.components.v1.html(html_documento, height=900, scrolling=True)
-
-    else:
-        st.info("ℹ️ Nenhum funcionário ativo cadastrado para esta empresa. Cadastre colaboradores na aba de Funcionários para preencher a lista automaticamente.")
+                        '<th style="width: 10%;">MATRÍCULA</th>
