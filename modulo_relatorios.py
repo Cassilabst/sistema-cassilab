@@ -47,7 +47,7 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
         }
 
         @media print {
-            @page { size: A4 portrait; margin: 10mm; }
+            @page { size: A4 landscape; margin: 10mm; }
             
             section[data-testid="stSidebar"],
             div[data-testid="stSidebar"],
