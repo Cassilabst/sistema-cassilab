@@ -850,15 +850,15 @@ def renderizar_aba_epis(*args, **kwargs):
                             else:
                                 texto_assinatura_celula = ""
 
-                            linhas_ficha_html += (
-                                "<tr>"
-                                f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>"
-                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>"
-                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>"
-                                f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>"
-                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>"
+                            linhas_ficha_html += "".join([
+                                "<tr>",
+                                f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>",
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>",
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>",
+                                f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>",
+                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>",
                                 "</tr>"
-                            )
+                            ])
                             c_reg += 1
 
                         while c_reg < itens_por_pagina:
@@ -876,52 +876,145 @@ def renderizar_aba_epis(*args, **kwargs):
                         else:
                             indicador_pagina = ""
 
-                        html_paginas_acumulado += f"""
-                        <div class='sheet'>
-                            <div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>
-                                <div>{logo_ficha_html}</div>
-                                <div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>
-                            </div>
-                            <div class='cabecalho-principal-ficha'>
-                                CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I.
-                            </div>
-                            <table class='tabela-ficha'>
-                                <tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>
-                                <tr>
-                                    <td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>
-                                    <td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>
-                                </tr>
-                                <tr>
-                                    <td><b>Função:</b> {cargo_func}</td>
-                                    <td colspan='2'><b>Armário nº:</b> {armario_num}</td>
-                                </tr>
-                                <tr>
-                                    <td><b>Setor:</b> {setor_func}</td>
-                                    <td colspan='2'><b>Calçado nº:</b> {calcado_num}</td>
-                                </tr>
-                            </table>
-                            <table class='tabela-itens'>
-                                <thead>
-                                    <tr>
-                                        <th style="width: 44%;">Tipo de E.P.I.</th>
-                                        <th style="width: 8%;">Quant.</th>
-                                        <th style="width: 18%;">Data / Hora da Entrega</th>
-                                        <th style="width: 20%;">Assinatura do Funcionário</th>
-                                        <th style="width: 10%;">C.A.</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {linhas_ficha_html}
-                                </tbody>
-                            </table>
-                            <div class='termo-legal'>
-                                Declaro, para os devidos fins, que recebi os E.P.I.s acima descritos e me comprometo:<br>
-                                &nbsp;&nbsp;&bull; Usá-los apenas para a finalidade a que se destinam;<br>
-                                &nbsp;&nbsp;&bull; Responsabilizar-me por sua guarda e conservação;<br>
-                                &nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>
-                                &nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>
-                                Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>
-                                Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.
-                            </div>
-                            <div class='assinatura-area' style='padding: 10px 10px; border: 1px solid #000; border-top: none;'>
-                                <div style='display: flex; justify-content: space-between;
+                        html_paginas_acumulado += "".join([
+                            "<div class='sheet'>",
+                            "<div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>",
+                            f"<div>{logo_ficha_html}</div>",
+                            f"<div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>",
+                            "</div>",
+                            "<div class='cabecalho-principal-ficha'>",
+                            "CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I.",
+                            "</div>",
+                            "<table class='tabela-ficha'>",
+                            f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>",
+                            "<tr>",
+                            f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>",
+                            f"<td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>",
+                            "</tr>",
+                            "<tr>",
+                            f"<td><b>Função:</b> {cargo_func}</td>",
+                            f"<td colspan='2'><b>Armário nº:</b> {armario_num}</td>",
+                            "</tr>",
+                            "<tr>",
+                            f"<td><b>Setor:</b> {setor_func}</td>",
+                            f"<td colspan='2'><b>Calçado nº:</b> {calcado_num}</td>",
+                            "</tr>",
+                            "</table>",
+                            "<table class='tabela-itens'>",
+                            "<thead>",
+                            "<tr>",
+                            "<th style='width: 44%;'>Tipo de E.P.I.</th>",
+                            "<th style='width: 8%;'>Quant.</th>",
+                            "<th style='width: 18%;'>Data / Hora da Entrega</th>",
+                            "<th style='width: 20%;'>Assinatura do Funcionário</th>",
+                            "<th style='width: 10%;'>C.A.</th>",
+                            "</tr>",
+                            "</thead>",
+                            "<tbody>",
+                            linhas_ficha_html,
+                            "</tbody>",
+                            "</table>",
+                            "<div class='termo-legal'>",
+                            "Declaro, para os devidos fins, que recebi os E.P.I.s acima descritos e me comprometo:<br>",
+                            "&nbsp;&nbsp;&bull; Usá-los apenas para a finalidade a que se destinam;<br>",
+                            "&nbsp;&nbsp;&bull; Responsabilizar-me por sua guarda e conservação;<br>",
+                            "&nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>",
+                            "&nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>",
+                            "Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>",
+                            "Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.",
+                            "</div>",
+                            "<div class='assinatura-area' style='padding: 10px 10px; border: 1px solid #000; border-top: none;'>",
+                            "<div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;'>",
+                            "<div style='font-size: 9px; color: #333; text-align: left;'>",
+                            "<i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>",
+                            "</div>",
+                            "<div style='font-size: 9px; text-align: right;'>",
+                            "___________, _____ de _________________________ de 20_____",
+                            "</div>",
+                            "</div>",
+                            "<div style='text-align: center; padding-top: 5px;'>",
+                            "<div style='display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px; text-align: center;'>",
+                            f"<b>{func_escolhido}</b><br>Assinatura do Funcionário",
+                            "</div>",
+                            "</div>",
+                            "</div>",
+                            "</div>"
+                        ])
+
+                    css_estilos_ficha = "".join([
+                        "<style>",
+                        "@page { size: A4 landscape !important; margin: 5mm !important; }",
+                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }",
+                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }",
+                        ".tabela-ficha { width: 100%; border-collapse: collapse; }",
+                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }",
+                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }",
+                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }",
+                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }",
+                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }",
+                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }",
+                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }",
+                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }",
+                        "</style>"
+                    ])
+
+                    html_conteudo_bruto = "".join([
+                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>",
+                        f"<title>Ficha de EPI - {str(func_escolhido)}</title>",
+                        css_estilos_ficha,
+                        "</head><body>",
+                        html_paginas_acumulado,
+                        "</body></html>"
+                    ])
+
+                    html_b64_seguro = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
+
+                    trecho_botao_impressao = "".join([
+                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>",
+                        "<button onclick=\"",
+                        "var win = window.open('', '_blank');",
+                        "var htmlContent = decodeURIComponent(escape(window.atob('" + html_b64_seguro + "')));",
+                        "win.document.open();",
+                        "win.document.write(htmlContent);",
+                        "win.document.close();",
+                        "setTimeout(function(){ win.focus(); win.print(); }, 800);",
+                        "\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>",
+                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)",
+                        "</button>",
+                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Clique para abrir a ficha completa direto na janela de impressão em A4 Paisagem.</p>",
+                        "</div>"
+                    ])
+
+                    html_ficha = "".join([
+                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>",
+                        css_estilos_ficha,
+                        "</head><body>",
+                        trecho_botao_impressao,
+                        html_paginas_acumulado,
+                        "</body></html>"
+                    ])
+
+                    components.html(html_ficha, height=850, scrolling=True)
+
+    st.markdown("---")
+    st.subheader("📋 Histórico de Entregas Cadastradas")
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    df_hist = pd.read_sql(
+        "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    conn.close()
+
+    if not df_hist.empty:
+        if "id" in df_hist.columns:
+            df_hist = df_hist.drop(columns=["id"])
+            
+        df_hist["_id_banco"] = df_hist.index
+        if "Selecionar" not in df_hist.columns:
+            df_hist.insert(0, "Selecionar", False)
+
+        df_hist_exib = adicionar_numeracao_func(formatar_colunas_func(df_hist))
+        st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma entrega registrada para esta empresa.")
