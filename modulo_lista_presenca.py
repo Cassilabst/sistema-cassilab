@@ -36,7 +36,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
     with col_h2:
         st.write("")
         if st.button("🔄 Nova Lista / Limpar Campos", key="btn_atualizar_lp"):
-            for k in ["lp_treinamento_txt", "lp_carga_txt", "lp_data_txt", "lp_local_txt", "lp_horario_txt", "lp_tema_txt"]:
+            for k in ["lp_treinamento_txt", "lp_carga_txt", "lp_data_txt", "lp_local_txt", "lp_horario_txt", "lp_tema_txt", "lp_detalhe_txt"]:
                 if k in st.session_state:
                     del st.session_state[k]
             st.rerun()
@@ -107,8 +107,10 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
 
         detalhamento_conteudo = st.text_area(
             "Detalhamento de Conteúdo (Itens do Treinamento - Editável)",
-            value="Norma Regulamentadora;\nDescrição e características dos equipamentos e seus componentes;\nRisco ocupacional contra o qual o item oferece proteção;\nConceitos e Legislação;\nObrigações do empregador e dos empregados;\nRestrições e limitações de proteção;\nForma adequada de uso e ajustes necessários;\nManutenção, substituição, limpeza e descarte correto.",
-            height=120
+            value="",
+            placeholder="Digite os tópicos abordados (cada linha virará um item da lista)...",
+            height=120,
+            key="lp_detalhe_txt"
         )
 
     st.markdown("---")
@@ -163,7 +165,6 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
             total_participantes = len(lista_participantes_rows)
             paginas_html = ""
             
-            # ALTERADO PARA 17 LINHAS NA PÁGINA ÚNICA
             limite_pagina_unica = 17
             if total_participantes <= limite_pagina_unica:
                 bloco_linhas_html = ""
@@ -328,7 +329,19 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                     '</div>'
                 )
 
-            css_estilos = """
-            <style>
-                @page { size: A4 landscape; margin: 6mm; }
-                body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; background-color: #fff
+            css_estilos = """<style>
+    @page { size: A4 landscape; margin: 6mm; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; background-color: #fff; }
+    .sheet { width: 100%; box-sizing: border-box; }
+    .page-break { page-break-after: always; break-after: page; }
+    table.borda-tabela { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    table.borda-tabela th, table.borda-tabela td { border: 1px solid #000; padding: 2.5px 4px; font-size: 10px; line-height: 1.1; }
+    table.borda-tabela th { background-color: #f2f2f2; text-align: center; font-weight: bold; padding: 3px 4px; }
+    .cabecalho-principal { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    .cabecalho-principal td { border: 1px solid #000; padding: 4px; vertical-align: middle; }
+    .secao-titulo { background-color: #e6e6e6; font-weight: bold; padding: 4px 6px; border: 1px solid #000; margin-top: 10px; margin-bottom: 0px; font-size: 10px; }
+    .detalhes-box { border: 1px solid #000; border-top: none; padding: 8px; font-size: 10px; margin-bottom: 10px; }
+    .detalhes-box ul { margin: 0; padding-left: 20px; }
+    .detalhes-box li { margin-bottom: 4px; }
+    .rodape-assinaturas { width: 100%; border-collapse: collapse; }
+    .rodape-assinaturas td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 10px;
