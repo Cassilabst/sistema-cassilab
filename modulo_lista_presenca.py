@@ -226,4 +226,118 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                     f'<tbody>{bloco_linhas_html}</tbody>'
                     '</table>'
                     '<div class="secao-titulo" style="margin-top: 3px; font-size: 8px; padding: 2px 4px;">DETALHAMENTO DE CONTEÚDO:</div>'
-                    '<div
+                    '<div class="detalhes-box" style="font-size: 8.5px; padding: 3px; margin-bottom: 2px;">'
+                    f'<ul style="margin: 0; padding-left: 15px;">{itens_detalhe_html}</ul>'
+                    '</div>'
+                    '<div class="secao-titulo" style="margin-top: 3px; font-size: 8px; padding: 2px 4px;">REGISTRO DE INSTRUTORES E CONTRATANTE:</div>'
+                    '<table class="rodape-assinaturas" style="margin-top: 2px;"><tr>'
+                    f'<td style="width: 50%; padding: 3px; font-size: 8.5px;"><b>INSTRUTOR:</b> {instrutor_nome}<br><b>ÁREA:</b> {instrutor_area}<br><br><b>ASSINATURA:</b><br><br></td>'
+                    f'<td style="width: 50%; padding: 3px; font-size: 8.5px;"><b>CONTRATANTE / REPRESENTANTE:</b> {contratante_nome_final}<br><br><b>ASSINATURA:</b><br><br></td>'
+                    '</tr></table>'
+                    '</div>'
+                )
+
+            else:
+                linhas_por_pagina = 19
+                if total_participantes < linhas_por_pagina:
+                    alvo_linhas = linhas_por_pagina
+                else:
+                    resto = total_participantes % linhas_por_pagina
+                    alvo_linhas = total_participantes if resto == 0 else total_participantes + (linhas_por_pagina - resto)
+
+                for i in range(0, max(alvo_linhas, linhas_por_pagina), linhas_por_pagina):
+                    bloco_linhas_html = ""
+                    for j in range(linhas_por_pagina):
+                        idx_atual = i + j
+                        num_linha = idx_atual + 1
+                        
+                        if idx_atual < total_participantes:
+                            _, row = lista_participantes_rows[idx_atual]
+                            mat = str(row["MATRÍCULA"]) if pd.notna(row["MATRÍCULA"]) else ""
+                            nome = str(row["NOME COMPLETO"]) if pd.notna(row["NOME COMPLETO"]) else ""
+                            area = str(row["ÁREA"]) if pd.notna(row["ÁREA"]) else ""
+                            cpf = str(row["RG/CPF"]) if pd.notna(row["RG/CPF"]) else ""
+                        else:
+                            mat, nome, area, cpf = "", "", "", ""
+
+                        bloco_linhas_html += (
+                            "<tr>"
+                            f'<td style="text-align: center; width: 4%;">{num_linha}</td>'
+                            f'<td style="text-align: center; width: 10%;">{mat}</td>'
+                            f'<td style="text-align: left; width: 26%; padding-left: 6px;">{nome}</td>'
+                            f'<td style="text-align: left; width: 16%; padding-left: 6px;">{area}</td>'
+                            f'<td style="text-align: center; width: 14%;">{cpf}</td>'
+                            f'<td style="text-align: center; width: 30%; height: 25px;"></td>'
+                            "</tr>"
+                        )
+
+                    data_hoje_str = datetime.today().strftime('%d/%m/%Y')
+                    data_trein_str = data_treinamento if data_treinamento else ""
+                    tema_fmt = tema_treinamento.replace("\n", "<br>")
+
+                    paginas_html += (
+                        '<div class="sheet">'
+                        '<table class="cabecalho-principal"><tr>'
+                        f'<td style="width: 20%; text-align: center;">{logo_html}</td>'
+                        '<td style="width: 45%; text-align: center; font-size: 14px; font-weight: bold;">LISTA DE PRESENÇA</td>'
+                        f'<td style="width: 35%; font-size: 9.5px;"><b>Empresa:</b> {empresa_selecionada}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
+                        '</tr></table>'
+                        '<table class="borda-tabela">'
+                        f'<tr><td colspan="4"><b>Treinamento:</b> {treinamento_nome}</td><td colspan="2"><b>Carga Horária:</b> {carga_horaria}</td></tr>'
+                        f'<tr><td colspan="3"><b>Data:</b> {data_trein_str}</td><td colspan="3"><b>Local:</b> {local_treinamento}</td></tr>'
+                        f'<tr><td colspan="3"><b>Tema:</b> {tema_fmt}</td><td colspan="3"><b>Horário:</b> {horario_treinamento}</td></tr>'
+                        f'<tr><td colspan="3"><b>Instrutores:</b> {tipo_instrutor}</td><td colspan="3"><b>Classificação:</b> {classificacao_trein}</td></tr>'
+                        '</table>'
+                        '<table class="borda-tabela" style="margin-top: 4px;">'
+                        '<thead><tr>'
+                        '<th style="width: 4%;">N°</th>'
+                        '<th style="width: 10%;">MATRÍCULA</th>'
+                        '<th style="width: 26%;">NOME COMPLETO</th>'
+                        '<th style="width: 16%;">ÁREA</th>'
+                        '<th style="width: 14%;">RG/CPF</th>'
+                        '<th style="width: 30%;">ASSINATURA</th>'
+                        '</tr></thead>'
+                        f'<tbody>{bloco_linhas_html}</tbody>'
+                        '</table>'
+                        '</div>'
+                        '<div class="page-break"></div>'
+                    )
+
+                itens_detalhe_html = ""
+                for item in detalhamento_conteudo.split("\n"):
+                    if item.strip():
+                        itens_detalhe_html += f"<li>{item.strip()}</li>"
+
+                data_hoje_str = datetime.today().strftime('%d/%m/%Y')
+
+                paginas_html += (
+                    '<div class="sheet">'
+                    '<table class="cabecalho-principal"><tr>'
+                    f'<td style="width: 20%; text-align: center;">{logo_html}</td>'
+                    '<td style="width: 45%; text-align: center; font-size: 14px; font-weight: bold;">LISTA DE PRESENÇA (CONTEÚDO E ENCERRAMENTO)</td>'
+                    f'<td style="width: 35%; font-size: 9.5px;"><b>Empresa:</b> {empresa_selecionada}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
+                    '</tr></table>'
+                    '<div class="secao-titulo" style="margin-top: 15px;">DETALHAMENTO DE CONTEÚDO:</div>'
+                    '<div class="detalhes-box" style="font-size: 11px; padding: 10px;">'
+                    f'<ul>{itens_detalhe_html}</ul>'
+                    '</div>'
+                    '<div class="secao-titulo" style="margin-top: 25px;">REGISTRO DE INSTRUTORES E CONTRATANTE:</div>'
+                    '<table class="rodape-assinaturas" style="margin-top: 5px;"><tr>'
+                    f'<td style="width: 50%; padding: 10px;"><b>INSTRUTOR:</b> {instrutor_nome}<br><b>ÁREA:</b> {instrutor_area}<br><br><b>ASSINATURA:</b><br><br></td>'
+                    f'<td style="width: 50%; padding: 10px;"><b>CONTRATANTE / REPRESENTANTE:</b> {contratante_nome_final}<br><br><b>ASSINATURA:</b><br><br></td>'
+                    '</tr></table>'
+                    '</div>'
+                )
+
+            css_estilos = (
+                "<style>"
+                "@page { size: A4 landscape; margin: 6mm; }"
+                "body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
+                ".sheet { width: 100%; box-sizing: border-box; }"
+                ".page-break { page-break-after: always; break-after: page; }"
+                "table.borda-tabela { width: 100%; border-collapse: collapse; margin-bottom: 4px; }"
+                "table.borda-tabela th, table.borda-tabela td { border: 1px solid #000; padding: 2.5px 4px; font-size: 10px; line-height: 1.1; }"
+                "table.borda-tabela th { background-color: #f2f2f2; text-align: center; font-weight: bold; padding: 3px 4px; }"
+                ".cabecalho-principal { width: 100%; border-collapse: collapse; margin-bottom: 4px; }"
+                ".cabecalho-principal td { border: 1px solid #000; padding: 4px; vertical-align: middle; }"
+                ".secao-titulo { background-color: #e6e6e6; font-weight: bold; padding: 4px 6px; border: 1px solid #000; margin-top: 10px; margin-bottom: 0px; font
