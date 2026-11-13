@@ -329,15 +329,6 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                     '</div>'
                 )
 
-            css_estilos = (
-                "<style>"
-                "@page { size: A4 landscape; margin: 6mm; }"
-                "body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; background-color: #fff; }"
-                ".sheet { width: 100%; box-sizing: border-box; }"
-                ".page-break { page-break-after: always; break-after: page; }"
-                "table.borda-tabela { width: 100%; border-collapse: collapse; margin-bottom: 4px; }"
-                "table.borda-tabela th, table.borda-tabela td { border: 1px solid #000; padding: 2.5px 4px; font-size: 10px; line-height: 1.1; }"
-                "table.borda-tabela th { background-color: #f2f2f2; text-align: center; font-weight: bold; padding: 3px 4px; }"
-                ".cabecalho-principal { width: 100%; border-collapse: collapse; margin-bottom: 4px; }"
-                ".cabecalho-principal td { border: 1px solid #000; padding: 4px; vertical-align: middle; }"
-                ".secao-titulo { background-color: #e6e6e6; font-weight: bold; padding: 4px 6px; border: 1px solid #000; margin-top: 10px; margin-bottom: 0px; font
+            css_estilos = "\n".join([
+                "<style>",
+                "@page { size: A4 landscape; margin
