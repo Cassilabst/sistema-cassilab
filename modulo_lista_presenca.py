@@ -158,7 +158,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                 logo_html = '<div style="border: 1px dashed #ccc; padding: 6px; font-size: 10px; color: #666; text-align: center;">[ Logo da Empresa ]</div>'
 
             lista_participantes_rows = list(participantes_selecionados.iterrows())
-            linhas_por_pagina = 23
+            linhas_por_pagina = 19
             total_participantes = len(lista_participantes_rows)
             
             if total_participantes < linhas_por_pagina:
