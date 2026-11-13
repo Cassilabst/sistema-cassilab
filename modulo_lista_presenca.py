@@ -73,7 +73,9 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
             carga_sugerida = "4 horas"
 
         carga_horaria = c_p4.text_input("Carga Horária", value=str(carga_sugerida))
-        data_treinamento = c_p5.date_input("Data do Treinamento", value=datetime.today())
+        
+        # ALTERADO PARA TEXTO LIVRE (DEIXA VAZIO POR PADRÃO OU DIGITÁVEL)
+        data_treinamento = c_p5.text_input("Data do Treinamento", value="", placeholder="Ex: 15/10/2026 ou deixe em branco")
 
         c_p6, c_p7 = st.columns(2)
         local_treinamento = c_p6.text_input("Local", value="Sala de Treinamentos / Refeitório")
@@ -82,8 +84,8 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
         tema_treinamento = st.text_area("Tema (Descrição longa)", value="Abordagem prática sobre segurança preventiva, diretrizes operacionais e uso adequado dos dispositivos de proteção.", height=70)
 
         c_p9, c_p10 = st.columns(2)
-        tipo_instrutor = c_p9.selectbox("Instrutores", ["( X ) Interno    (   ) Externo", "(   ) Interno    ( X ) Externo"])
-        classificacao_trein = c_p10.selectbox("Classificação", ["( X ) Técnico    (   ) Comportamental", "(   ) Técnico    ( X ) Comportamental"])
+        tipo_instrutor = c_p9.selectbox("Instrutores", ["( X ) Interno    (    ) Externo", "(    ) Interno    ( X ) Externo"])
+        classificacao_trein = c_p10.selectbox("Classificação", ["( X ) Técnico    (    ) Comportamental", "(    ) Técnico    ( X ) Comportamental"])
 
         st.markdown("---")
         st.markdown("##### ✏️ Assinatura da Contratante, Instrutor e Conteúdo")
@@ -194,7 +196,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                     )
 
                 data_hoje_str = datetime.today().strftime('%d/%m/%Y')
-                data_trein_str = data_treinamento.strftime('%d/%m/%Y')
+                data_trein_str = data_treinamento if data_treinamento else ""
                 tema_fmt = tema_treinamento.replace("\n", "<br>")
 
                 paginas_html += (
