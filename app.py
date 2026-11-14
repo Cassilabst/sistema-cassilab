@@ -2426,6 +2426,7 @@ if st.session_state.get("is_admin", False):
         "Relatórios Consolidados",
         "Elaboração de OS (Ordem de Serviço)",
         "Lista de Presença",
+        "Consulta de CAs",
     ]
 else:
     opcoes_menu = [
@@ -3971,6 +3972,10 @@ if menu == "Cadastros Gerais":
                         mime="application/pdf",
                         use_container_width=True
                     )
+
+elif menu == "Consulta de CAs":
+    from modulo_ca import renderizar_modulo_ca
+    renderizar_modulo_ca(DB_NAME, is_admin)
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
