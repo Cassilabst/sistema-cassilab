@@ -656,6 +656,10 @@ def renderizar_aba_epis(*args, **kwargs):
 
                 pin_informado = ""
                 if "Eletrônica" in tipo_assinatura_lanc:
+                    if st.session_state.get("reset_pin_input", False):
+                        st.session_state["pin_lanc_epi_input"] = ""
+                        st.session_state["reset_pin_input"] = False
+                        
                     pin_informado = st.text_input(
                         "Digite o PIN (4 dígitos) do Colaborador para"
                         " Confirmar",
@@ -750,7 +754,7 @@ def renderizar_aba_epis(*args, **kwargs):
 
                         # Zera imediatamente a senha para sumir da tela após salvar
                         if "pin_lanc_epi_input" in st.session_state:
-                            st.session_state["pin_lanc_epi_input"] = ""
+                            st.session_state["reset_pin_input"] = True
                             
                         st.success(
                             "✅ Entrega de EPI cadastrada com sucesso!"
