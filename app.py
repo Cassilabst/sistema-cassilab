@@ -607,7 +607,7 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS cad_cargos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, cargo TEXT);",
         "CREATE TABLE IF NOT EXISTS cad_setores (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, setor TEXT);",
         "CREATE TABLE IF NOT EXISTS cad_epis (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, epi TEXT, ca TEXT, UNIQUE(empresa, epi));",
-        
+        "ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;",
         "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, treinamento TEXT, carga_horaria TEXT, UNIQUE(empresa, treinamento));",
     
         "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);",
@@ -3589,7 +3589,7 @@ if menu == "Cadastros Gerais":
             st.info("ℹ️ Nenhum treinamento cadastrado para o filtro selecionado.")
 
     elif aba_selecionada == "EPIs":
-        st.subheader("Gerenciar EPIs por Empresa (com CA e Tipo)")
+        st.subheader("Gerenciar EPIs por Empresa (com CA, Validade e Status)")
         empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
         with st.form("form_cad_epi_unico"):
             empresa_epi_sel = st.selectbox(
@@ -3607,10 +3607,11 @@ if menu == "Cadastros Gerais":
                 "Luvas",
                 "Diversos",
             ]
-            c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
+            c_epi_1, c_epi_2, c_epi_3, c_epi_4 = st.columns(4)
             novo_epi_nome = c_epi_1.text_input("Nome do EPI")
             novo_epi_ca = c_epi_2.text_input("Número do CA")
             tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
+            validade_ca_input = c_epi_4.date_input("Validade do CA", value=datetime.today())
             
             btn_add_salvar_epi = c_epi_1.form_submit_button(
                 "Adicionar e Salvar EPI e CA"
@@ -3622,12 +3623,17 @@ if menu == "Cadastros Gerais":
                         conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
                     except:
                         pass
+                    try:
+                        conn.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
+                    except:
+                        pass
                         
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
+                        val_ca_str = validade_ca_input.strftime("%d/%m/%Y")
                         conn.execute(
-                            "INSERT INTO cad_epis (empresa, epi, ca, tipo) VALUES (?, ?, ?, ?)",
-                            (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel),
+                            "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
+                            (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel, val_ca_str),
                         )
                         conn.commit()
                         if "edit_epis_tbl" in st.session_state:
@@ -3637,7 +3643,7 @@ if menu == "Cadastros Gerais":
                         registrar_log(
                             st.session_state.get("nome_usuario", "Administrador"),
                             empresa_epi_sel,
-                            f"Adicionou EPI: {epi_fmt} (Tipo: {tipo_epi_sel})",
+                            f"Adicionou EPI: {epi_fmt} (CA: {novo_epi_ca.strip()}, Validade: {val_ca_str})",
                         )
                         st.rerun()
                     except Exception as e:
@@ -3675,7 +3681,7 @@ if menu == "Cadastros Gerais":
         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         try:
             df_epis_geral = pd.read_sql(
-                "SELECT id, empresa, epi, ca, tipo FROM cad_epis ORDER BY empresa, epi ASC",
+                "SELECT id, empresa, epi, ca, tipo, validade_ca FROM cad_epis ORDER BY empresa, epi ASC",
                 conn,
             )
         except:
@@ -3685,9 +3691,11 @@ if menu == "Cadastros Gerais":
             )
             if "tipo" not in df_epis_geral.columns:
                 df_epis_geral["tipo"] = "Diversos"
+            if "validade_ca" not in df_epis_geral.columns:
+                df_epis_geral["validade_ca"] = ""
         conn.close()
 
-        # FILTRO ROBUSTO POR EMPRESA (ignora maiúsculas/minúsculas e espaços)
+        # FILTRO ROBUSTO POR EMPRESA
         if filtro_epi_geral_emp != "Todas as Empresas" and not df_epis_geral.empty:
             df_epis_geral = df_epis_geral[
                 df_epis_geral["empresa"].astype(str).str.strip().str.lower()
@@ -3701,13 +3709,12 @@ if menu == "Cadastros Gerais":
                 == str(filtro_tipo_epi_sel).strip().lower()
             ]
 
-        if filtro_tipo_epi_sel != "Todos os Tipos" and not df_epis_geral.empty:
-            df_epis_geral = df_epis_geral[
-                df_epis_geral["tipo"].astype(str).str.strip().str.lower()
-                == str(filtro_tipo_epi_sel).strip().lower()
-            ]
-
         if not df_epis_geral.empty:
+            # Calcula o status automaticamente com base na data de validade do CA
+            df_epis_geral["status"] = df_epis_geral["validade_ca"].apply(
+                lambda x: formatar_status_visual(calcular_status_por_data(x), "doc")
+            )
+            
             if "sel_id_epi_geral" not in st.session_state:
                 st.session_state["sel_id_epi_geral"] = None
             df_epis_geral["_id_banco"] = df_epis_geral["id"]
@@ -3718,23 +3725,12 @@ if menu == "Cadastros Gerais":
             cols_epi_exib = ["Selecionar", "_id_banco", "empresa"]
             if "tipo" in df_epis_geral.columns:
                 cols_epi_exib.append("tipo")
-            cols_epi_exib.extend(["epi", "ca"])
+            cols_epi_exib.extend(["epi", "ca", "validade_ca", "status"])
             
             df_epis_geral = df_epis_geral[cols_epi_exib]
 
             df_epis_ex = formatar_colunas_tabela(df_epis_geral)
             df_epis_ex = adicionar_numeracao(df_epis_ex)
-
-            tipos_epi_lista = [
-                "Calçados de Segurança",
-                "Óculos",
-                "Protetor Auricular",
-                "Trabalho em Altura",
-                "Máscaras",
-                "Respiradores",
-                "Luvas",
-                "Diversos",
-            ]
 
             edit_epis = st.data_editor(
                 df_epis_ex,
@@ -3758,6 +3754,10 @@ if menu == "Cadastros Gerais":
                         options=tipos_epi_lista,
                         required=True,
                     ),
+                    "validade_ca": st.column_config.TextColumn("Validade CA (DD/MM/AAAA)"),
+                    "Validade Ca": st.column_config.TextColumn("Validade CA (DD/MM/AAAA)"),
+                    "status": st.column_config.TextColumn("Status CA", disabled=True),
+                    "Status": st.column_config.TextColumn("Status CA", disabled=True),
                 },
             )
             curr_ep_geral = edit_epis[edit_epis["Selecionar"] == True][
@@ -3790,6 +3790,9 @@ if menu == "Cadastros Gerais":
                     epi_val = row.get("EPI", row.get("epi"))
                     ca_val = row.get("CA", row.get("ca"))
                     tipo_val = row.get("Tipo", row.get("tipo", "Diversos"))
+                    val_ca_val = row.get("Validade Ca", row.get("validade_ca", ""))
+                    
+                    val_ca_fmt = validar_e_formatar_data_input(val_ca_val)
                     
                     if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
                         if pd.notna(epi_id) and str(epi_id).strip() not in (
@@ -3798,18 +3801,19 @@ if menu == "Cadastros Gerais":
                             "None",
                         ):
                             try:
-                                cursor.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
+                                cursor.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
                             except:
                                 pass
                                 
                             try:
                                 cursor.execute(
-                                    "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=? WHERE id=?",
+                                    "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=?, validade_ca=? WHERE id=?",
                                     (
                                         str(e_val).strip(),
                                         formatar_titulo(epi_val),
                                         str(ca_val).strip(),
                                         str(tipo_val).strip(),
+                                        val_ca_fmt,
                                         int(epi_id),
                                     ),
                                 )
