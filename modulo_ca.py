@@ -18,6 +18,21 @@ def init_db_ca(db_name):
     conn.commit()
     conn.close()
 
+def consultar_dados_ca(db_name, numero_ca):
+    """Função utilitária para buscar dados do CA de forma programática."""
+    if not numero_ca:
+        return None
+    conn = sqlite_original.connect(db_name, timeout=10.0)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT equipamento, validade, fabricante FROM base_ca_oficial WHERE ca = ?", (str(numero_ca).strip(),))
+        res = cursor.fetchone()
+        conn.close()
+        return res
+    except:
+        conn.close()
+        return None
+
 def contar_registros_ca(db_name):
     conn = sqlite_original.connect(db_name, timeout=10.0)
     try:
