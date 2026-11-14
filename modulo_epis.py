@@ -157,6 +157,12 @@ def renderizar_aba_epis(*args, **kwargs):
 
     @st.dialog("✏️ Corrigir Lançamento de EPI (Autorização por PIN)")
     def modal_editar_registro_pin(id_registro, empresa_atual):
+        st.markdown("""
+            <style>
+            [title="Show password text"], button[aria-label="Show password text"], button[title*="password"], .stTextInput input[type="password"] ~ div button { display: none !important; }
+            </style>
+        """, unsafe_allow_html=True)
+
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
         df_reg = pd.read_sql("SELECT * FROM epis WHERE id = ?", conn, params=(id_registro,))
         conn.close()
@@ -219,7 +225,14 @@ def renderizar_aba_epis(*args, **kwargs):
 
     @st.dialog("🗑️ Excluir Lançamento(s) de EPI (Autorização por PIN)")
     def modal_excluir_registros_pin(ids_lista, empresa_atual):
+        st.markdown("""
+            <style>
+            [title="Show password text"], button[aria-label="Show password text"], button[title*="password"], .stTextInput input[type="password"] ~ div button { display: none !important; }
+            </style>
+        """, unsafe_allow_html=True)
+
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
+      
         placeholders = ','.join(['?'] * len(ids_lista))
         df_alvo = pd.read_sql(f"SELECT id, funcionario, epi FROM epis WHERE id IN ({placeholders})", conn, params=tuple(ids_lista))
         conn.close()
