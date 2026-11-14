@@ -138,6 +138,21 @@ def renderizar_aba_epis(*args, **kwargs):
             return f"🟡 {v}"
         return f"🟢 {v}"
 
+    # CSS global para ocultar o botão do "olhinho" em todos os campos de senha por segurança
+    st.markdown(
+        """
+        <style>
+        [title="Show password text"],
+        button[aria-label="Show password text"],
+        button[title*="password"],
+        .stTextInput input[type="password"] ~ div button {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    
     fuso_brasil = timezone(timedelta(hours=-3))
 
     @st.dialog("✏️ Corrigir Lançamento de EPI (Autorização por PIN)")
@@ -719,6 +734,11 @@ def renderizar_aba_epis(*args, **kwargs):
                         )
                         conn.commit()
                         conn.close()
+
+                        # Zera imediatamente a senha para sumir da tela após salvar
+                        if "pin_lanc_epi_input" in st.session_state:
+                            st.session_state["pin_lanc_epi_input"] = ""
+                            
                         st.success(
                             "✅ Entrega de EPI cadastrada com sucesso!"
                         )
