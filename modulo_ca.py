@@ -1,85 +1,108 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
-import sqlite3 as sqlite_original
 
-def init_db_ca(db_name):
-    conn = sqlite_original.connect(db_name, timeout=10.0)
+def inicializar_banco_ca(db_name):
+    conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS base_ca_oficial (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ca TEXT UNIQUE,
-            equipamento TEXT,
-            descricao TEXT,
+            ca INTEGER PRIMARY KEY,
             validade TEXT,
+            equipamento TEXT,
             fabricante TEXT
-        );
-    """)
+        )
+    ''')
     conn.commit()
     conn.close()
 
 def consultar_dados_ca(db_name, numero_ca):
-    """Função utilitária para buscar dados do CA de forma programática."""
-    if not numero_ca:
-        return None
-    conn = sqlite_original.connect(db_name, timeout=10.0)
     try:
+        inicializar_banco_ca(db_name)
+        conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
-        cursor.execute("SELECT equipamento, validade, fabricante FROM base_ca_oficial WHERE ca = ?", (str(numero_ca).strip(),))
-        res = cursor.fetchone()
+        cursor.execute("SELECT ca, validade, equipamento, fabricante FROM base_ca_oficial WHERE ca = ?", (int(numero_ca),))
+        resultado = cursor.fetchone()
         conn.close()
-        return res
-    except:
-        conn.close()
+        return resultado
+    except Exception:
         return None
 
 def renderizar_modulo_ca(db_name, is_admin):
-    init_db_ca(db_name)
+    st.subheader("Gerenciamento e Consulta de CAs (Oficial MTE)")
+    inicializar_banco_ca(db_name)
     
-    st.markdown("### 🛡️ Gestão e Consulta de CAs Oficiais (MTE)")
-    st.markdown("Consulte os Certificados de Aprovação oficiais ou atualize a base de dados do sistema.")
-
-    # 1. Área de Atualização da Base (Exclusivo para Administradores)
+    # Contar total de registros na base local
+    try:
+        conn = sqlite3.connect(db_name)
+        df_count = pd.read_sql("SELECT COUNT(*) as total FROM base_ca_oficial", conn)
+        conn.close()
+        total_registros = df_count['total'].iloc[0]
+    except Exception:
+        total_registros = 0
+        
+    st.info(f"📊 Registros oficiais de CA carregados no banco local: **{total_registros}**")
+    
     if is_admin:
-        with st.expander("📥 Importar / Atualizar Base de CAs (Área Administrativa)"):
-            st.markdown("Faça o upload do arquivo CSV contendo os dados abertos de CAs do Ministério do Trabalho.")
-            arquivo_csv = st.file_uploader("Selecionar Arquivo CSV de CAs", type=["csv"], key="upload_csv_ca")
-            if arquivo_csv is not None:
-                if st.button("Processar e Atualizar Base Local", key="btn_processar_csv_ca"):
+        st.markdown("### Atualizar Base de Dados via CSV")
+        st.write("Faça o upload do arquivo CSV oficial obtido no portal de dados abertos do MTE.")
+        
+        # O campo de upload que estava a faltar na interface!
+        arquivo_submetido = st.file_uploader("Selecione o arquivo CSV do MTE", type=["csv", "txt"])
+        
+        if arquivo_submetido is not None:
+            if st.button("Processar e Importar Base de CAs"):
+                with st.spinner("Importando dados oficiais para o banco... Aguarde."):
                     try:
-                        # Lê o CSV usando pandas (detecta separador automaticamente)
-                        df_upload = pd.read_csv(arquivo_csv, sep=None, engine='python', dtype=str)
+                        # Tenta ler o CSV lidando com diferentes codificações comuns do governo
+                        try:
+                            df = pd.read_csv(arquivo_submetido, sep=';', encoding='utf-8', low_memory=False)
+                        except UnicodeDecodeError:
+                            arquivo_submetido.seek(0)
+                            df = pd.read_csv(arquivo_submetido, sep=';', encoding='latin1', low_memory=False)
                         
-                        # Limpa nomes das colunas para evitar erros de espaços
-                        df_upload.columns = [str(c).strip().lower() for c in df_upload.columns]
+                        colunas_lower = {str(c).lower().strip(): c for c in df.columns}
                         
-                        conn = sqlite_original.connect(db_name, timeout=10.0)
-                        df_upload.to_sql("base_ca_oficial", conn, if_exists="replace", index=False)
+                        # Identificação flexível das colunas do MTE
+                        col_ca = next((colunas_lower[c] for c in colunas_lower if 'ca' in c or 'certificado' in c), df.columns[0])
+                        col_val = next((colunas_lower[c] for c in colunas_lower if 'validade' in c), df.columns[1] if len(df.columns) > 1 else None)
+                        col_eq = next((colunas_lower[c] for c in colunas_lower if 'equipamento' in c or 'descricao' in c), None)
+                        col_fab = next((colunas_lower[c] for c in colunas_lower if 'fabricante' in c or 'empresa' in c), None)
+                        
+                        conn = sqlite3.connect(db_name)
+                        cursor = conn.cursor()
+                        
+                        importados = 0
+                        for _, row in df.iterrows():
+                            try:
+                                val_ca = int(row[col_ca])
+                                val_data = str(row[col_val]).strip() if col_val else ""
+                                val_eq = str(row[col_eq]).strip() if col_eq else ""
+                                val_fab = str(row[col_fab]).strip() if col_fab else ""
+                                
+                                cursor.execute('''
+                                    INSERT OR REPLACE INTO base_ca_oficial (ca, validade, equipamento, fabricante)
+                                    VALUES (?, ?, ?, ?)
+                                ''', (val_ca, val_data, val_eq, val_fab))
+                                importados += 1
+                            except Exception:
+                                continue
+                                
                         conn.commit()
                         conn.close()
-                        
-                        st.success("✅ Base de CAs atualizada e salva com sucesso no banco de dados!")
+                        st.success(f"Sucesso! {importados} registros de CA foram importados/atualizados.")
+                        st.rerun()
                     except Exception as e:
-                        st.error(f"❌ Erro ao processar o arquivo: {e}")
-
+                        st.error(f"Erro ao processar o arquivo CSV: {e}")
+    else:
+        st.warning("Apenas administradores podem atualizar a base de dados oficial de CAs.")
+        
     st.markdown("---")
-
-    col_s1, col_s2 = st.columns([2, 1])
-    ca_pesquisa = col_s1.text_input("🔍 Digite o número do CA para pesquisar na base oficial:", key="input_pesquisa_ca_geral")
-    
-    if col_s2.write("") or col_s2.button("Consultar CA", use_container_width=True, key="btn_exec_pesquisa_ca_geral"):
-        if ca_pesquisa.strip():
-            conn = sqlite_original.connect(db_name, timeout=10.0)
-            try:
-                df_res = pd.read_sql("SELECT * FROM base_ca_oficial WHERE ca LIKE ?", conn, params=(f"%{ca_pesquisa.strip()}%",))
-            except:
-                df_res = pd.DataFrame()
-            conn.close()
-            
-            if not df_res.empty:
-                st.success(f"✅ Encontrado(s) {len(df_res)} registro(s):")
-                st.dataframe(df_res, use_container_width=True)
-            else:
-                st.warning("⚠️ Nenhum CA encontrado com esse número na base local.")
+    st.markdown("### Consulta Rápida de CA")
+    busca_ca = st.text_input("Digite o número do CA para testar a consulta:")
+    if busca_ca:
+        res = consultar_dados_ca(db_name, busca_ca)
+        if res:
+            st.success(f"**CA:** {res[0]} | **Validade:** {res[1]} | **Equipamento:** {res[2]} | **Fabricante:** {res[3]}")
         else:
-            st.error("⚠️ Por favor, digite um número de CA para pesquisar.")
+            st.error("CA não encontrado na base oficial local.")
