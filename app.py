@@ -11,6 +11,7 @@ import sqlalchemy
 from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
+from modulo_ca import renderizar_modulo_ca, consultar_dados_ca
 
 import os
 import shutil
@@ -3630,7 +3631,15 @@ if menu == "Cadastros Gerais":
                         
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
+                        
+                        # --- INTEGRAÇÃO COM A BASE OFICIAL DE CA ---
                         val_ca_str = validade_ca_input.strftime("%d/%m/%Y")
+                        if novo_epi_ca.strip():
+                            dados_oficiais = consultar_dados_ca(DB_NAME, novo_epi_ca.strip())
+                            if dados_oficiais and dados_oficiais[1]:
+                                val_ca_str = str(dados_oficiais[1]).strip() # Puxa a validade oficial automaticamente se houver!
+                        # -------------------------------------------
+
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
                             (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel, val_ca_str),
@@ -3854,12 +3863,12 @@ if menu == "Cadastros Gerais":
                     st.session_state["msg_sucesso"] = "🗑️ EPI excluído com sucesso!"
                     registrar_log(
                         st.session_state.get("nome_usuario", "Administrador"),
-                    "Todas",
-                    f"Excluiu EPI cadastrado ID {epi_id_exc}",
-                )
-                st.rerun()
-            else:
-                st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
+                        "Todas",
+                        f"Excluiu EPI cadastrado ID {epi_id_exc}",
+                    )
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
         else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
