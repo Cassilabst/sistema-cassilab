@@ -643,14 +643,10 @@ def renderizar_aba_epis(*args, **kwargs):
                 tipo_assinatura_lanc = st.radio(
                     "🔑 Forma de Validação / Assinatura",
                     [
-                        (
-                            "Física (Assinatura manual na ficha impressa)"
-                        ),
-                        (
-                            "Eletrônica (Validar com PIN de 4 dígitos do"
-                            " colaborador)"
-                        ),
+                        "Física (Assinatura manual na ficha impressa)",
+                        "Eletrônica (Validar com PIN de 4 dígitos do colaborador)",
                     ],
+                    horizontal=True,
                     key="tipo_ass_lanc_epi",
                 )
 
