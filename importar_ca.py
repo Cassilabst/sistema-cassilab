@@ -18,11 +18,10 @@ col_val = next((c for c in df.columns if 'validade' in c), df.columns[1] if len(
 col_eq = next((c for c in df.columns if 'equipamento' in c or 'descricao' in c), None)
 col_fab = next((c for c in df.columns if 'fabricante' in c or 'empresa' in c), None)
 
-print("A recriar e popular a tabela no banco SQLite com o formato correto...")
+print("A gravar os dados no banco SQLite (cassilab_sst.db)...")
 conn = sqlite3.connect(db_file)
 cursor = conn.cursor()
 
-# Recria a tabela exatamente com o esquema que o modulo_ca.py utiliza
 cursor.execute("DROP TABLE IF EXISTS base_ca_oficial;")
 cursor.execute('''
     CREATE TABLE base_ca_oficial (
@@ -55,4 +54,4 @@ for _, row in df.iterrows():
 
 conn.commit()
 conn.close()
-print(f"Sucesso! {importados} CAs oficiais importados com sucesso.")
+print(f"Sucesso! {importados} CAs oficiais importados para {db_file}.")
