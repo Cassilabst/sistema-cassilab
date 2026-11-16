@@ -4012,10 +4012,10 @@ if menu == "Cadastros Gerais":
         else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
-        # --- RELATÓRIO DE EPIS COM IMPRESSÃO AUTOMÁTICA (IGUAL AOS CONSOLIDADOS) ---
+        # --- RELATÓRIO DE EPIS COM COMPONENTE SEGURO DE IMPRESSÃO ---
         st.markdown("---")
         st.subheader("📄 Relatório de EPIs Cadastrados")
-        st.markdown("Gere o relatório em formato paisagem com validades, status e abertura automática da janela de impressão.")
+        st.markdown("Gere o relatório em formato paisagem com abertura automática da janela de impressão.")
 
         col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
         empresa_rel_epi_geral = col_pdf_e1.selectbox(
@@ -4027,7 +4027,7 @@ if menu == "Cadastros Gerais":
         with col_pdf_e2:
             st.write("")
             st.write("")
-            btn_gerar_pdf_cad_epis = st.button("🖨️ Gerar e Imprimir Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis")
+            btn_gerar_pdf_cad_epis = st.button("🖨️ Preparar Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis")
 
         if btn_gerar_pdf_cad_epis:
             if empresa_rel_epi_geral == "Nenhuma":
@@ -4144,29 +4144,44 @@ if menu == "Cadastros Gerais":
                     </html>
                     """
 
-                    b64_html = base64.b64encode(html_relatorio.encode("utf-8")).decode("utf-8")
+                    import json
+                    import streamlit.components.v1 as components
+
+                    html_json = json.dumps(html_relatorio)
                     
-                    st.success("✅ Relatório gerado com sucesso! A janela de impressão abrirá em seguida.")
+                    st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    html_link = f'''
-                    <a href="data:text/html;base64,{b64_html}" target="_blank" style="
-                        display: block;
+                    component_code = f"""
+                    <button onclick="abrirImpressao()" style="
                         width: 100%;
                         background-color: #ff4b4b;
                         color: white;
-                        text-align: center;
+                        border: none;
                         padding: 0.7rem 1rem;
-                        border-radius: 4px;
+                        border-radius: 6px;
                         font-weight: 600;
-                        text-decoration: none;
                         font-family: sans-serif;
-                        margin-top: 10px;
-                        box-sizing: border-box;
+                        cursor: pointer;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     ">
-                        🖨️ Clique aqui caso a janela de impressão não abra automaticamente
-                    </a>
-                    '''
-                    st.markdown(html_link, unsafe_allow_html=True)
+                        🖨️ Clique para Imprimir Relatório de EPIs
+                    </button>
+
+                    <script>
+                    function abrirImpressao() {{
+                        var htmlContent = {html_json};
+                        var win = window.open('', '_blank');
+                        if (win) {{
+                            win.document.write(htmlContent);
+                            win.document.close();
+                        }} else {{
+                            alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
+                        }}
+                    }
+                    </script>
+                    """
+                    
+                    components.html(component_code, height=70)
 
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
