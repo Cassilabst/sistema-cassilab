@@ -3616,7 +3616,7 @@ if menu == "Cadastros Gerais":
             tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
             
             btn_add_salvar_epi = c_epi_1.form_submit_button(
-                "Adicionar e Salvar EPI e CA"
+            "Adicionar e Salvar EPI e CA"
             )
             if btn_add_salvar_epi:
                 if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
@@ -3633,7 +3633,7 @@ if menu == "Cadastros Gerais":
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
                         
-                        # --- VALIDAÇÃO E BUSCA OBRIGATÓRIA NO cassilab_sst.db ---
+                        # --- BUSCA DINÂMICA ROBUSTA NO cassilab_sst.db ---
                         val_ca_str = ""
                         ca_encontrado = False
                         
@@ -3644,23 +3644,39 @@ if menu == "Cadastros Gerais":
                                     conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
                                     cur_sst = conn_sst.cursor()
                                     cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                                    t_list = [r[0] for r in cur_sst.fetchall()]
-                                    t_alvo = t_list[0] if t_list else None
-                                    if t_alvo:
-                                        df_sst = pd.read_sql(f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1", conn_sst, params=(f"%{novo_epi_ca.strip()}%", novo_epi_ca.strip()))
-                                        conn_sst.close()
-                                        if not df_sst.empty:
-                                            v_oficial = str(df_sst.iloc[0].get("validade", "")).strip()
-                                            if v_oficial and v_oficial != "N/D":
-                                                val_ca_str = v_oficial
-                                                ca_encontrado = True
+                                    tabelas = [r[0] for r in cur_sst.fetchall()]
+                                    
+                                    tabela_alvo = None
+                                    colunas_alvo = []
+                                    for tab in tabelas:
+                                        cur_sst.execute(f"PRAGMA table_info({tab});")
+                                        cols = [col[1] for col in cur_sst.fetchall()]
+                                        if any("ca" in c.lower() for c in cols):
+                                            tabela_alvo = tab
+                                            colunas_alvo = cols
+                                            break
+                                            
+                                    if tabela_alvo:
+                                        col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next((c for c in colunas_alvo if "ca" in c.lower()), None)
+                                        query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
+                                        df_res = pd.read_sql(query, conn_sst, params=(novo_epi_ca.strip(), f"%{novo_epi_ca.strip()}%"))
+                                        
+                                        if not df_res.empty:
+                                            linha = df_res.iloc[0]
+                                            linha_lower = {str(k).lower(): v for k, v in linha.items()}
+                                            for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
+                                                if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
+                                                    val_ca_str = str(linha_lower[chave_val]).strip()
+                                                    break
+                                            ca_encontrado = True
+                                    conn_sst.close()
                             except Exception:
                                 pass
     
                         if novo_epi_ca.strip() and not ca_encontrado:
-                            st.error("❌ CA não localizado.")
+                            st.error("❌ CA não localizado na base oficial de CAs.")
                             st.stop()
-                        # --------------------------------------------------------
+                        # --------------------------------------------------
     
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
