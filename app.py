@@ -3633,13 +3633,18 @@ if menu == "Cadastros Gerais":
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
                         
-                        # --- INTEGRAÇÃO COM A BASE OFICIAL DE CA ---
+                        # --- INTEGRAÇÃO CORRIGIDA COM A BASE OFICIAL DE CAs (cassilab_sst.db) ---
                         val_ca_str = validade_ca_input.strftime("%d/%m/%Y")
+                        status_ca_cad = "🟢 Válido"
+                        
                         if novo_epi_ca.strip():
-                            dados_oficiais = consultar_dados_ca(DB_NAME, novo_epi_ca.strip())
-                            if dados_oficiais and dados_oficiais[1]:
-                                val_ca_str = str(dados_oficiais[1]).strip() # Puxa a validade oficial automaticamente se houver!
-                        # -------------------------------------------
+                            # Chama a função que busca na base oficial de 42 mil CAs
+                            info_ca_oficial = _buscar_info_ca_cassilab(novo_epi_ca.strip(), "cassilab_sst.db")
+                            if info_ca_oficial["encontrado"]:
+                                if info_ca_oficial["validade"] and info_ca_oficial["validade"] != "N/D":
+                                    val_ca_str = info_ca_oficial["validade"]
+                                status_ca_cad = info_ca_oficial["status_ca"]
+                        # ------------------------------------------------------------------------
 
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
