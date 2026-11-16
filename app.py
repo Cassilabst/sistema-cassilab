@@ -4012,10 +4012,10 @@ if menu == "Cadastros Gerais":
         else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
-        # --- BOTÃO PARA GERAR RELATÓRIO EM PDF DOS EPIS (FORMATO PAISAGEM COM VALIDADE E STATUS) ---
+        # --- BOTÃO UNIFICADO PARA IMPRIMIR / SALVAR PDF DOS EPIS ---
         st.markdown("---")
         st.subheader("📄 Relatório em PDF de EPIs Cadastrados")
-        st.markdown("Gere um documento em PDF em formato paisagem listando todos os EPIs, CAs, Validades e Status para uma empresa específica.")
+        st.markdown("Gere o documento em formato paisagem com validades e status prontos para impressão ou arquivo.")
 
         col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
         empresa_rel_epi_geral = col_pdf_e1.selectbox(
@@ -4027,7 +4027,7 @@ if menu == "Cadastros Gerais":
         with col_pdf_e2:
             st.write("")
             st.write("")
-            btn_gerar_pdf_cad_epis = st.button("📥 Gerar PDF de EPIs", use_container_width=True, key="btn_exec_pdf_cad_epis")
+            btn_gerar_pdf_cad_epis = st.button("📄 Gerar Relatório PDF", use_container_width=True, key="btn_exec_pdf_cad_epis")
 
         if btn_gerar_pdf_cad_epis:
             if empresa_rel_epi_geral == "Nenhuma":
@@ -4054,7 +4054,7 @@ if menu == "Cadastros Gerais":
                     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
                     buffer = io.BytesIO()
-                    # Configurado para Paisagem (landscape) para aproveitar melhor o espaço lateral
+                    # Formato Paisagem (landscape)
                     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
                     elements = []
                     
@@ -4076,7 +4076,6 @@ if menu == "Cadastros Gerais":
                     elements.append(Paragraph(f"<b>Empresa:</b> {empresa_rel_epi_geral} | <b>Emitido em:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitulo_style))
                     elements.append(Spacer(1, 10))
                     
-                    # Função auxiliar para formatar o Status no relatório
                     def calcular_status_pdf(val_str):
                         val_str = str(val_str or "").strip()
                         if not val_str or val_str in ("Não localizado", "Base ausente", "Erro na consulta", "⚪ Não encontrado"):
@@ -4112,7 +4111,6 @@ if menu == "Cadastros Gerais":
                             status_calc
                         ])
                         
-                    # Larguras ajustadas para a folha em formato paisagem (Total ~780pt)
                     t_pdf = Table(tabela_dados, colWidths=[180, 260, 110, 130, 100])
                     t_pdf.setStyle(TableStyle([
                         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1b365d')),
@@ -4133,37 +4131,31 @@ if menu == "Cadastros Gerais":
                     doc.build(elements)
                     buffer.seek(0)
                     
-                    st.success("✅ Relatório em PDF gerado com sucesso em formato paisagem!")
-                    
-                    # Botão padrão de Download
-                    st.download_button(
-                        label=f"📥 Baixar PDF - {empresa_rel_epi_geral}",
-                        data=buffer,
-                        file_name=f"epis_cadastrados_{empresa_rel_epi_geral.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                    
-                    # Botão para abrir pré-visualização e disparo de impressão direta via navegador
                     pdf_bytes = buffer.getvalue()
                     b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                    pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="1" height="1" style="display:none;"></iframe>'
                     
-                    html_print = f"""
-                    <script>
-                        function printPDF() {{
-                            var iframe = document.createElement('iframe');
-                            iframe.style.display = 'none';
-                            iframe.src = "data:application/pdf;base64,{b64_pdf}";
-                            document.body.appendChild(iframe);
-                            iframe.contentWindow.print();
-                        }}
-                    </script>
-                    <button onclick="printPDF()" style="width: 100%; background-color: #ff4b4b; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 8px; font-family: sans-serif;">
-                        🖨️ Imprimir PDF Diretamente
-                    </button>
-                    """
-                    st.markdown(pdf_display + html_print, unsafe_allow_html=True)
+                    st.success("✅ Relatório gerado com sucesso!")
+                    
+                    # Botão limpo que abre o PDF em nova aba (contendo os botões nativos de Imprimir e Salvar)
+                    html_botao_unico = f'''
+                    <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" style="
+                        display: block;
+                        width: 100%;
+                        background-color: #ff4b4b;
+                        color: white;
+                        text-align: center;
+                        padding: 0.6rem 1rem;
+                        border-radius: 4px;
+                        font-weight: 600;
+                        text-decoration: none;
+                        font-family: sans-serif;
+                        margin-top: 10px;
+                        box-sizing: border-box;
+                    ">
+                        🖨️ Abrir / Imprimir / Salvar PDF em Nova Aba
+                    </a>
+                    '''
+                    st.markdown(html_botao_unico, unsafe_allow_html=True)
 
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
