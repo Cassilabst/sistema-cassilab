@@ -1,10 +1,132 @@
 import base64
 from datetime import datetime, timedelta, timezone
 import math
+import os
 import sqlite3
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+
+def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
+    ca_limpo = str(ca_numero or "").strip()
+    if not ca_limpo or ca_limpo.lower() in ("nan", "none", ""):
+        return {
+            "encontrado": False,
+            "valido": False,
+            "validade": "",
+            "status_ca": "⚪ Sem CA",
+            "descricao": "",
+        }
+
+    if not os.path.exists(db_ca_path):
+        return {
+            "encontrado": False,
+            "valido": False,
+            "validade": "",
+            "status_ca": "⚠️ Base CA ausente",
+            "descricao": "",
+        }
+
+    try:
+        conn_ca = sqlite3.connect(db_ca_path, timeout=5.0)
+        cur_ca = conn_ca.cursor()
+        cur_ca.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tabelas = [r[0] for r in cur_ca.fetchall()]
+
+        tabela_alvo = None
+        colunas_alvo = []
+        for tab in tabelas:
+            cur_ca.execute(f"PRAGMA table_info({tab});")
+            cols = [col[1] for col in cur_ca.fetchall()]
+            if any("ca" in c.lower() for c in cols):
+                tabela_alvo = tab
+                colunas_alvo = cols
+                break
+
+        if not tabela_alvo:
+            conn_ca.close()
+            return {
+                "encontrado": False,
+                "valido": False,
+                "validade": "",
+                "status_ca": "⚠️ Tabela CA não encontrada",
+                "descricao": "",
+            }
+
+        col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next(
+            (c for c in colunas_alvo if "ca" in c.lower()), None
+        )
+
+        query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
+        df_res = pd.read_sql(query, conn_ca, params=(ca_limpo, f"%{ca_limpo}%"))
+        conn_ca.close()
+
+        if df_res.empty:
+            return {
+                "encontrado": False,
+                "valido": False,
+                "validade": "Não encontrado",
+                "status_ca": "⚪ Não encontrado",
+                "descricao": "",
+            }
+
+        linha = df_res.iloc[0]
+        linha_lower = {str(k).lower(): v for k, v in linha.items()}
+
+        validade = ""
+        for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
+            if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
+                validade = str(linha_lower[chave_val]).strip()
+                break
+
+        situacao_bruta = ""
+        for chave_sit in ("situacao", "status", "situacao_ca"):
+            if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
+                situacao_bruta = str(linha_lower[chave_sit]).strip()
+                break
+
+        descricao = ""
+        for chave_desc in ("equipamento", "descricao", "nome_equipamento", "produto"):
+            if chave_desc in linha_lower and pd.notna(linha_lower[chave_desc]):
+                descricao = str(linha_lower[chave_desc]).strip()
+                break
+
+        sit_upper = situacao_bruta.upper()
+        if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
+            status_ca = f"🔴 {situacao_bruta.capitalize() if situacao_bruta else 'Irregular'}"
+            valido = False
+        else:
+            status_ca = "🟢 Válido"
+            valido = True
+
+        return {
+            "encontrado": True,
+            "valido": valido,
+            "validade": validade or "N/D",
+            "status_ca": status_ca,
+            "descricao": descricao,
+        }
+    except Exception:
+        return {
+            "encontrado": False,
+            "valido": False,
+            "validade": "Erro",
+            "status_ca": "⚠️ Erro na consulta",
+            "descricao": "",
+        }
+
+
+def _garantir_colunas_ca_epis(conn):
+    for col_sql in (
+        "ALTER TABLE epis ADD COLUMN validade_ca TEXT",
+        "ALTER TABLE epis ADD COLUMN status_ca TEXT",
+    ):
+        try:
+            conn.execute(col_sql)
+        except Exception:
+            pass
+    conn.commit()
 
 
 def renderizar_aba_epis(*args, **kwargs):
@@ -138,7 +260,6 @@ def renderizar_aba_epis(*args, **kwargs):
             return f"🟡 {v}"
         return f"🟢 {v}"
 
-    # CSS global para ocultar o botão do "olhinho" em todos os campos de senha por segurança
     st.markdown(
         """
         <style>
@@ -152,16 +273,19 @@ def renderizar_aba_epis(*args, **kwargs):
         """,
         unsafe_allow_html=True,
     )
-    
+
     fuso_brasil = timezone(timedelta(hours=-3))
 
     @st.dialog("✏️ Corrigir Lançamento de EPI (Autorização por PIN)")
     def modal_editar_registro_pin(id_registro, empresa_atual):
-        st.markdown("""
+        st.markdown(
+            """
             <style>
             [title="Show password text"], button[aria-label="Show password text"], button[title*="password"], .stTextInput input[type="password"] ~ div button { display: none !important; }
             </style>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
 
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
         df_reg = pd.read_sql("SELECT * FROM epis WHERE id = ?", conn, params=(id_registro,))
@@ -186,7 +310,6 @@ def renderizar_aba_epis(*args, **kwargs):
             novo_epi = st.text_input("Novo EPI", value=str(epi_atual))
             novo_ca = st.text_input("Novo CA", value=str(ca_atual))
             nova_qtd = st.number_input("Nova Quantidade", min_value=1, value=int(qtd_atual))
-            
             pin_autorizacao = st.text_input("PIN de 4 dígitos do Colaborador", type="password", max_chars=4)
 
             btn_salvar_alt = st.form_submit_button("💾 Salvar Correção Autorizada", type="primary")
@@ -204,12 +327,22 @@ def renderizar_aba_epis(*args, **kwargs):
                 elif pin_autorizacao.strip() != pin_cadastrado:
                     st.error("❌ PIN incorreto! A correção não pode ser salva sem a autorização correta do colaborador.")
                 else:
+                    info_ca_nova = _buscar_info_ca_cassilab(novo_ca.strip())
                     data_hora_br = datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')
                     status_corrigido = f"Corrigido via PIN em {data_hora_br}"
                     conn_upd = sqlite3.connect(DB_NAME, timeout=10.0)
+                    _garantir_colunas_ca_epis(conn_upd)
                     conn_upd.execute(
-                        "UPDATE epis SET epi = ?, ca = ?, quantidade = ?, status = ? WHERE id = ?",
-                        (novo_epi.strip(), novo_ca.strip(), int(nova_qtd), status_corrigido, id_registro)
+                        "UPDATE epis SET epi = ?, ca = ?, quantidade = ?, status = ?, validade_ca = ?, status_ca = ? WHERE id = ?",
+                        (
+                            novo_epi.strip(),
+                            novo_ca.strip(),
+                            int(nova_qtd),
+                            status_corrigido,
+                            info_ca_nova["validade"],
+                            info_ca_nova["status_ca"],
+                            id_registro,
+                        ),
                     )
                     conn_upd.commit()
                     conn_upd.close()
@@ -225,14 +358,16 @@ def renderizar_aba_epis(*args, **kwargs):
 
     @st.dialog("🗑️ Excluir Lançamento(s) de EPI (Autorização por PIN)")
     def modal_excluir_registros_pin(ids_lista, empresa_atual):
-        st.markdown("""
+        st.markdown(
+            """
             <style>
             [title="Show password text"], button[aria-label="Show password text"], button[title*="password"], .stTextInput input[type="password"] ~ div button { display: none !important; }
             </style>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
 
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
-      
         placeholders = ','.join(['?'] * len(ids_lista))
         df_alvo = pd.read_sql(f"SELECT id, funcionario, epi FROM epis WHERE id IN ({placeholders})", conn, params=tuple(ids_lista))
         conn.close()
@@ -256,7 +391,7 @@ def renderizar_aba_epis(*args, **kwargs):
             if btn_confirmar_del:
                 conn_p = sqlite3.connect(DB_NAME, timeout=10.0)
                 cur_p = conn_p.cursor()
-                
+
                 autorizado = False
                 colaborador_autorizador = ""
                 for func in funcionarios:
@@ -328,6 +463,7 @@ def renderizar_aba_epis(*args, **kwargs):
     st.markdown("---")
 
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    _garantir_colunas_ca_epis(conn)
     df = pd.read_sql("SELECT * FROM epis", conn)
 
     try:
@@ -335,7 +471,7 @@ def renderizar_aba_epis(*args, **kwargs):
             "SELECT empresa, epi, tipo FROM cad_epis", conn
         )
         df_cad_tipos = df_cad_tipos.drop_duplicates(subset=["empresa", "epi"])
-    except:
+    except Exception:
         df_cad_tipos = pd.DataFrame()
 
     conn.close()
@@ -384,7 +520,37 @@ def renderizar_aba_epis(*args, **kwargs):
     )
 
     with aba_lista:
-        st.markdown("### 📋 Registros de Entrega de EPIs")
+        col_tit_lista, col_btn_atualizar_ca = st.columns([3, 2])
+        col_tit_lista.markdown("### 📋 Registros de Entrega de EPIs")
+        if col_btn_atualizar_ca.button(
+            "🔄 Atualizar CAs Já Lançados",
+            use_container_width=True,
+            key="btn_atualizar_cas_lancados",
+        ):
+            conn_upd_ca = sqlite3.connect(DB_NAME, timeout=10.0)
+            _garantir_colunas_ca_epis(conn_upd_ca)
+            if empresa_selecionada == "Todas":
+                df_all_epis = pd.read_sql("SELECT id, ca FROM epis", conn_upd_ca)
+            else:
+                df_all_epis = pd.read_sql(
+                    "SELECT id, ca FROM epis WHERE LOWER(TRIM(empresa)) = ?",
+                    conn_upd_ca,
+                    params=(str(empresa_selecionada).strip().lower(),),
+                )
+
+            atualizados_qtd = 0
+            for _, row_ep in df_all_epis.iterrows():
+                info_ca = _buscar_info_ca_cassilab(row_ep.get("ca"))
+                conn_upd_ca.execute(
+                    "UPDATE epis SET validade_ca = ?, status_ca = ? WHERE id = ?",
+                    (info_ca["validade"], info_ca["status_ca"], int(row_ep["id"])),
+                )
+                atualizados_qtd += 1
+            conn_upd_ca.commit()
+            conn_upd_ca.close()
+            st.success(f"✅ {atualizados_qtd} lançamento(s) verificado(s) e atualizado(s) com a base de CAs!")
+            st.rerun()
+
         if df.empty:
             st.info("Nenhum registro de EPI encontrado.")
         else:
@@ -436,6 +602,8 @@ def renderizar_aba_epis(*args, **kwargs):
                     "tipo",
                     "epi",
                     "ca",
+                    "validade_ca",
+                    "status_ca",
                     "data_entrega",
                     "quantidade",
                     "status",
@@ -542,6 +710,7 @@ def renderizar_aba_epis(*args, **kwargs):
             )
         else:
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
+            _garantir_colunas_ca_epis(conn)
 
             try:
                 conn.execute(
@@ -619,15 +788,12 @@ def renderizar_aba_epis(*args, **kwargs):
                             mapa_ca.get(epi_sel, "")
                         )
                         st.rerun()
-
-                    ca_sug = st.session_state["unificado_ca"]
                 else:
                     epi_sel = col_l2.text_input(
                         "EPI",
                         value="Óculos de Proteção",
                         key="unificado_epi_txt",
                     )
-                    ca_sug = ""
 
                 col_l3, col_l4, col_l5 = st.columns(3)
                 ca_in = col_l3.text_input("Número do CA", key="unificado_ca")
@@ -639,48 +805,25 @@ def renderizar_aba_epis(*args, **kwargs):
                 qtd_in = col_l5.number_input(
                     "Quantidade", min_value=1, value=1, key="unificado_qtd"
                 )
-            
-                # Validação automática do CA na base cassilab_sst.db
-                if ca_in and ca_in.strip():
-                    try:
-                        import os
-                        db_ca_path = "cassilab_sst.db"
-                        if os.path.exists(db_ca_path):
-                            conn_ca = sqlite3.connect(db_ca_path, timeout=5.0)
-                            cur_ca = conn_ca.cursor()
-                            cur_ca.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                            t_list = [r[0] for r in cur_ca.fetchall()]
-                            
-                            t_alvo = None
-                            for t in t_list:
-                                cur_ca.execute(f"PRAGMA table_info({t});")
-                                cols = [col[1].lower() for col in cur_ca.fetchall()]
-                                if any("ca" in c for c in cols):
-                                    t_alvo = t
-                                    break
-                            
-                            if t_alvo:
-                                query = f"SELECT * FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1"
-                                df_ca_res = pd.read_sql(query, conn_ca, params=(f"%{ca_in.strip()}%", ca_in.strip()))
-                                conn_ca.close()
-                                
-                                if not df_ca_res.empty:
-                                    r_ca = df_ca_res.iloc[0]
-                                    sit = str(r_ca.get("situacao", r_ca.get("status", "Ativo"))).upper()
-                                    val = str(r_ca.get("validade", "N/D"))
-                                    desc = str(r_ca.get("equipamento", r_ca.get("descricao", "")))
-                                    
-                                    if "VENCIDO" in sit or "CANCELADO" in sit or "SUSPENSO" in sit:
-                                        st.error(f"⚠️ **Atenção:** CA **{ca_in.strip()}** consta como **{sit}**! (Validade: {val}) - {desc[:100]}")
-                                    else:
-                                        st.success(f"✅ **CA {ca_in.strip()} Válido / Ativo.** (Validade: {val}) | {desc[:100]}")
-                                else:
-                                    conn_ca.close()
-                                    st.warning(f"ℹ️ CA **{ca_in.strip()}** não encontrado na base de CAs.")
-                            else:
-                                conn_ca.close()
-                    except Exception as e:
-                        pass
+
+                # Validação automática do CA ao informar/puxar o número
+                info_ca_atual = _buscar_info_ca_cassilab(ca_in)
+                if str(ca_in or "").strip():
+                    if info_ca_atual["encontrado"]:
+                        if info_ca_atual["valido"]:
+                            st.success(
+                                f"✅ **CA {str(ca_in).strip()} Válido** | Validade: **{info_ca_atual['validade']}**"
+                                + (f" — {info_ca_atual['descricao'][:90]}" if info_ca_atual["descricao"] else "")
+                            )
+                        else:
+                            st.error(
+                                f"⚠️ **CA {str(ca_in).strip()} ({info_ca_atual['status_ca']})** | Validade: **{info_ca_atual['validade']}**"
+                                + (f" — {info_ca_atual['descricao'][:90]}" if info_ca_atual["descricao"] else "")
+                            )
+                    else:
+                        st.warning(
+                            f"ℹ️ **CA {str(ca_in).strip()}** não localizado na base `cassilab_sst.db`."
+                        )
 
                 tipo_assinatura_lanc = st.radio(
                     "🔑 Forma de Validação / Assinatura",
@@ -697,7 +840,7 @@ def renderizar_aba_epis(*args, **kwargs):
                     if st.session_state.get("reset_pin_input", False):
                         st.session_state["pin_lanc_epi_input"] = ""
                         st.session_state["reset_pin_input"] = False
-                        
+
                     pin_informado = st.text_input(
                         "Digite o PIN (4 dígitos) do Colaborador para"
                         " Confirmar",
@@ -769,10 +912,11 @@ def renderizar_aba_epis(*args, **kwargs):
                         data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now(fuso_brasil).strftime('%H:%M')}"
 
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                        _garantir_colunas_ca_epis(conn)
                         conn.execute(
                             """
-                            INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, data_entrega, quantidade, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, validade_ca, status_ca, data_entrega, quantidade, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 empresa_selecionada,
@@ -782,6 +926,8 @@ def renderizar_aba_epis(*args, **kwargs):
                                 str(setor_f),
                                 epi_sel,
                                 ca_in.strip(),
+                                info_ca_atual["validade"],
+                                info_ca_atual["status_ca"],
                                 data_hora_atual_str,
                                 int(qtd_in),
                                 status_gravacao,
@@ -790,10 +936,9 @@ def renderizar_aba_epis(*args, **kwargs):
                         conn.commit()
                         conn.close()
 
-                        # Zera imediatamente a senha para sumir da tela após salvar
                         if "pin_lanc_epi_input" in st.session_state:
                             st.session_state["reset_pin_input"] = True
-                            
+
                         st.success(
                             "✅ Entrega de EPI cadastrada com sucesso!"
                         )
@@ -808,6 +953,7 @@ def renderizar_aba_epis(*args, **kwargs):
                         st.rerun()
                     else:
                         st.error("Preencha todos os campos obrigatórios.")
+
                 st.markdown("---")
                 st.markdown(
                     "### 📄 Configuração e Geração da Ficha Individual (Paisagem)"
@@ -1074,6 +1220,7 @@ def renderizar_aba_epis(*args, **kwargs):
     st.markdown("---")
     st.subheader("📋 Histórico de Entregas Cadastradas")
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    _garantir_colunas_ca_epis(conn)
     df_hist = pd.read_sql(
         "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
         conn,
@@ -1084,7 +1231,7 @@ def renderizar_aba_epis(*args, **kwargs):
     if not df_hist.empty:
         if "id" in df_hist.columns:
             df_hist = df_hist.drop(columns=["id"])
-            
+
         df_hist["_id_banco"] = df_hist.index
         if "Selecionar" not in df_hist.columns:
             df_hist.insert(0, "Selecionar", False)
