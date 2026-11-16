@@ -3774,6 +3774,81 @@ if menu == "Cadastros Gerais":
             ]
 
         if not df_epis_geral.empty:
+            # --- BOTÃO PARA ATUALIZAR CAs JÁ CADASTRADOS QUE ESTÃO SEM VALIDADE ---
+            if st.button("🔄 Preencher Validade Automática dos CAs em Branco", use_container_width=True, key="btn_atualizar_cad_vazios"):
+                conn_upd = sqlite_original.connect(DB_NAME, timeout=10.0)
+                try:
+                    conn_upd.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
+                except:
+                    pass
+                
+                # Busca todos os registos que estão com validade vazia ou nula
+                df_vazios = pd.read_sql("SELECT id, ca FROM cad_epis WHERE validade_ca IS NULL OR validade_ca = '' OR validade_ca = '⚪ Sem CA'", conn_upd)
+                atualizados = 0
+                
+                if not df_vazios.empty and os.path.exists("cassilab_sst.db"):
+                    import sqlite3, os, pandas as pd
+                    conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
+                    cur_sst = conn_sst.cursor()
+                    cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                    tabelas = [r[0] for r in cur_sst.fetchall()]
+                    
+                    tabela_alvo = None
+                    colunas_alvo = []
+                    for tab in tabelas:
+                        cur_sst.execute(f"PRAGMA table_info({tab});")
+                        cols = [col[1] for col in cur_sst.fetchall()]
+                        if any("ca" in c.lower() for c in cols):
+                            tabela_alvo = tab
+                            colunas_alvo = cols
+                            break
+                            
+                    if tabela_alvo:
+                        col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next((c for c in colunas_alvo if "ca" in c.lower()), None)
+                        for _, r_cad in df_vazios.iterrows():
+                            ca_val = str(r_cad.get("ca", "")).strip()
+                            if not ca_val:
+                                continue
+                                
+                            query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
+                            df_res = pd.read_sql(query, conn_sst, params=(ca_val, f"%{ca_val}%"))
+                            
+                            val_ca_str = ""
+                            if not df_res.empty:
+                                linha = df_res.iloc[0]
+                                linha_lower = {str(k).lower(): v for k, v in linha.items()}
+                                
+                                for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
+                                    if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
+                                        v_oficial = str(linha_lower[chave_val]).strip()
+                                        if v_oficial and v_oficial != "N/D":
+                                            val_ca_str = v_oficial
+                                        break
+                                        
+                                situacao_bruta = ""
+                                for chave_sit in ("situacao", "status", "situacao_ca"):
+                                    if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
+                                        situacao_bruta = str(linha_lower[chave_sit]).strip()
+                                        break
+                                        
+                                sit_upper = situacao_bruta.upper()
+                                if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
+                                    val_ca_str = f"🔴 {situacao_bruta.capitalize()} ({val_ca_str})" if val_ca_str else f"🔴 {situacao_bruta.capitalize()}"
+                                else:
+                                    if not val_ca_str:
+                                        val_ca_str = "🟢 Válido"
+                            else:
+                                val_ca_str = "⚪ Não encontrado"
+                                
+                            conn_upd.execute("UPDATE cad_epis SET validade_ca = ? WHERE id = ?", (val_ca_str, int(r_cad["id"])))
+                            atualizados += 1
+                    conn_sst.close()
+                    
+                conn_upd.commit()
+                conn_upd.close()
+                st.success(f"✅ {atualizados} CAs antigos atualizados com sucesso com base na base oficial!")
+                st.rerun()
+            # ---------------------------------------------------------------------
             # Calcula o status automaticamente com base na data de validade do CA
             df_epis_geral["status"] = df_epis_geral["validade_ca"].apply(
                 lambda x: formatar_status_visual(calcular_status_por_data(x), "doc")
