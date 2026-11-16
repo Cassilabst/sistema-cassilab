@@ -4012,10 +4012,10 @@ if menu == "Cadastros Gerais":
         else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
-        # --- BOTÃO PARA GERAR RELATÓRIO EM PDF DOS EPIS ---
+        # --- BOTÃO PARA GERAR RELATÓRIO EM PDF DOS EPIS (FORMATO PAISAGEM COM VALIDADE E STATUS) ---
         st.markdown("---")
         st.subheader("📄 Relatório em PDF de EPIs Cadastrados")
-        st.markdown("Gere um documento em PDF listando todos os EPIs e CAs cadastrados para uma empresa específica.")
+        st.markdown("Gere um documento em PDF em formato paisagem listando todos os EPIs, CAs, Validades e Status para uma empresa específica.")
 
         col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
         empresa_rel_epi_geral = col_pdf_e1.selectbox(
@@ -4027,7 +4027,7 @@ if menu == "Cadastros Gerais":
         with col_pdf_e2:
             st.write("")
             st.write("")
-            btn_gerar_pdf_cad_epis = st.button("📥 Baixar PDF de EPIs", use_container_width=True, key="btn_exec_pdf_cad_epis")
+            btn_gerar_pdf_cad_epis = st.button("📥 Gerar PDF de EPIs", use_container_width=True, key="btn_exec_pdf_cad_epis")
 
         if btn_gerar_pdf_cad_epis:
             if empresa_rel_epi_geral == "Nenhuma":
@@ -4036,7 +4036,7 @@ if menu == "Cadastros Gerais":
                 conn_pdf_e = sqlite_original.connect(DB_NAME, timeout=10.0)
                 try:
                     df_pdf_epis = pd.read_sql(
-                        "SELECT tipo, epi, ca FROM cad_epis WHERE empresa = ? ORDER BY tipo ASC, epi ASC",
+                        "SELECT tipo, epi, ca, validade_ca FROM cad_epis WHERE empresa = ? ORDER BY tipo ASC, epi ASC",
                         conn_pdf_e,
                         params=(empresa_rel_epi_geral,)
                     )
@@ -4048,13 +4048,14 @@ if menu == "Cadastros Gerais":
                     st.warning(f"⚠️ Não há EPIs cadastrados para a empresa **{empresa_rel_epi_geral}**.")
                 else:
                     import io
-                    from reportlab.lib.pagesizes import A4
+                    from reportlab.lib.pagesizes import A4, landscape
                     from reportlab.lib import colors
                     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
                     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
                     buffer = io.BytesIO()
-                    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+                    # Configurado para Paisagem (landscape) para aproveitar melhor o espaço lateral
+                    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
                     elements = []
                     
                     styles = getSampleStyleSheet()
@@ -4062,8 +4063,8 @@ if menu == "Cadastros Gerais":
                     
                     titulo_style = ParagraphStyle(
                         'TituloRelatorio', parent=normal_style,
-                        fontName='Helvetica-Bold', fontSize=15,
-                        textColor=colors.HexColor('#1b365d'), alignment=1, spaceAfter=8
+                        fontName='Helvetica-Bold', fontSize=16,
+                        textColor=colors.HexColor('#1b365d'), alignment=1, spaceAfter=6
                     )
                     subtitulo_style = ParagraphStyle(
                         'SubTituloRelatorio', parent=normal_style,
@@ -4071,19 +4072,48 @@ if menu == "Cadastros Gerais":
                         textColor=colors.HexColor('#555555'), alignment=1, spaceAfter=15
                     )
                     
-                    elements.append(Paragraph(f"<b>Relatório de EPIs e CAs Cadastrados</b>", titulo_style))
+                    elements.append(Paragraph(f"<b>Relatório de EPIs, CAs e Validades Cadastrados</b>", titulo_style))
                     elements.append(Paragraph(f"<b>Empresa:</b> {empresa_rel_epi_geral} | <b>Emitido em:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitulo_style))
                     elements.append(Spacer(1, 10))
                     
-                    tabela_dados = [["Tipo / Categoria", "Nome do EPI", "Número do CA"]]
+                    # Função auxiliar para formatar o Status no relatório
+                    def calcular_status_pdf(val_str):
+                        val_str = str(val_str or "").strip()
+                        if not val_str or val_str in ("Não localizado", "Base ausente", "Erro na consulta", "⚪ Não encontrado"):
+                            return "Não localizado"
+                        if "VENCIDO" in val_str.upper() or "CANCELADO" in val_str.upper():
+                            return "Vencido"
+                        if "VÁLIDO" in val_str.upper() or "🟢" in val_str:
+                            return "Válido"
+                        
+                        import datetime, re
+                        match = re.search(r'(\d{2})/(\d{2})/(\d{4})', val_str)
+                        if match:
+                            try:
+                                d, m, y = map(int, match.groups())
+                                data_val = datetime.date(y, m, d)
+                                if data_val >= datetime.date.today():
+                                    return "Válido"
+                                else:
+                                    return "Vencido"
+                            except:
+                                pass
+                        return "Válido"
+
+                    tabela_dados = [["Tipo / Categoria", "Nome do EPI", "Número do CA", "Validade CA", "Status CA"]]
                     for _, row in df_pdf_epis.iterrows():
+                        val_bruta = str(row.get("validade_ca", ""))
+                        status_calc = calcular_status_pdf(val_bruta)
                         tabela_dados.append([
                             str(row.get("tipo", "Diversos")),
                             str(row.get("epi", "")),
-                            str(row.get("ca", ""))
+                            str(row.get("ca", "")),
+                            val_bruta,
+                            status_calc
                         ])
                         
-                    t_pdf = Table(tabela_dados, colWidths=[160, 225, 110])
+                    # Larguras ajustadas para a folha em formato paisagem (Total ~780pt)
+                    t_pdf = Table(tabela_dados, colWidths=[180, 260, 110, 130, 100])
                     t_pdf.setStyle(TableStyle([
                         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1b365d')),
                         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -4103,7 +4133,9 @@ if menu == "Cadastros Gerais":
                     doc.build(elements)
                     buffer.seek(0)
                     
-                    st.success("✅ Relatório em PDF gerado com sucesso!")
+                    st.success("✅ Relatório em PDF gerado com sucesso em formato paisagem!")
+                    
+                    # Botão padrão de Download
                     st.download_button(
                         label=f"📥 Baixar PDF - {empresa_rel_epi_geral}",
                         data=buffer,
@@ -4111,6 +4143,27 @@ if menu == "Cadastros Gerais":
                         mime="application/pdf",
                         use_container_width=True
                     )
+                    
+                    # Botão para abrir pré-visualização e disparo de impressão direta via navegador
+                    pdf_bytes = buffer.getvalue()
+                    b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                    pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="1" height="1" style="display:none;"></iframe>'
+                    
+                    html_print = f"""
+                    <script>
+                        function printPDF() {{
+                            var iframe = document.createElement('iframe');
+                            iframe.style.display = 'none';
+                            iframe.src = "data:application/pdf;base64,{b64_pdf}";
+                            document.body.appendChild(iframe);
+                            iframe.contentWindow.print();
+                        }}
+                    </script>
+                    <button onclick="printPDF()" style="width: 100%; background-color: #ff4b4b; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 8px; font-family: sans-serif;">
+                        🖨️ Imprimir PDF Diretamente
+                    </button>
+                    """
+                    st.markdown(pdf_display + html_print, unsafe_allow_html=True)
 
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
