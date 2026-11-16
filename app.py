@@ -3834,11 +3834,13 @@ if menu == "Cadastros Gerais":
                     tabelas = [r[0] for r in cur_sst.fetchall()]
                     
                     for _, r_cad in df_todos.iterrows():
-                        ca_val = str(r_cad.get("ca", "")).strip()
-                        if not ca_val:
+                        ca_raw = str(r_cad.get("ca", "")).strip()
+                        if not ca_raw:
                             continue
                         
-                        ca_limpo_num = ca_val.lstrip('0')
+                        # Remove pontos, traços e quaisquer caracteres não numéricos (ex: "30.456" vira "30456")
+                        ca_val_limpo = re.sub(r'\D', '', ca_raw)
+                        ca_limpo_num = ca_val_limpo.lstrip('0')
                         val_ca_gravacao = "Não localizado"
                         
                         # Varre a base oficial procurando o CA
@@ -3849,17 +3851,15 @@ if menu == "Cadastros Gerais":
                                 
                                 encontrou = False
                                 for col in cols:
-                                    # Busca exata ou por aproximação segura do CA
+                                    # Procura utilizando o CA limpo apenas com números
                                     query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) LIKE ? LIMIT 3"
-                                    df_res = pd.read_sql(query, conn_sst, params=(ca_val, ca_limpo_num, f"%{ca_val}%"))
+                                    df_res = pd.read_sql(query, conn_sst, params=(ca_val_limpo, ca_limpo_num, f"%{ca_val_limpo}%"))
                                     
                                     if not df_res.empty:
                                         for _, row in df_res.iterrows():
                                             linha_completa = ";".join([str(val) for val in row.values])
                                             
-                                            # Verifica se o CA realmente pertence a esta linha de forma flexível
-                                            if ca_val in linha_completa or ca_limpo_num in linha_completa:
-                                                # Tenta extrair qualquer data válida (formato DD/MM/YYYY ou YYYY-MM-DD) da linha
+                                            if ca_val_limpo in linha_completa or ca_limpo_num in linha_completa:
                                                 partes = [p.strip('"\' ') for p in linha_completa.split(';')]
                                                 val_oficial = ""
                                                 for parte in partes:
