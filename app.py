@@ -3633,8 +3633,10 @@ if menu == "Cadastros Gerais":
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
                         
-                        # --- BUSCA DIRETA DA VALIDADE NO cassilab_sst.db ---
-                        val_ca_str = validade_ca_input.strftime("%d/%m/%Y")
+                        # --- VALIDAÇÃO E BUSCA OBRIGATÓRIA NO cassilab_sst.db ---
+                        val_ca_str = ""
+                        ca_encontrado = False
+                        
                         if novo_epi_ca.strip():
                             try:
                                 import sqlite3, os, pandas as pd
@@ -3645,15 +3647,21 @@ if menu == "Cadastros Gerais":
                                     t_list = [r[0] for r in cur_sst.fetchall()]
                                     t_alvo = t_list[0] if t_list else None
                                     if t_alvo:
-                                        df_sst = pd.read_sql(f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1", conn_sst, params=(f"%{novo_epi_ca.strip()%}", novo_epi_ca.strip()))
+                                        # Correção aplicada aqui embaixo (% fora das chaves):
+                                        df_sst = pd.read_sql(f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1", conn_sst, params=(f"%{novo_epi_ca.strip()}%", novo_epi_ca.strip()))
                                         conn_sst.close()
                                         if not df_sst.empty:
                                             v_oficial = str(df_sst.iloc[0].get("validade", "")).strip()
                                             if v_oficial and v_oficial != "N/D":
                                                 val_ca_str = v_oficial
+                                                ca_encontrado = True
                             except Exception:
                                 pass
-                        # --------------------------------------------------
+
+                        if novo_epi_ca.strip() and not ca_encontrado:
+                            st.error("❌ CA não localizado.")
+                            st.stop()
+                        # --------------------------------------------------------
 
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
