@@ -3609,14 +3609,75 @@ if menu == "Cadastros Gerais":
                 "Luvas",
                 "Diversos",
             ]
-            # Ajustado para 3 colunas, pois removemos a data manual
             c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
             novo_epi_nome = c_epi_1.text_input("Nome do EPI")
-            novo_epi_ca = c_epi_2.text_input("Número do CA")
+            novo_epi_ca = c_epi_2.text_input("Número do CA", key="input_ca_geral_temp")
             tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
             
+            # --- CONSULTA EM TEMPO REAL AO DIGITAR O CA ---
+            ca_digitado = str(st.session_state.get("input_ca_geral_temp", "")).strip()
+            status_ca_preview = "⚪ Aguardando CA..."
+            
+            if ca_digitado:
+                try:
+                    import sqlite3, os, pandas as pd
+                    if os.path.exists("cassilab_sst.db"):
+                        conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
+                        cur_sst = conn_sst.cursor()
+                        cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                        tabelas = [r[0] for r in cur_sst.fetchall()]
+                        
+                        tabela_alvo = None
+                        colunas_alvo = []
+                        for tab in tabelas:
+                            cur_sst.execute(f"PRAGMA table_info({tab});")
+                            cols = [col[1] for col in cur_sst.fetchall()]
+                            if any("ca" in c.lower() for c in cols):
+                                tabela_alvo = tab
+                                colunas_alvo = cols
+                                break
+                                
+                        if tabela_alvo:
+                            col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next((c for c in colunas_alvo if "ca" in c.lower()), None)
+                            query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
+                            df_res = pd.read_sql(query, conn_sst, params=(ca_digitado, f"%{ca_digitado}%"))
+                            
+                            if not df_res.empty:
+                                linha = df_res.iloc[0]
+                                linha_lower = {str(k).lower(): v for k, v in linha.items()}
+                                
+                                val_oficial = ""
+                                for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
+                                    if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
+                                        val_oficial = str(linha_lower[chave_val]).strip()
+                                        break
+                                        
+                                situacao_bruta = ""
+                                for chave_sit in ("situacao", "status", "situacao_ca"):
+                                    if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
+                                        situacao_bruta = str(linha_lower[chave_sit]).strip()
+                                        break
+                                        
+                                sit_upper = situacao_bruta.upper()
+                                if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
+                                    status_ca_preview = f"🔴 {situacao_bruta.capitalize()} (Validade: {val_oficial if val_oficial else 'N/D'})"
+                                else:
+                                    status_ca_preview = f"🟢 Válido (Validade Oficial: {val_oficial if val_oficial else 'N/D'})"
+                            else:
+                                status_ca_preview = "⚪ CA não localizado na base oficial"
+                            conn_sst.close()
+                    else:
+                        status_ca_preview = "⚠️ Base de CAs ausente"
+                except Exception:
+                    status_ca_preview = "⚠️ Erro ao consultar CA"
+                    
+            # Exibe o resultado da consulta em tempo real logo abaixo dos campos
+            if ca_digitado:
+                st.info(f"🔍 **Consulta do CA em tempo real:** {status_ca_preview}")
+            # ---------------------------------------------
+    
             btn_add_salvar_epi = c_epi_1.form_submit_button(
-            "Adicionar e Salvar EPI e CA"
+                "Adicionar e Salvar EPI e CA"
             )
             if btn_add_salvar_epi:
                 if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
@@ -3632,65 +3693,21 @@ if menu == "Cadastros Gerais":
                         
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
+                        val_ca_str = status_ca_preview.replace("🔍 **Consulta do CA em tempo real:** ", "")
                         
-                        # --- BUSCA DINÂMICA ROBUSTA NO cassilab_sst.db ---
-                        val_ca_str = ""
-                        ca_encontrado = False
-                        
-                        if novo_epi_ca.strip():
-                            try:
-                                import sqlite3, os, pandas as pd
-                                if os.path.exists("cassilab_sst.db"):
-                                    conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
-                                    cur_sst = conn_sst.cursor()
-                                    cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                                    tabelas = [r[0] for r in cur_sst.fetchall()]
-                                    
-                                    tabela_alvo = None
-                                    colunas_alvo = []
-                                    for tab in tabelas:
-                                        cur_sst.execute(f"PRAGMA table_info({tab});")
-                                        cols = [col[1] for col in cur_sst.fetchall()]
-                                        if any("ca" in c.lower() for c in cols):
-                                            tabela_alvo = tab
-                                            colunas_alvo = cols
-                                            break
-                                            
-                                    if tabela_alvo:
-                                        col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next((c for c in colunas_alvo if "ca" in c.lower()), None)
-                                        query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
-                                        df_res = pd.read_sql(query, conn_sst, params=(novo_epi_ca.strip(), f"%{novo_epi_ca.strip()}%"))
-                                        
-                                        if not df_res.empty:
-                                            linha = df_res.iloc[0]
-                                            linha_lower = {str(k).lower(): v for k, v in linha.items()}
-                                            for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
-                                                if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
-                                                    val_ca_str = str(linha_lower[chave_val]).strip()
-                                                    break
-                                            ca_encontrado = True
-                                    conn_sst.close()
-                            except Exception:
-                                pass
-    
-                        if novo_epi_ca.strip() and not ca_encontrado:
-                            st.error("❌ CA não localizado na base oficial de CAs.")
-                            st.stop()
-                        # --------------------------------------------------
-    
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
-                            (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel, val_ca_str),
+                            (empresa_epi_sel, epi_fmt, ca_digitado, tipo_epi_sel, val_ca_str),
                         )
                         conn.commit()
                         if "edit_epis_tbl" in st.session_state:
                             del st.session_state["edit_epis_tbl"]
                         st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                        st.session_state["msg_sucesso"] = "✅ EPI cadastrado com o status do CA gravado com sucesso!"
                         registrar_log(
                             st.session_state.get("nome_usuario", "Administrador"),
                             empresa_epi_sel,
-                            f"Adicionou EPI: {epi_fmt} (CA: {novo_epi_ca.strip()}, Validade: {val_ca_str})",
+                            f"Adicionou EPI: {epi_fmt} (CA: {ca_digitado}, Status: {val_ca_str})",
                         )
                         st.rerun()
                     except Exception as e:
