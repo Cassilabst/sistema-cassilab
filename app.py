@@ -4012,10 +4012,10 @@ if menu == "Cadastros Gerais":
         else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
-        # --- BOTÃO UNIFICADO PARA IMPRIMIR / SALVAR PDF DOS EPIS ---
+        # --- RELATÓRIO DE EPIS COM IMPRESSÃO AUTOMÁTICA (IGUAL AOS CONSOLIDADOS) ---
         st.markdown("---")
-        st.subheader("📄 Relatório em PDF de EPIs Cadastrados")
-        st.markdown("Gere o documento em formato paisagem com validades e status prontos para impressão ou arquivo.")
+        st.subheader("📄 Relatório de EPIs Cadastrados")
+        st.markdown("Gere o relatório em formato paisagem com validades, status e abertura automática da janela de impressão.")
 
         col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
         empresa_rel_epi_geral = col_pdf_e1.selectbox(
@@ -4027,7 +4027,7 @@ if menu == "Cadastros Gerais":
         with col_pdf_e2:
             st.write("")
             st.write("")
-            btn_gerar_pdf_cad_epis = st.button("📄 Gerar Relatório PDF", use_container_width=True, key="btn_exec_pdf_cad_epis")
+            btn_gerar_pdf_cad_epis = st.button("🖨️ Gerar e Imprimir Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis")
 
         if btn_gerar_pdf_cad_epis:
             if empresa_rel_epi_geral == "Nenhuma":
@@ -4047,43 +4047,14 @@ if menu == "Cadastros Gerais":
                 if df_pdf_epis.empty:
                     st.warning(f"⚠️ Não há EPIs cadastrados para a empresa **{empresa_rel_epi_geral}**.")
                 else:
-                    import io
-                    from reportlab.lib.pagesizes import A4, landscape
-                    from reportlab.lib import colors
-                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
-                    buffer = io.BytesIO()
-                    # Formato Paisagem (landscape)
-                    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-                    elements = []
-                    
-                    styles = getSampleStyleSheet()
-                    normal_style = styles['Normal']
-                    
-                    titulo_style = ParagraphStyle(
-                        'TituloRelatorio', parent=normal_style,
-                        fontName='Helvetica-Bold', fontSize=16,
-                        textColor=colors.HexColor('#1b365d'), alignment=1, spaceAfter=6
-                    )
-                    subtitulo_style = ParagraphStyle(
-                        'SubTituloRelatorio', parent=normal_style,
-                        fontName='Helvetica', fontSize=10,
-                        textColor=colors.HexColor('#555555'), alignment=1, spaceAfter=15
-                    )
-                    
-                    elements.append(Paragraph(f"<b>Relatório de EPIs, CAs e Validades Cadastrados</b>", titulo_style))
-                    elements.append(Paragraph(f"<b>Empresa:</b> {empresa_rel_epi_geral} | <b>Emitido em:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitulo_style))
-                    elements.append(Spacer(1, 10))
-                    
                     def calcular_status_pdf(val_str):
                         val_str = str(val_str or "").strip()
                         if not val_str or val_str in ("Não localizado", "Base ausente", "Erro na consulta", "⚪ Não encontrado"):
-                            return "Não localizado"
+                            return "⚪ Não localizado"
                         if "VENCIDO" in val_str.upper() or "CANCELADO" in val_str.upper():
-                            return "Vencido"
+                            return "🔴 Vencido"
                         if "VÁLIDO" in val_str.upper() or "🟢" in val_str:
-                            return "Válido"
+                            return "🟢 Válido"
                         
                         import datetime, re
                         match = re.search(r'(\d{2})/(\d{2})/(\d{4})', val_str)
@@ -4092,59 +4063,99 @@ if menu == "Cadastros Gerais":
                                 d, m, y = map(int, match.groups())
                                 data_val = datetime.date(y, m, d)
                                 if data_val >= datetime.date.today():
-                                    return "Válido"
+                                    return "🟢 Válido"
                                 else:
-                                    return "Vencido"
+                                    return "🔴 Vencido"
                             except:
                                 pass
-                        return "Válido"
+                        return "🟢 Válido"
 
-                    tabela_dados = [["Tipo / Categoria", "Nome do EPI", "Número do CA", "Validade CA", "Status CA"]]
-                    for _, row in df_pdf_epis.iterrows():
-                        val_bruta = str(row.get("validade_ca", ""))
-                        status_calc = calcular_status_pdf(val_bruta)
-                        tabela_dados.append([
-                            str(row.get("tipo", "Diversos")),
-                            str(row.get("epi", "")),
-                            str(row.get("ca", "")),
-                            val_bruta,
-                            status_calc
-                        ])
-                        
-                    t_pdf = Table(tabela_dados, colWidths=[180, 260, 110, 130, 100])
-                    t_pdf.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1b365d')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 10),
-                        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-                        ('TOPPADDING', (0, 0), (-1, 0), 8),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dcdcdc')),
-                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 1), (-1, -1), 9),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ]))
+                    df_pdf_epis["Validade CA"] = df_pdf_epis["validade_ca"]
+                    df_pdf_epis["Status CA"] = df_pdf_epis["validade_ca"].apply(calcular_status_pdf)
                     
-                    elements.append(t_pdf)
-                    doc.build(elements)
-                    buffer.seek(0)
+                    df_html_tabela = df_pdf_epis[["tipo", "epi", "ca", "Validade CA", "Status CA"]].rename(
+                        columns={"tipo": "Tipo / Categoria", "epi": "Nome do EPI", "ca": "Número do CA"}
+                    )
+
+                    html_relatorio = f"""
+                    <html>
+                        <head>
+                            <title>Relatório de EPIs - {empresa_rel_epi_geral}</title>
+                            <style>
+                                @page {{
+                                    size: landscape;
+                                    margin: 15mm;
+                                }}
+                                body {{
+                                    font-family: Arial, sans-serif;
+                                    color: #333;
+                                    margin: 20px;
+                                }}
+                                h2 {{
+                                    text-align: center;
+                                    color: #1b365d;
+                                    margin-bottom: 5px;
+                                }}
+                                p.sub {{
+                                    text-align: center;
+                                    font-size: 14px;
+                                    color: #555;
+                                    margin-bottom: 20px;
+                                }}
+                                table {{
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    margin-top: 10px;
+                                }}
+                                th, td {{
+                                    border: 1px solid #dcdcdc;
+                                    padding: 10px;
+                                    text-align: left;
+                                    font-size: 13px;
+                                }}
+                                th {{
+                                    background-color: #1b365d;
+                                    color: white;
+                                }}
+                                tr:nth-child(even) {{
+                                    background-color: #f8f9fa;
+                                }}
+                                .footer {{
+                                    margin-top: 30px;
+                                    text-align: right;
+                                    font-size: 11px;
+                                    color: #888;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <h2>Relatório de EPIs, CAs e Validades Cadastrados</h2>
+                            <p class="sub"><b>Empresa:</b> {empresa_rel_epi_geral} &nbsp;|&nbsp; <b>Emitido em:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</p>
+                            {df_html_tabela.to_html(index=False, classes='table')}
+                            <div class="footer">
+                                Cassilab & Ízitus SST - Sistema de Gestão de EPIs
+                            </div>
+                            <script>
+                                window.onload = function() {{
+                                    window.print();
+                                }};
+                            </script>
+                        </body>
+                    </html>
+                    """
+
+                    b64_html = base64.b64encode(html_relatorio.encode("utf-8")).decode("utf-8")
                     
-                    pdf_bytes = buffer.getvalue()
-                    b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                    st.success("✅ Relatório gerado com sucesso! A janela de impressão abrirá em seguida.")
                     
-                    st.success("✅ Relatório gerado com sucesso!")
-                    
-                    # Botão limpo que abre o PDF em nova aba (contendo os botões nativos de Imprimir e Salvar)
-                    html_botao_unico = f'''
-                    <a href="data:application/pdf;base64,{b64_pdf}" target="_blank" style="
+                    html_link = f'''
+                    <a href="data:text/html;base64,{b64_html}" target="_blank" style="
                         display: block;
                         width: 100%;
                         background-color: #ff4b4b;
                         color: white;
                         text-align: center;
-                        padding: 0.6rem 1rem;
+                        padding: 0.7rem 1rem;
                         border-radius: 4px;
                         font-weight: 600;
                         text-decoration: none;
@@ -4152,10 +4163,10 @@ if menu == "Cadastros Gerais":
                         margin-top: 10px;
                         box-sizing: border-box;
                     ">
-                        🖨️ Abrir / Imprimir / Salvar PDF em Nova Aba
+                        🖨️ Clique aqui caso a janela de impressão não abra automaticamente
                     </a>
                     '''
-                    st.markdown(html_botao_unico, unsafe_allow_html=True)
+                    st.markdown(html_link, unsafe_allow_html=True)
 
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
