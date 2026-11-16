@@ -806,10 +806,9 @@ def renderizar_aba_epis(*args, **kwargs):
                     "Quantidade", min_value=1, value=1, key="unificado_qtd"
                 )
             
-                # Variável para armazenar a validade encontrada na base de CAs
-                validade_ca_encontrada = "N/D"
-                descricao_ca_encontrada = ""
-            
+                # Variáveis para a validade do CA
+                validade_ca_oficial = "N/D"
+                
                 # Validação automática do CA na base cassilab_sst.db
                 if ca_in and ca_in.strip():
                     try:
@@ -837,13 +836,13 @@ def renderizar_aba_epis(*args, **kwargs):
                                 if not df_ca_res.empty:
                                     r_ca = df_ca_res.iloc[0]
                                     sit = str(r_ca.get("situacao", r_ca.get("status", "Ativo"))).upper()
-                                    validade_ca_encontrada = str(r_ca.get("validade", "N/D"))
-                                    descricao_ca_encontrada = str(r_ca.get("equipamento", r_ca.get("descricao", "")))
+                                    validade_ca_oficial = str(r_ca.get("validade", "N/D"))
+                                    desc = str(r_ca.get("equipamento", r_ca.get("descricao", "")))
                                     
                                     if "VENCIDO" in sit or "CANCELADO" in sit or "SUSPENSO" in sit:
-                                        st.error(f"⚠️ **Atenção:** CA **{ca_in.strip()}** consta como **{sit}**! (Validade Oficial: {valididade_ca_encontrada}) - {descricao_ca_encontrada[:100]}")
+                                        st.error(f"⚠️ **Atenção:** CA **{ca_in.strip()}** consta como **{sit}**! (Validade Oficial do CA: **{validade_ca_oficial}**) - {desc[:100]}")
                                     else:
-                                        st.success(f"✅ **CA {ca_in.strip()} Válido / Ativo.** (Validade Oficial: {valididade_ca_encontrada}) | {descricao_ca_encontrada[:100]}")
+                                        st.success(f"✅ **CA {ca_in.strip()} Válido / Ativo.** (Validade Oficial do CA: **{validade_ca_oficial}**) | {desc[:100]}")
                                 else:
                                     conn_ca.close()
                                     st.warning(f"ℹ️ CA **{ca_in.strip()}** não encontrado na base de CAs.")
