@@ -1267,7 +1267,30 @@ def renderizar_aba_epis(*args, **kwargs):
     else:
         st.info("Nenhuma entrega registrada para esta empresa.")
 
-st.markdown("---")
+    st.markdown("---")
+    st.subheader("📋 Histórico de Entregas Cadastradas")
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    df_hist = pd.read_sql(
+        "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    conn.close()
+
+    if not df_hist.empty:
+        if "id" in df_hist.columns:
+            df_hist = df_hist.drop(columns=["id"])
+            
+        df_hist["_id_banco"] = df_hist.index
+        if "Selecionar" not in df_hist.columns:
+            df_hist.insert(0, "Selecionar", False)
+
+        df_hist_exib = adicionar_numeracao_func(formatar_colunas_func(df_hist))
+        st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma entrega registrada para esta empresa.")
+
+    st.markdown("---")
     if st.button("🔄 Atualizar Validades do Histórico com Base no cassilab_sst.db"):
         try:
             import os
@@ -1292,7 +1315,6 @@ st.markdown("---")
                             if not df_res_sst.empty:
                                 val_oficial = str(df_res_sst.iloc[0].get("validade", ""))
                                 if val_oficial and val_oficial != "N/D":
-                                    # Se houver coluna de validade ou se quisermos atualizar o status/observação
                                     conn_h.execute("UPDATE epis SET status = ? WHERE id = ?", (f"CA Válido até {val_oficial}", reg_id))
                                     atualizados += 1
                 conn_sst.close()
