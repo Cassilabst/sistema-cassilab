@@ -3591,97 +3591,97 @@ if menu == "Cadastros Gerais":
             st.info("ℹ️ Nenhum treinamento cadastrado para o filtro selecionado.")
 
     elif aba_selecionada == "EPIs":
-    st.subheader("Gerenciar EPIs por Empresa (com CA, Validade e Status)")
-    empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-    with st.form("form_cad_epi_unico"):
-        empresa_epi_sel = st.selectbox(
-            "Selecione a Empresa",
-            empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-            key="sel_emp_epi_geral",
-        )
-        tipos_epi_lista = [
-            "Calçados de Segurança",
-            "Óculos",
-            "Protetor Auricular",
-            "Trabalho em Altura",
-            "Máscaras",
-            "Respiradores",
-            "Luvas",
-            "Diversos",
-        ]
-        # Ajustado para 3 colunas, pois removemos a data manual
-        c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
-        novo_epi_nome = c_epi_1.text_input("Nome do EPI")
-        novo_epi_ca = c_epi_2.text_input("Número do CA")
-        tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
-        
-        btn_add_salvar_epi = c_epi_1.form_submit_button(
-            "Adicionar e Salvar EPI e CA"
-        )
-        if btn_add_salvar_epi:
-            if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                try:
-                    conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
-                except:
-                    pass
-                try:
-                    conn.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
-                except:
-                    pass
-                    
-                try:
-                    epi_fmt = formatar_titulo(novo_epi_nome)
-                    
-                    # --- VALIDAÇÃO E BUSCA OBRIGATÓRIA NO cassilab_sst.db ---
-                    val_ca_str = ""
-                    ca_encontrado = False
-                    
-                    if novo_epi_ca.strip():
-                        try:
-                            import sqlite3, os, pandas as pd
-                            if os.path.exists("cassilab_sst.db"):
-                                conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
-                                cur_sst = conn_sst.cursor()
-                                cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                                t_list = [r[0] for r in cur_sst.fetchall()]
-                                t_alvo = t_list[0] if t_list else None
-                                if t_alvo:
-                                    df_sst = pd.read_sql(f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1", conn_sst, params=(f"%{novo_epi_ca.strip()}%", novo_epi_ca.strip()))
-                                    conn_sst.close()
-                                    if not df_sst.empty:
-                                        v_oficial = str(df_sst.iloc[0].get("validade", "")).strip()
-                                        if v_oficial and v_oficial != "N/D":
-                                            val_ca_str = v_oficial
-                                            ca_encontrado = True
-                        except Exception:
-                            pass
-
-                    if novo_epi_ca.strip() and not ca_encontrado:
-                        st.error("❌ CA não localizado.")
-                        st.stop()
-                    # --------------------------------------------------------
-
-                    conn.execute(
-                        "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
-                        (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel, val_ca_str),
-                    )
-                    conn.commit()
-                    if "edit_epis_tbl" in st.session_state:
-                        del st.session_state["edit_epis_tbl"]
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Administrador"),
-                        empresa_epi_sel,
-                        f"Adicionou EPI: {epi_fmt} (CA: {novo_epi_ca.strip()}, Validade: {val_ca_str})",
-                    )
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao cadastrar EPI: {e}")
-                conn.close()
-            else:
-                st.error("Selecione a empresa e preencha o nome do EPI.")
+        st.subheader("Gerenciar EPIs por Empresa (com CA, Validade e Status)")
+        empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
+        with st.form("form_cad_epi_unico"):
+            empresa_epi_sel = st.selectbox(
+                "Selecione a Empresa",
+                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
+                key="sel_emp_epi_geral",
+            )
+            tipos_epi_lista = [
+                "Calçados de Segurança",
+                "Óculos",
+                "Protetor Auricular",
+                "Trabalho em Altura",
+                "Máscaras",
+                "Respiradores",
+                "Luvas",
+                "Diversos",
+            ]
+            # Ajustado para 3 colunas, pois removemos a data manual
+            c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
+            novo_epi_nome = c_epi_1.text_input("Nome do EPI")
+            novo_epi_ca = c_epi_2.text_input("Número do CA")
+            tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
+            
+            btn_add_salvar_epi = c_epi_1.form_submit_button(
+                "Adicionar e Salvar EPI e CA"
+            )
+            if btn_add_salvar_epi:
+                if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
+                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+                    try:
+                        conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
+                    except:
+                        pass
+                    try:
+                        conn.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
+                    except:
+                        pass
+                        
+                    try:
+                        epi_fmt = formatar_titulo(novo_epi_nome)
+                        
+                        # --- VALIDAÇÃO E BUSCA OBRIGATÓRIA NO cassilab_sst.db ---
+                        val_ca_str = ""
+                        ca_encontrado = False
+                        
+                        if novo_epi_ca.strip():
+                            try:
+                                import sqlite3, os, pandas as pd
+                                if os.path.exists("cassilab_sst.db"):
+                                    conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
+                                    cur_sst = conn_sst.cursor()
+                                    cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                                    t_list = [r[0] for r in cur_sst.fetchall()]
+                                    t_alvo = t_list[0] if t_list else None
+                                    if t_alvo:
+                                        df_sst = pd.read_sql(f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1", conn_sst, params=(f"%{novo_epi_ca.strip()}%", novo_epi_ca.strip()))
+                                        conn_sst.close()
+                                        if not df_sst.empty:
+                                            v_oficial = str(df_sst.iloc[0].get("validade", "")).strip()
+                                            if v_oficial and v_oficial != "N/D":
+                                                val_ca_str = v_oficial
+                                                ca_encontrado = True
+                            except Exception:
+                                pass
+    
+                        if novo_epi_ca.strip() and not ca_encontrado:
+                            st.error("❌ CA não localizado.")
+                            st.stop()
+                        # --------------------------------------------------------
+    
+                        conn.execute(
+                            "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
+                            (empresa_epi_sel, epi_fmt, novo_epi_ca.strip(), tipo_epi_sel, val_ca_str),
+                        )
+                        conn.commit()
+                        if "edit_epis_tbl" in st.session_state:
+                            del st.session_state["edit_epis_tbl"]
+                        st.cache_data.clear()
+                        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
+                        registrar_log(
+                            st.session_state.get("nome_usuario", "Administrador"),
+                            empresa_epi_sel,
+                            f"Adicionou EPI: {epi_fmt} (CA: {novo_epi_ca.strip()}, Validade: {val_ca_str})",
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao cadastrar EPI: {e}")
+                    conn.close()
+                else:
+                    st.error("Selecione a empresa e preencha o nome do EPI.")
                     
         st.markdown("---")
         col_f1, col_f2 = st.columns(2)
