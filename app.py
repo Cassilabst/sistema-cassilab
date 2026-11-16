@@ -3633,18 +3633,27 @@ if menu == "Cadastros Gerais":
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
                         
-                        # --- INTEGRAÇÃO CORRIGIDA COM A BASE OFICIAL DE CAs (cassilab_sst.db) ---
+                        # --- BUSCA DIRETA DA VALIDADE NO cassilab_sst.db ---
                         val_ca_str = validade_ca_input.strftime("%d/%m/%Y")
-                        status_ca_cad = "🟢 Válido"
-                        
                         if novo_epi_ca.strip():
-                            # Chama a função que busca na base oficial de 42 mil CAs
-                            info_ca_oficial = _buscar_info_ca_cassilab(novo_epi_ca.strip(), "cassilab_sst.db")
-                            if info_ca_oficial["encontrado"]:
-                                if info_ca_oficial["validade"] and info_ca_oficial["validade"] != "N/D":
-                                    val_ca_str = info_ca_oficial["validade"]
-                                status_ca_cad = info_ca_oficial["status_ca"]
-                        # ------------------------------------------------------------------------
+                            try:
+                                import sqlite3, os, pandas as pd
+                                if os.path.exists("cassilab_sst.db"):
+                                    conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
+                                    cur_sst = conn_sst.cursor()
+                                    cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                                    t_list = [r[0] for r in cur_sst.fetchall()]
+                                    t_alvo = t_list[0] if t_list else None
+                                    if t_alvo:
+                                        df_sst = pd.read_sql(f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1", conn_sst, params=(f"%{novo_epi_ca.strip()%}", novo_epi_ca.strip()))
+                                        conn_sst.close()
+                                        if not df_sst.empty:
+                                            v_oficial = str(df_sst.iloc[0].get("validade", "")).strip()
+                                            if v_oficial and v_oficial != "N/D":
+                                                val_ca_str = v_oficial
+                            except Exception:
+                                pass
+                        # --------------------------------------------------
 
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
