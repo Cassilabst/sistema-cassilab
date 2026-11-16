@@ -3839,44 +3839,52 @@ if menu == "Cadastros Gerais":
                             continue
                         
                         ca_limpo_num = ca_val.lstrip('0')
-                        linha_encontrada_str = None
+                        val_ca_gravacao = "Não localizado"
                         
                         # Varre a base oficial procurando o CA
                         for tab in tabelas:
                             try:
                                 cur_sst.execute(f"PRAGMA table_info({tab});")
                                 cols = [col[1] for col in cur_sst.fetchall()]
+                                
+                                encontrou = False
                                 for col in cols:
-                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? LIMIT 5"
-                                    df_res = pd.read_sql(query, conn_sst, params=(f"%{ca_val}%", f"%{ca_limpo_num}%"))
+                                    # Busca exata ou por aproximação segura do CA
+                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) LIKE ? LIMIT 3"
+                                    df_res = pd.read_sql(query, conn_sst, params=(ca_val, ca_limpo_num, f"%{ca_val}%"))
+                                    
                                     if not df_res.empty:
                                         for _, row in df_res.iterrows():
                                             linha_completa = ";".join([str(val) for val in row.values])
-                                            if f'"{ca_val}"' in linha_completa or f'"{ca_limpo_num}"' in linha_completa or f';{ca_val};' in linha_completa or f';{ca_limpo_num};' in linha_completa:
-                                                linha_encontrada_str = linha_completa
+                                            
+                                            # Verifica se o CA realmente pertence a esta linha de forma flexível
+                                            if ca_val in linha_completa or ca_limpo_num in linha_completa:
+                                                # Tenta extrair qualquer data válida (formato DD/MM/YYYY ou YYYY-MM-DD) da linha
+                                                partes = [p.strip('"\' ') for p in linha_completa.split(';')]
+                                                val_oficial = ""
+                                                for parte in partes:
+                                                    if re.match(r'^\d{2}/\d{2}/\d{4}$', parte) or re.match(r'^\d{4}-\d{2}-\d{2}$', parte):
+                                                        if any(ano in parte for ano in ["202", "203", "201", "204", "205"]):
+                                                            val_oficial = parte
+                                                            break
+                                                
+                                                if val_oficial:
+                                                    val_ca_gravacao = val_oficial
+                                                else:
+                                                    val_ca_gravacao = "Válido"
+                                                
+                                                encontrou = True
                                                 break
-                                        if linha_encontrada_str:
-                                            break
-                                if linha_encontrada_str:
+                                    if encontrou:
+                                        break
+                                if encontrou:
                                     break
                             except Exception:
                                 continue
-                                
-                        val_ca_gravacao = "Não localizado"
-                        if linha_encontrada_str:
-                            partes = [p.strip('"') for p in linha_encontrada_str.split(';')]
-                            val_oficial = ""
-                            for parte in partes:
-                                if re.match(r'^\d{2}/\d{2}/\d{4}$', parte) or re.match(r'^\d{4}-\d{2}-\d{2}$', parte):
-                                    if "202" in parte or "203" in parte or "201" in parte:
-                                        val_oficial = parte
-                            if val_oficial:
-                                val_ca_gravacao = val_oficial
-                            else:
-                                val_ca_gravacao = "Válido"
                         
                         conn_upd.execute("UPDATE cad_epis SET validade_ca = ? WHERE id = ?", (val_ca_gravacao, int(r_cad["id"])))
                         atualizados += 1
+                        
                     conn_sst.close()
                     
                 conn_upd.commit()
@@ -4059,16 +4067,6 @@ if menu == "Cadastros Gerais":
                 st.warning("⚠️ Selecione uma empresa válida para gerar o relatório.")
             else:
                 conn_pdf_e = sqlite_original.connect(DB_NAME, timeout=10.0)
-                
-                # --- TESTE DE DIAGNÓSTICO PARA VER SE A EMPRESA EXISTE NO BANCO ---
-                df_teste = pd.read_sql(
-                    "SELECT COUNT(*) as total FROM cad_epis WHERE empresa = ?", 
-                    conn_pdf_e, 
-                    params=(empresa_rel_epi_geral,)
-                )
-                st.warning(f"🔍 DEBUG: Registos encontrados para '{empresa_rel_epi_geral}': {df_teste['total'].values[0]}")
-                # -----------------------------------------------------------------
-
                 try:
                     df_pdf_epis = pd.read_sql(
                         "SELECT tipo, epi, ca, validade_ca FROM cad_epis WHERE empresa = ? ORDER BY tipo ASC, epi ASC",
