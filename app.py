@@ -4059,6 +4059,16 @@ if menu == "Cadastros Gerais":
                 st.warning("⚠️ Selecione uma empresa válida para gerar o relatório.")
             else:
                 conn_pdf_e = sqlite_original.connect(DB_NAME, timeout=10.0)
+                
+                # --- TESTE DE DIAGNÓSTICO PARA VER SE A EMPRESA EXISTE NO BANCO ---
+                df_teste = pd.read_sql(
+                    "SELECT COUNT(*) as total FROM cad_epis WHERE empresa = ?", 
+                    conn_pdf_e, 
+                    params=(empresa_rel_epi_geral,)
+                )
+                st.warning(f"🔍 DEBUG: Registos encontrados para '{empresa_rel_epi_geral}': {df_teste['total'].values[0]}")
+                # -----------------------------------------------------------------
+
                 try:
                     df_pdf_epis = pd.read_sql(
                         "SELECT tipo, epi, ca, validade_ca FROM cad_epis WHERE empresa = ? ORDER BY tipo ASC, epi ASC",
