@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
 import pandas as pd
 from modulo_ca import renderizar_modulo_ca, consultar_dados_ca
-
+import base64
 import os
 import shutil
 
