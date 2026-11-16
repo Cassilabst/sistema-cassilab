@@ -805,25 +805,52 @@ def renderizar_aba_epis(*args, **kwargs):
                 qtd_in = col_l5.number_input(
                     "Quantidade", min_value=1, value=1, key="unificado_qtd"
                 )
-
-                # Validação automática do CA ao informar/puxar o número
-                info_ca_atual = _buscar_info_ca_cassilab(ca_in)
-                if str(ca_in or "").strip():
-                    if info_ca_atual["encontrado"]:
-                        if info_ca_atual["valido"]:
-                            st.success(
-                                f"✅ **CA {str(ca_in).strip()} Válido** | Validade: **{info_ca_atual['validade']}**"
-                                + (f" — {info_ca_atual['descricao'][:90]}" if info_ca_atual["descricao"] else "")
-                            )
-                        else:
-                            st.error(
-                                f"⚠️ **CA {str(ca_in).strip()} ({info_ca_atual['status_ca']})** | Validade: **{info_ca_atual['validade']}**"
-                                + (f" — {info_ca_atual['descricao'][:90]}" if info_ca_atual["descricao"] else "")
-                            )
-                    else:
-                        st.warning(
-                            f"ℹ️ **CA {str(ca_in).strip()}** não localizado na base `cassilab_sst.db`."
-                        )
+            
+                # Variável para armazenar a validade encontrada na base de CAs
+                validade_ca_encontrada = "N/D"
+                descricao_ca_encontrada = ""
+            
+                # Validação automática do CA na base cassilab_sst.db
+                if ca_in and ca_in.strip():
+                    try:
+                        import os
+                        db_ca_path = "cassilab_sst.db"
+                        if os.path.exists(db_ca_path):
+                            conn_ca = sqlite3.connect(db_ca_path, timeout=5.0)
+                            cur_ca = conn_ca.cursor()
+                            cur_ca.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                            t_list = [r[0] for r in cur_ca.fetchall()]
+                            
+                            t_alvo = None
+                            for t in t_list:
+                                cur_ca.execute(f"PRAGMA table_info({t});")
+                                cols = [col[1].lower() for col in cur_ca.fetchall()]
+                                if any("ca" in c for c in cols):
+                                    t_alvo = t
+                                    break
+                            
+                            if t_alvo:
+                                query = f"SELECT * FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1"
+                                df_ca_res = pd.read_sql(query, conn_ca, params=(f"%{ca_in.strip()}%", ca_in.strip()))
+                                conn_ca.close()
+                                
+                                if not df_ca_res.empty:
+                                    r_ca = df_ca_res.iloc[0]
+                                    sit = str(r_ca.get("situacao", r_ca.get("status", "Ativo"))).upper()
+                                    validade_ca_encontrada = str(r_ca.get("validade", "N/D"))
+                                    descricao_ca_encontrada = str(r_ca.get("equipamento", r_ca.get("descricao", "")))
+                                    
+                                    if "VENCIDO" in sit or "CANCELADO" in sit or "SUSPENSO" in sit:
+                                        st.error(f"⚠️ **Atenção:** CA **{ca_in.strip()}** consta como **{sit}**! (Validade Oficial: {valididade_ca_encontrada}) - {descricao_ca_encontrada[:100]}")
+                                    else:
+                                        st.success(f"✅ **CA {ca_in.strip()} Válido / Ativo.** (Validade Oficial: {valididade_ca_encontrada}) | {descricao_ca_encontrada[:100]}")
+                                else:
+                                    conn_ca.close()
+                                    st.warning(f"ℹ️ CA **{ca_in.strip()}** não encontrado na base de CAs.")
+                            else:
+                                conn_ca.close()
+                    except Exception as e:
+                        pass
 
                 tipo_assinatura_lanc = st.radio(
                     "🔑 Forma de Validação / Assinatura",
