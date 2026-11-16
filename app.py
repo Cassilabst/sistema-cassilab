@@ -2443,6 +2443,34 @@ else:
 
 idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
 
+# --- SUPORTE TÉCNICO VIA WHATSAPP NA SIDEBAR ---
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📞 Precisa de Ajuda?")
+
+whatsapp_url = "https://wa.me/5541985339760?text=Olá,%20preciso%20de%20suporte%20técnico%20no%20sistema%20Cassilab."
+
+st.sidebar.markdown(f'''
+<a href="{whatsapp_url}" target="_blank" style="
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #25D366;
+    color: white;
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    font-family: sans-serif;
+    margin-top: 5px;
+    box-sizing: border-box;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+">
+    <span style="font-size: 18px; margin-right: 8px;">💬</span> Suporte WhatsApp
+</a>
+''', unsafe_allow_html=True)
+
+st.sidebar.markdown("<p style='text-align: center; font-size: 12px; color: #888; margin-top: 5px;'>📱 (41) 98533-9760</p>", unsafe_allow_html=True)
+
 menu = st.sidebar.selectbox(
     "Menu Principal",
     opcoes_menu,
