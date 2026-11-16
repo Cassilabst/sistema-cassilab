@@ -3614,9 +3614,10 @@ if menu == "Cadastros Gerais":
             novo_epi_ca = c_epi_2.text_input("Número do CA", key="input_ca_geral_temp")
             tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
             
-            # --- CONSULTA EM TEMPO REAL AO DIGITAR O CA ---
+            # --- CONSULTA EM TEMPO REAL ROBUSTA AO DIGITAR O CA ---
             ca_digitado = str(st.session_state.get("input_ca_geral_temp", "")).strip()
             status_ca_preview = "⚪ Aguardando CA..."
+            val_ca_gravacao = ""
             
             if ca_digitado:
                 try:
@@ -3639,8 +3640,12 @@ if menu == "Cadastros Gerais":
                                 
                         if tabela_alvo:
                             col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next((c for c in colunas_alvo if "ca" in c.lower()), None)
-                            query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
-                            df_res = pd.read_sql(query, conn_sst, params=(ca_digitado, f"%{ca_digitado}%"))
+                            
+                            # Tratamento para encontrar mesmo com zeros à esquerda
+                            ca_limpo_num = ca_digitado.lstrip('0')
+                            
+                            query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
+                            df_res = pd.read_sql(query, conn_sst, params=(ca_digitado, ca_limpo_num, f"%{ca_digitado}%"))
                             
                             if not df_res.empty:
                                 linha = df_res.iloc[0]
@@ -3661,20 +3666,24 @@ if menu == "Cadastros Gerais":
                                 sit_upper = situacao_bruta.upper()
                                 if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
                                     status_ca_preview = f"🔴 {situacao_bruta.capitalize()} (Validade: {val_oficial if val_oficial else 'N/D'})"
+                                    val_ca_gravacao = val_oficial if val_oficial else "Vencido"
                                 else:
                                     status_ca_preview = f"🟢 Válido (Validade Oficial: {val_oficial if val_oficial else 'N/D'})"
+                                    val_ca_gravacao = val_oficial if val_oficial else "Válido"
                             else:
                                 status_ca_preview = "⚪ CA não localizado na base oficial"
+                                val_ca_gravacao = "Não localizado"
                             conn_sst.close()
                     else:
                         status_ca_preview = "⚠️ Base de CAs ausente"
+                        val_ca_gravacao = "Base ausente"
                 except Exception:
                     status_ca_preview = "⚠️ Erro ao consultar CA"
+                    val_ca_gravacao = "Erro na consulta"
                     
-            # Exibe o resultado da consulta em tempo real logo abaixo dos campos
             if ca_digitado:
                 st.info(f"🔍 **Consulta do CA em tempo real:** {status_ca_preview}")
-            # ---------------------------------------------
+            # -------------------------------------------------------------
     
             btn_add_salvar_epi = c_epi_1.form_submit_button(
                 "Adicionar e Salvar EPI e CA"
@@ -3693,21 +3702,20 @@ if menu == "Cadastros Gerais":
                         
                     try:
                         epi_fmt = formatar_titulo(novo_epi_nome)
-                        val_ca_str = status_ca_preview.replace("🔍 **Consulta do CA em tempo real:** ", "")
                         
                         conn.execute(
                             "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
-                            (empresa_epi_sel, epi_fmt, ca_digitado, tipo_epi_sel, val_ca_str),
+                            (empresa_epi_sel, epi_fmt, ca_digitado, tipo_epi_sel, val_ca_gravacao),
                         )
                         conn.commit()
                         if "edit_epis_tbl" in st.session_state:
                             del st.session_state["edit_epis_tbl"]
                         st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "✅ EPI cadastrado com o status do CA gravado com sucesso!"
+                        st.session_state["msg_sucesso"] = "✅ EPI cadastrado com sucesso!"
                         registrar_log(
                             st.session_state.get("nome_usuario", "Administrador"),
                             empresa_epi_sel,
-                            f"Adicionou EPI: {epi_fmt} (CA: {ca_digitado}, Status: {val_ca_str})",
+                            f"Adicionou EPI: {epi_fmt} (CA: {ca_digitado}, Validade: {val_ca_gravacao})",
                         )
                         st.rerun()
                     except Exception as e:
