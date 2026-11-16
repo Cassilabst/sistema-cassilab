@@ -1266,3 +1266,41 @@ def renderizar_aba_epis(*args, **kwargs):
         st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
     else:
         st.info("Nenhuma entrega registrada para esta empresa.")
+
+st.markdown("---")
+    if st.button("🔄 Atualizar Validades do Histórico com Base no cassilab_sst.db"):
+        try:
+            import os
+            if os.path.exists("cassilab_sst.db"):
+                conn_h = sqlite3.connect(DB_NAME, timeout=10.0)
+                df_epis_antigos = pd.read_sql("SELECT id, ca FROM epis", conn_h)
+                
+                conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
+                cur_sst = conn_sst.cursor()
+                cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                t_list = [r[0] for r in cur_sst.fetchall()]
+                t_alvo = t_list[0] if t_list else None
+                
+                atualizados = 0
+                if t_alvo:
+                    for _, row in df_epis_antigos.iterrows():
+                        reg_id = row["id"]
+                        ca_val = str(row["ca"]).strip()
+                        if ca_val and ca_val != "nan":
+                            q_sst = f"SELECT validade FROM {t_alvo} WHERE ca LIKE ? OR cast(ca as text) = ? LIMIT 1"
+                            df_res_sst = pd.read_sql(q_sst, conn_sst, params=(f"%{ca_val}%", ca_val))
+                            if not df_res_sst.empty:
+                                val_oficial = str(df_res_sst.iloc[0].get("validade", ""))
+                                if val_oficial and val_oficial != "N/D":
+                                    # Se houver coluna de validade ou se quisermos atualizar o status/observação
+                                    conn_h.execute("UPDATE epis SET status = ? WHERE id = ?", (f"CA Válido até {val_oficial}", reg_id))
+                                    atualizados += 1
+                conn_sst.close()
+                conn_h.commit()
+                conn_h.close()
+                st.success(f"✅ {atualizados} registos antigos atualizados com as validades oficiais do CA!")
+                st.rerun()
+            else:
+                st.error("Base cassilab_sst.db não encontrada.")
+        except Exception as ex:
+            st.error(f"Erro ao atualizar: {ex}")
