@@ -4043,7 +4043,7 @@ if menu == "Cadastros Gerais":
         # --- RELATÓRIO DE EPIS COM COMPONENTE SEGURO DE IMPRESSÃO ---
         st.markdown("---")
         st.subheader("📄 Relatório de EPIs Cadastrados")
-        st.markdown("Gere o relatório em formato paisagem com abertura automática da janela de impressão.")
+        st.markdown("Gere o relatório em formato paisagem com validades, status e abertura automática da janela de impressão.")
 
         col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
         empresa_rel_epi_geral = col_pdf_e1.selectbox(
@@ -4105,10 +4105,11 @@ if menu == "Cadastros Gerais":
                         columns={"tipo": "Tipo / Categoria", "epi": "Nome do EPI", "ca": "Número do CA"}
                     )
 
-                    html_relatorio = f"""
+                    # HTML formatado com .format() para evitar conflito de chaves com o CSS
+                    html_relatorio = """
                     <html>
                         <head>
-                            <title>Relatório de EPIs - {empresa_rel_epi_geral}</title>
+                            <title>Relatório de EPIs - {empresa}</title>
                             <style>
                                 @page {{
                                     size: landscape;
@@ -4158,8 +4159,8 @@ if menu == "Cadastros Gerais":
                         </head>
                         <body>
                             <h2>Relatório de EPIs, CAs e Validades Cadastrados</h2>
-                            <p class="sub"><b>Empresa:</b> {empresa_rel_epi_geral} &nbsp;|&nbsp; <b>Emitido em:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M')}</p>
-                            {df_html_tabela.to_html(index=False, classes='table')}
+                            <p class="sub"><b>Empresa:</b> {empresa} &nbsp;|&nbsp; <b>Emitido em:</b> {data_emissao}</p>
+                            {tabela_html}
                             <div class="footer">
                                 Cassilab & Ízitus SST - Sistema de Gestão de EPIs
                             </div>
@@ -4170,7 +4171,11 @@ if menu == "Cadastros Gerais":
                             </script>
                         </body>
                     </html>
-                    """
+                    """.format(
+                        empresa=empresa_rel_epi_geral,
+                        data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'),
+                        tabela_html=df_html_tabela.to_html(index=False, classes='table')
+                    )
 
                     import json
                     import streamlit.components.v1 as components
@@ -4205,7 +4210,7 @@ if menu == "Cadastros Gerais":
                         }} else {{
                             alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
                         }}
-                    }
+                    }}
                     </script>
                     """
                     
