@@ -4168,7 +4168,9 @@ if menu == "Cadastros Gerais":
                     )
 
                     import json
-
+                    
+                    #teste
+                    
                     html_json = json.dumps(html_relatorio)
                     
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
