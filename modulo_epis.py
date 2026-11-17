@@ -642,13 +642,9 @@ def renderizar_aba_epis(*args, **kwargs):
                     validades_oficiais.append(validade_encontrada)
                     status_cas.append(status)
                 
-                df_epis['Validade Oficial (CA)'] = validades_oficiais
-                df_epis['Status CA'] = status_cas
-                
+                df_epis['validade_oficial'] = validades_oficiais
+                df_epis['status_ca_verificado'] = status_cas
                 conn_rel.close()
-                
-                total_entregas = len(df_epis)
-                st.metric("Total de Registros de Entrega", total_entregas)
                 
                 st.dataframe(df_epis, use_container_width=True)
                 
