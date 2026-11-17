@@ -4,7 +4,6 @@ import sys
 import calendar
 import requests
 import smtplib
-from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import streamlit as st
 import sqlalchemy
@@ -56,7 +55,7 @@ from modulo_empresas import renderizar_aba_empresas
 from modulo_epis import renderizar_aba_epis
 from modulo_exames import renderizar_aba_exames
 from modulo_funcionarios import renderizar_aba_funcionarios
-from modulo_lista_presenca import renderizar_aba_lista_presenca
+from modulo_lista_presenimport renderizar_aba_lista_presenca
 from modulo_matriz import renderizar_matriz_treinamentos
 from modulo_os import renderizar_aba_os
 from modulo_relatorios import renderizar_aba_relatorios
@@ -3646,7 +3645,8 @@ if menu == "Cadastros Gerais":
             tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
             
             # --- CONSULTA TRATADA PARA DADOS AGRUPADOS NO CSV/SQLITE ---
-            ca_digitado = str(st.session_state.get("input_ca_geral_temp", "")).strip()
+            ca_digitado_bruto = str(st.session_state.get("input_ca_geral_temp", "")).strip()
+            ca_digitado = ca_digitado_bruto.replace('.', '')
             status_ca_preview = "⚪ Aguardando CA..."
             val_ca_gravacao = ""
             
@@ -3668,8 +3668,14 @@ if menu == "Cadastros Gerais":
                                 cur_sst.execute(f"PRAGMA table_info({tab});")
                                 cols = [col[1] for col in cur_sst.fetchall()]
                                 for col in cols:
-                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? LIMIT 5"
-                                    df_res = pd.read_sql(query, conn_sst, params=(f"%{ca_digitado}%", f"%{ca_limpo_num}%"))
+                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? LIMIT 5"
+                                    
+                                    # Calcula a versão com pontos antes de executar a query
+                                    ca_com_pontos = f"{ca_digitado[:-3]}.{ca_digitado[-3:]}" if ca_digitado.isdigit() and len(ca_digitado) > 3 else ca_digitado_bruto
+                                    
+                                    # Passa os três formatos na consulta
+                                    df_res = pd.read_sql(query, conn_sst, params=(f"%{ca_digitado_bruto}%", f"%{ca_digitado}%", f"%{ca_com_pontos}%"))
+                                    
                                     if not df_res.empty:
                                         for _, row in df_res.iterrows():
                                             linha_completa = ";".join([str(val) for val in row.values])
