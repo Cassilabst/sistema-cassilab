@@ -4205,7 +4205,7 @@ if menu == "Cadastros Gerais":
                     </script>
                     """.replace("__HTML_JSON__", html_json)
                     
-                    components.html(component_code, height=70)
+                    components.html(component_code, height=120)
 
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
