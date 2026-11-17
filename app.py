@@ -16,7 +16,11 @@ import base64
 import os
 import shutil
 
-# 1. Criação e atualização segura da tabela cad_treinamentos
+def init_db():
+    conn = sqlite3.connect("cassilab_sst.db")
+    cursor = conn.cursor()
+
+    # 1. Criação e atualização inicial da tabela cad_treinamentos de forma 100% segura
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
     tabela_existe = cursor.fetchone()
 
@@ -25,7 +29,7 @@ import shutil
         cursor.execute("PRAGMA table_info(cad_treinamentos);")
         colunas_antigas = [col[1] for col in cursor.fetchall()]
         
-        # Cria a tabela temporária de forma dinâmica conforme as colunas disponíveis
+        # Cria a tabela temporária adaptada às colunas existentes
         if 'carga_horaria' in colunas_antigas:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
@@ -251,7 +255,7 @@ import shutil
 
     # 5. Fechamento seguro da conexão no final de tudo
     conn.close()
-
+    
 init_db()
 atualizar_cargo_setor_treinamentos_antigos()
 atualizar_validade_treinamentos_para_meses()
