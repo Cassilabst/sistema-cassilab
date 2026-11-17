@@ -4167,50 +4167,63 @@ if menu == "Cadastros Gerais":
                         tabela_html=df_html_tabela.to_html(index=False, classes='table')
                     )
 
-                    import json
                     import streamlit.components.v1 as components
 
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    # Codificamos o relatório em JSON com segurança
-                    html_json_str = json.dumps(html_relatorio)
-                    
-                    # Usamos um componente isolado do Streamlit que aceita script sem poluir a tela
-                    component_html = f"""
-                    <div style="margin-bottom: 15px;">
-                        <button onclick="abrirImpressao()" style="
-                            width: 100%;
-                            background-color: #ff4b4b;
-                            color: white;
-                            border: none;
-                            padding: 0.7rem 1rem;
-                            border-radius: 6px;
-                            font-weight: 600;
-                            font-family: sans-serif;
-                            cursor: pointer;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        ">
+                    # Componente completo, isolado e funcional que força a abertura da janela
+                    print_component = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <style>
+                            body {{
+                                margin: 0;
+                                padding: 0;
+                                font-family: sans-serif;
+                            }}
+                            .btn-imprimir {{
+                                width: 100%;
+                                background-color: #ff4b4b;
+                                color: white;
+                                border: none;
+                                padding: 0.7rem 1rem;
+                                border-radius: 6px;
+                                font-weight: 600;
+                                font-size: 15px;
+                                cursor: pointer;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }}
+                            .btn-imprimir:hover {{
+                                background-color: #ff2b2b;
+                            }}
+                        </style>
+                    </head>
+                    <body>
+                        <button class="btn-imprimir" onclick="imprimirRelatorio()">
                             🖨️ Clique para Imprimir Relatório de EPIs
                         </button>
-                    </div>
 
-                    <script>
-                    function abrirImpressao() {{
-                        var conteudoHtml = {html_json_str};
-                        var win = window.open('', '_blank');
-                        if (win) {{
-                            win.document.open();
-                            win.document.write(conteudoHtml);
-                            win.document.close();
-                        }} else {{
-                            alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
+                        <script>
+                        function imprimirRelatorio() {{
+                            var relatorioHtml = {json.dumps(html_relatorio)};
+                            var win = window.open('', '_blank');
+                            if (win) {{
+                                win.document.open();
+                                win.document.write(relatorioHtml);
+                                win.document.close();
+                            }} else {{
+                                alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups.');
+                            }}
                         }}
-                    }}
-                    </script>
+                        </script>
+                    </body>
+                    </html>
                     """
                     
-                    # Renderiza o componente com altura exata para o botão
-                    components.html(component_html, height=70)
+                    # Renderiza o componente com altura perfeita (sem sobrar texto e com o botão clicável)
+                    components.html(print_component, height=70)
                    
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
