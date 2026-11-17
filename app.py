@@ -2446,8 +2446,6 @@ idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📞 Precisa de Ajuda?")
 
-# --- BOTÃO DE SUPORTE WHATSAPP NA PARTE INFERIOR DA SIDEBAR ---
-whatsapp_url = "https://wa.me/5541985339760?text=Olá,%20preciso%20de%20suporte%20técnico%20no%20sistema%20Cassilab."
 
 st.sidebar.markdown(f'''
 <div style="text-align: center; margin-top: 30px; margin-bottom: 15px;">
