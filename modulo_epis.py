@@ -239,6 +239,18 @@ def renderizar_aba_epis(*args, **kwargs):
         """)
         conn.commit()
         
+        # Garante que a tabela 'cad_epis' existe no banco centralizado
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS cad_epis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                empresa TEXT,
+                epi TEXT,
+                ca TEXT,
+                validade TEXT
+            )
+        """)
+        conn.commit()
+
         _garantir_colunas_ca_epis(conn)
 
         try:
@@ -247,19 +259,18 @@ def renderizar_aba_epis(*args, **kwargs):
             )
         except Exception:
             pass
-        
-        # A partir daqui fica todo o código funcional da aba de EPIs (já indentado dentro do else)
-    def registrar_log_func_seguro(*l_args, **l_kwargs):
-        if not callable(raw_registrar_log_func):
-            return
-        try:
-            return raw_registrar_log_func(*l_args, **l_kwargs)
-        except Exception:
+
+        def registrar_log_func_seguro(*l_args, **l_kwargs):
+            if not callable(raw_registrar_log_func):
+                return
             try:
-                if len(l_args) >= 2:
-                    return raw_registrar_log_func(l_args[0], l_args[1])
+                return raw_registrar_log_func(*l_args, **l_kwargs)
             except Exception:
-                pass
+                try:
+                    if len(l_args) >= 2:
+                        return raw_registrar_log_func(l_args[0], l_args[1])
+                except Exception:
+                    pass
 
     def buscar_logo_empresa(db_name, nome_empresa):
         try:
