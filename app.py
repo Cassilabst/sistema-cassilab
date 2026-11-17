@@ -4224,7 +4224,7 @@ if menu == "Cadastros Gerais":
                     """
                     
                     # Renderiza o componente com altura perfeita (sem sobrar texto e com o botão clicável)
-                    components.html(print_component, height=70)
+                    components.html(print_component, height=130)
                    
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
