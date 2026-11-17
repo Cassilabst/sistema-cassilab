@@ -80,26 +80,6 @@ def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
         "status_ca": "⚪ Não encontrado",
         "descricao": "",
     }
-        conn_ca.close()
-    except Exception:
-        pass
-
-    return {
-        "encontrado": False,
-        "valido": False,
-        "validade": "Não encontrado",
-        "status_ca": "⚪ Não encontrado",
-        "descricao": "",
-    }
-    except Exception:
-        return {
-            "encontrado": False,
-            "valido": False,
-            "validade": "Erro",
-            "status_ca": "⚠️ Erro na consulta",
-            "descricao": "",
-        }
-
 
 def _garantir_colunas_ca_epis(conn):
     for col_sql in (
