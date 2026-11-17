@@ -17,8 +17,11 @@ import base64
 import os
 import shutil
 
+# Definição do banco de dados global para evitar o erro de NameError em get_empresas()
+DB_NAME = "cassilab_sst.db"
+
 def init_db():
-    conn = sqlite3.connect("cassilab_sst.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     # 1. Criação e atualização inicial da tabela cad_treinamentos de forma 100% segura
