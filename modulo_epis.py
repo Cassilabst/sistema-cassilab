@@ -157,7 +157,13 @@ def renderizar_aba_epis(*args, **kwargs):
         else (args[5] if len(args) > 5 else True)
     )
 
-    # Garante o uso do banco centralizado correto
+    get_empresas_func = (
+        kwargs.get("get_empresas_func")
+        or kwargs.get("get_empresas")
+        or (args[6] if len(args) > 6 else lambda: [])
+    )
+
+    # --- AGORA A VERIFICAÇÃO DE SEGURANÇA DA EMPRESA ---
     DB_NAME = "cassilab_sst.db"
 
     if not emp_usuario or emp_usuario == "Todas":
@@ -175,11 +181,9 @@ def renderizar_aba_epis(*args, **kwargs):
         except Exception:
             pass
         
-        # O resto do código da aba de EPIs continua logo a seguir...
-        
+       
         # TODO O RESTANTE CÓDIGO DA ABA DE EPIS FICA AQUI DENTRO (identado)
         else (args[5] if len(args) > 5 else True)
-    )
 
     get_empresas_func = (
         kwargs.get("get_empresas_func")
