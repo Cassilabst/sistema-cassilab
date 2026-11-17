@@ -135,8 +135,8 @@ def renderizar_aba_epis(*args, **kwargs):
         (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
     )
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
-
-    # GARANTE QUE A TABELA EXISTE LOGO NA ABERTURA DA FUNÇÃO
+    
+    # Garante que a tabela 'epis' existe antes de tentar ler
     conn.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,7 +154,9 @@ def renderizar_aba_epis(*args, **kwargs):
         )
     """)
     conn.commit()
-    conn.close() # Fecha para reabrir com segurança nas consultas posteriores
+    
+    _garantir_colunas_ca_epis(conn)
+    df = pd.read_sql("SELECT * FROM epis", conn)
 
     is_admin = (
         kwargs.get("is_admin") or 
