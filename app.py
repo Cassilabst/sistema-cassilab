@@ -2438,6 +2438,7 @@ else:
         "Exames Ocupacionais",
         "Controle de Absenteísmo",
         "Controle de EPIs",
+        "Consulta de CA",          # <--- Adicione esta linha aqui!
         "Controle de Documentos",
         "Alterar Senha",
         "Relatórios Consolidados",
@@ -4197,7 +4198,7 @@ if menu == "Cadastros Gerais":
                         use_container_width=True
                     )
 
-elif menu == "Consulta de CAs":
+elif menu == "Consulta de CA":
     from modulo_ca import renderizar_modulo_ca
     renderizar_modulo_ca('cassilab_sst.db', is_admin)
 
