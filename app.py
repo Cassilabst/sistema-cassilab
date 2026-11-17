@@ -438,20 +438,21 @@ def init_db():
     tabela_existe = cursor.fetchone()
     
     if tabela_existe:
+        # Garante que a tabela principal de treinamentos existe antes de qualquer operação
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
-            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
-        """)
-        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
-        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
-        cursor.execute("""
-            CREATE TABLE cad_treinamentos (
+            CREATE TABLE IF NOT EXISTS cad_treinamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 empresa TEXT,
                 treinamento TEXT,
                 carga_horaria TEXT
             );
         """)
+
+    # Criação segura da tabela temporária verificando se a tabela base já possui os dados/colunas
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
+        SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos WHERE 1=0;
+    """)
         cursor.execute("""
             INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
             SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
