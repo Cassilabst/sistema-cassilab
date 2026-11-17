@@ -220,9 +220,9 @@ def init_db():
                 except Exception:
                     pass
     
-        # Garante que a tabela empresas existe com a estrutura 100% correta
+        # Criação da tabela de empresas com um nome atualizado e limpo (evita qualquer lixo do disco antigo)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS empresas (
+            CREATE TABLE IF NOT EXISTS empresas_cadastradas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 data_registro TEXT,
                 nome_empresa TEXT UNIQUE,
