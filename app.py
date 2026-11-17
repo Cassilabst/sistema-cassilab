@@ -29,11 +29,9 @@ def init_db():
     tabela_existe = cursor.fetchone()
 
     if tabela_existe:
-        # Verifica quais colunas realmente existem na tabela antiga
         cursor.execute("PRAGMA table_info(cad_treinamentos);")
         colunas_antigas = [col[1] for col in cursor.fetchall()]
         
-        # Cria a tabela temporária adaptada às colunas existentes
         if 'carga_horaria' in colunas_antigas:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
@@ -81,7 +79,7 @@ def init_db():
             );
         """)
 
-    # 2. Criação de TODAS as demais tabelas usando a mesma conexão ativa
+    # 2. Criação de TODAS as demais tabelas básicas
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,30 +163,44 @@ def init_db():
         )
     """)
     
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS empresas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data_registro TEXT,
-            nome_empresa TEXT UNIQUE,
-            cnpj TEXT,
-            cep TEXT,
-            cidade TEXT,
-            bairro TEXT,
-            endereco TEXT,
-            telefone TEXT,
-            email TEXT,
-            responsavel TEXT,
-            cnae TEXT,
-            grau_risco TEXT,
-            qtd_funcionarios INTEGER,
-            porte TEXT
-        )
-    """)
+    # 3. Verificação e migração segura da tabela empresas (evita o erro no servidor)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
+    tabela_empresas_existe = cursor.fetchone()
+
+    if tabela_empresas_existe:
+        cursor.execute("PRAGMA table_info(empresas);")
+        colunas_empresas = [col[1] for col in cursor.fetchall()]
+        
+        if 'nome_empresa' not in colunas_empresas:
+            try:
+                cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
+            except Exception:
+                pass
+    else:
+        cursor.execute("""
+            CREATE TABLE empresas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data_registro TEXT,
+                nome_empresa TEXT UNIQUE,
+                cnpj TEXT,
+                cep TEXT,
+                cidade TEXT,
+                bairro TEXT,
+                endereco TEXT,
+                telefone TEXT,
+                email TEXT,
+                responsavel TEXT,
+                cnae TEXT,
+                grau_risco TEXT,
+                qtd_funcionarios INTEGER,
+                porte TEXT
+            )
+        """)
     
     # Salva as tabelas criadas até aqui
     conn.commit()
     
-    # 3. Execução segura das migrações e colunas adicionais usando a MESMA conexão ativa
+    # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
         "ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;",
         "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
@@ -248,7 +260,8 @@ def init_db():
                 conn.rollback()
             except Exception:
                 pass
-    # 4. Atualizações de dados padrão dos utilizadores
+
+    # 5. Atualizações de dados padrão dos utilizadores
     try:
         cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
         cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
@@ -267,7 +280,7 @@ def init_db():
     except Exception:
         pass
 
-    # 5. Fechamento seguro da conexão no final de tudo
+    # 6. Fechamento seguro da conexão
     conn.close()
 
 def registrar_log(acao, usuario="Sistema", empresa="Todas"):
