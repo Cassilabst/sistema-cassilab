@@ -161,7 +161,7 @@ def renderizar_aba_epis(*args, **kwargs):
         )
     """)
 
-    # 2. Tabela de CAs Oficiais (Resolve o erro do relatório)
+    # 2. Tabela de CAs Oficiais
     conn_init.execute("""
         CREATE TABLE IF NOT EXISTS cad_cas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,7 +183,6 @@ def renderizar_aba_epis(*args, **kwargs):
         )
     """)
     
-    conn_init.commit()
     _garantir_colunas_ca_epis(conn_init)
     
     try:
@@ -194,18 +193,11 @@ def renderizar_aba_epis(*args, **kwargs):
         conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT")
     except Exception:
         pass
+
+    # FAZ O COMMIT DE TUDO DE UMA SÓ VEZ ANTES DE FECHAR
     conn_init.commit()
-    conn_init.close()
     
-    try:
-        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN armario TEXT")
-    except Exception:
-        pass
-    try:
-        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT")
-    except Exception:
-        pass
-    conn_init.commit()
+    # FECHA APENAS NO FINAL DA INICIALIZAÇÃO
     conn_init.close()
 
     is_admin = (
