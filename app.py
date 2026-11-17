@@ -259,7 +259,21 @@ def init_db():
 
     # 5. Fechamento seguro da conexão no final de tudo
     conn.close()
-    
+
+def registrar_log(acao, usuario="Sistema", empresa="Todas"):
+    """Registra uma ação na tabela de logs do sistema de forma segura."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT INTO logs_sistema (data_hora, usuario, empresa, acao)
+            VALUES (?, ?, ?, ?)
+        """, (data_hora, str(usuario or "Sistema"), str(empresa or "Todas"), str(acao or "")))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 # --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
 from modulo_absenteismo import renderizar_aba_absenteismo
