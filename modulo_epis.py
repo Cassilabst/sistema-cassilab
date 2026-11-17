@@ -544,22 +544,77 @@ def renderizar_aba_epis(*args, **kwargs):
     )
 
     with aba_lista:
-        col_tit_lista, col_btn_atualizar_ca = st.columns([3, 2])
-        col_tit_lista.markdown("### 📋 Registros de Entrega de EPIs")
-        if col_btn_atualizar_ca.button(
-            "🔄 Atualizar CAs Já Lançados",
+        col_tit_lista, col_btn_relatorio = st.columns([3, 2])
+        col_tit_lista.markdown("### 📋 Registros de Entrega e Relatório de EPIs")
+        
+        if col_btn_relatorio.button(
+            "📊 Gerar Relatório de EPIs da Empresa",
             use_container_width=True,
-            key="btn_atualizar_cas_lancados",
+            key="btn_gerar_relatorio_epis",
         ):
-            conn_upd_ca = sqlite3.connect(DB_NAME, timeout=10.0)
-            _garantir_colunas_ca_epis(conn_upd_ca)
+            conn_rel = sqlite3.connect(DB_NAME, timeout=10.0)
+            _garantir_colunas_ca_epis(conn_rel)
+            
+            # Busca os lançamentos da empresa selecionada
             if empresa_selecionada == "Todas":
-                df_all_epis = pd.read_sql("SELECT id, ca FROM epis", conn_upd_ca)
+                query_epis = "SELECT * FROM epis"
+                df_epis = pd.read_sql(query_epis, conn_rel)
             else:
-                df_all_epis = pd.read_sql(
-                    "SELECT id, ca FROM epis WHERE LOWER(TRIM(empresa)) = ?",
-                    conn_upd_ca,
-                    params=(str(empresa_selecionada).strip().lower(),),
+                query_epis = "SELECT * FROM epis WHERE LOWER(TRIM(empresa)) = ?"
+                df_epis = pd.read_sql(query_epis, conn_rel, params=(str(empresa_selecionada).strip().lower(),))
+            
+            if df_epis.empty:
+                st.info("ℹ️ Não existem registos de entrega de EPIs para esta empresa.")
+                conn_rel.close()
+            else:
+                st.markdown(f"#### 📊 Relatório Analítico de EPIs - {empresa_selecionada}")
+                
+                # Cruza com a tabela cad_cas para buscar a validade oficial de cada CA
+                cursor_rel = conn_rel.cursor()
+                validades_oficiais = []
+                status_cas = []
+                
+                for idx, row in df_epis.iterrows():
+                    ca_val = str(row.get('ca', '')).strip()
+                    ca_limpo = ''.join(filter(str.isdigit, ca_val))
+                    
+                    validade_encontrada = "Não Cadastrado"
+                    status = "⚠️ CA Não Encontrado"
+                    
+                    if ca_limpo:
+                        cursor_rel.execute("""
+                            SELECT validade FROM cad_cas 
+                            WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
+                            LIMIT 1
+                        """, (ca_limpo,))
+                        res = cursor_rel.fetchone()
+                        if res and res[0]:
+                            validade_encontrada = res[0]
+                            status = "✅ Válido na Base"
+                            
+                    validades_oficiais.append(validade_encontrada)
+                    status_cas.append(status)
+                
+                df_epis['Validade Oficial (CA)'] = validades_oficiais
+                df_epis['Status CA'] = status_cas
+                
+                conn_rel.close()
+                
+                # Métricas rápidas no topo do relatório
+                total_entregas = len(df_epis)
+                st.metric("Total de Registros de Entrega", total_entregas)
+                
+                # Exibe a tabela interativa com o relatório
+                st.dataframe(df_epis, use_container_width=True)
+                
+                # Botão para descarregar o relatório em CSV para o cliente guardar
+                csv_data = df_epis.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Descarregar Relatório em CSV",
+                    data=csv_data,
+                    file_name=f"relatorio_epis_{str(empresa_selecionada).lower().replace(' ', '_')}.csv",
+                    mime="text/csv",
+                    key="download_csv_relatorio_epis"
                 )
 
             atualizados_qtd = 0
