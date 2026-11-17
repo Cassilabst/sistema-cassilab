@@ -589,66 +589,163 @@ def renderizar_aba_epis(*args, **kwargs):
         col_tit_lista, col_btn_relatorio = st.columns([3, 2])
         col_tit_lista.markdown("### 📋 Registros de Entrega e Relatório de EPIs")
         
-        if col_btn_relatorio.button(
-            "📊 Gerar Relatório de EPIs da Empresa",
-            use_container_width=True,
-            key="btn_gerar_relatorio_epis",
-        ):
-            conn_rel = sqlite3.connect(DB_NAME, timeout=10.0)
-            _garantir_colunas_ca_epis(conn_rel)
-            
-            if empresa_selecionada == "Todas":
-                query_epis = "SELECT * FROM epis"
-                df_epis = pd.read_sql(query_epis, conn_rel)
+        # --- RELATÓRIO DE EPIS COM DOWNLOAD SEGURO (PADRÃO PDF/HTML) ---
+        st.markdown("---")
+        st.subheader("📄 Relatório Analítico de EPIs da Empresa")
+        st.markdown("Gere o relatório formatado com validades dos CAs verificados e abertura automática.")
+
+        col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
+        empresa_rel_epi_geral = col_pdf_e1.selectbox(
+            "Selecione a Empresa para o Relatório", 
+            empresas_cad if empresas_cad else ["Nenhuma"],
+            key="sel_emp_rel_epi_geral_pdf_lista"
+        )
+        
+        with col_pdf_e2:
+            st.write("")
+            st.write("")
+            btn_gerar_pdf_cad_epis = st.button("⚙️ Gerar Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis_lista")
+
+        if btn_gerar_pdf_cad_epis:
+            if empresa_rel_epi_geral == "Nenhuma":
+                st.warning("⚠️ Selecione uma empresa válida para gerar o relatório.")
             else:
-                query_epis = "SELECT * FROM epis WHERE LOWER(TRIM(empresa)) = ?"
-                df_epis = pd.read_sql(query_epis, conn_rel, params=(str(empresa_selecionada).strip().lower(),))
-            
-            if df_epis.empty:
-                st.info("ℹ️ Não existem registos de entrega de EPIs para esta empresa.")
-                conn_rel.close()
-            else:
-                st.markdown(f"#### 📊 Relatório Analítico de EPIs - {empresa_selecionada}")
+                conn_rel = sqlite3.connect(DB_NAME, timeout=10.0)
+                _garantir_colunas_ca_epis(conn_rel)
                 
-                cursor_rel = conn_rel.cursor()
-                validades_oficiais = []
-                status_cas = []
-                
-                for idx, row in df_epis.iterrows():
-                    ca_val = str(row.get('ca', '')).strip()
-                    ca_limpo = ''.join(filter(str.isdigit, ca_val))
+                if empresa_rel_epi_geral == "Todas":
+                    query_epis = "SELECT * FROM epis"
+                    df_epis = pd.read_sql(query_epis, conn_rel)
+                else:
+                    query_epis = "SELECT * FROM epis WHERE LOWER(TRIM(empresa)) = ?"
+                    df_epis = pd.read_sql(query_epis, conn_rel, params=(str(empresa_rel_epi_geral).strip().lower(),))
+
+                if df_epis.empty:
+                    st.warning(f"⚠️ Não há registos de entrega de EPIs para a empresa **{empresa_rel_epi_geral}**.")
+                    conn_rel.close()
+                else:
+                    cursor_rel = conn_rel.cursor()
+                    validades_oficiais = []
+                    status_cas = []
                     
-                    validade_encontrada = "Não Cadastrado"
-                    status = "⚠️ CA Não Encontrado"
+                    for idx, row in df_epis.iterrows():
+                        ca_val = str(row.get('ca', '')).strip()
+                        ca_limpo = ''.join(filter(str.isdigit, ca_val))
+                        
+                        validade_encontrada = "Não Cadastrado"
+                        status = "⚠️ CA Não Encontrado"
+                        
+                        if ca_limpo:
+                            cursor_rel.execute("""
+                                SELECT validade FROM cad_cas 
+                                WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
+                                LIMIT 1
+                            """, (ca_limpo,))
+                            res = cursor_rel.fetchone()
+                            if res and res[0]:
+                                validade_encontrada = res[0]
+                                status = "✅ Válido na Base"
+                                
+                        validades_oficiais.append(validade_encontrada)
+                        status_cas.append(status)
                     
-                    if ca_limpo:
-                        cursor_rel.execute("""
-                            SELECT validade FROM cad_cas 
-                            WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
-                            LIMIT 1
-                        """, (ca_limpo,))
-                        res = cursor_rel.fetchone()
-                        if res and res[0]:
-                            validade_encontrada = res[0]
-                            status = "✅ Válido na Base"
-                            
-                    validades_oficiais.append(validade_encontrada)
-                    status_cas.append(status)
-                
-                df_epis['validade_oficial'] = validades_oficiais
-                df_epis['status_ca_verificado'] = status_cas
-                conn_rel.close()
-                
-                st.dataframe(df_epis, use_container_width=True)
-                
-                csv_data = df_epis.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Descarregar Relatório em CSV",
-                    data=csv_data,
-                    file_name=f"relatorio_epis_{str(empresa_selecionada).lower().replace(' ', '_')}.csv",
-                    mime="text/csv",
-                    key="download_csv_relatorio_epis"
-                )
+                    df_epis['validade_oficial'] = validades_oficiais
+                    df_epis['status_ca_verificado'] = status_cas
+                    conn_rel.close()
+
+                    df_html_tabela = df_epis[['funcionario', 'cargo', 'epi', 'ca', 'validade_oficial', 'status_ca_verificado', 'data_entrega', 'quantidade']].rename(
+                        columns={
+                            'funcionario': 'Colaborador',
+                            'cargo': 'Cargo',
+                            'epi': 'EPI',
+                            'ca': 'CA',
+                            'validade_oficial': 'Validade CA',
+                            'status_ca_verificado': 'Status CA',
+                            'data_entrega': 'Data Entrega',
+                            'quantidade': 'Qtd'
+                        }
+                    )
+
+                    html_relatorio = """
+                    <html>
+                        <head>
+                            <title>Relatório de EPIs - {empresa}</title>
+                            <style>
+                                @page {{
+                                    size: landscape;
+                                    margin: 15mm;
+                                }}
+                                body {{
+                                    font-family: Arial, sans-serif;
+                                    color: #333;
+                                    margin: 20px;
+                                }}
+                                h2 {{
+                                    text-align: center;
+                                    color: #1b365d;
+                                    margin-bottom: 5px;
+                                }}
+                                p.sub {{
+                                    text-align: center;
+                                    font-size: 14px;
+                                    color: #555;
+                                    margin-bottom: 20px;
+                                }}
+                                table {{
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    margin-top: 10px;
+                                }}
+                                th, td {{
+                                    border: 1px solid #dcdcdc;
+                                    padding: 8px;
+                                    text-align: left;
+                                    font-size: 12px;
+                                }}
+                                th {{
+                                    background-color: #1b365d;
+                                    color: white;
+                                }}
+                                tr:nth-child(even) {{
+                                    background-color: #f8f9fa;
+                                }}
+                                .footer {{
+                                    margin-top: 30px;
+                                    text-align: right;
+                                    font-size: 11px;
+                                    color: #888;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <h2>Relatório Analítico de Entrega de EPIs e Validades de CAs</h2>
+                            <p class="sub"><b>Empresa:</b> {empresa} &nbsp;|&nbsp; <b>Emitido em:</b> {data_emissao}</p>
+                            {tabela_html}
+                            <div class="footer">
+                                F Z SSTMA E COMERCIO LTDA - Cassilab & Izitus - Sistema de Gestão de SST
+                            </div>
+                            <script>
+                                window.onload = function() {{
+                                    window.print();
+                                }};
+                            </script>
+                        </body>
+                    </html>
+                    """.format(
+                        empresa=empresa_rel_epi_geral,
+                        data_emissao=datetime.now(fuso_brasil).strftime('%d/%m/%Y às %H:%M'),
+                        tabela_html=df_html_tabela.to_html(index=False, classes='table')
+                    )
+
+                    st.success("✅ Relatório gerado com sucesso!")
+                    st.download_button(
+                        label="📥 Baixar e Imprimir Relatório de EPIs",
+                        data=html_relatorio,
+                        file_name=f"relatorio_entregas_epis_{empresa_rel_epi_geral.replace(' ', '_')}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                        key="btn_download_html_relatorio_epis"
+                    )
 
         if df.empty:
             st.info("Nenhum registro de EPI encontrado.")
