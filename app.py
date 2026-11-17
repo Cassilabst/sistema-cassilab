@@ -3679,8 +3679,11 @@ if menu == "Cadastros Gerais":
                                     if not df_res.empty:
                                         for _, row in df_res.iterrows():
                                             linha_completa = ";".join([str(val) for val in row.values])
-                                            # Verifica se o CA bate exatamente como campo (entre aspas ou delimitado)
-                                            if f'"{ca_digitado}"' in linha_completa or f'"{ca_limpo_num}"' in linha_completa or f';{ca_digitado};' in linha_completa:
+                                            
+                                            # Normaliza tirando os pontos de ambos para garantir o match exato independentemente de como está salvo no banco
+                                            linha_sem_pontos = linha_completa.replace('.', '')
+                                            
+                                            if any(fmt in linha_sem_pontos for fmt in [ca_digitado_bruto.replace('.', ''), ca_limpo_num]):
                                                 linha_encontrada_str = linha_completa
                                                 break
                                         if linha_encontrada_str:
