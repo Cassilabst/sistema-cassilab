@@ -4168,31 +4168,26 @@ if menu == "Cadastros Gerais":
                     )
 
                     import json
-                    
-                    #teste
+
+                    st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
                     html_json = json.dumps(html_relatorio)
                     
-                    st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
-                    
-                    # Montando o botão de forma limpa com st.markdown para não vazar código
-                    import html
-                    html_escaped = html.escape(html_relatorio)
-                    
-                    component_code = f"""
+                    component_code = """
                     <script>
-                    function abrirImpressao_{abs(hash(empresa_rel_epi_geral))}() {{
+                    function abrirImpressao() {
+                        var htmlContent = __HTML_JSON__;
                         var win = window.open('', '_blank');
-                        if (win) {{
-                            win.document.write(`{html_relatorio}`);
+                        if (win) {
+                            win.document.write(htmlContent);
                             win.document.close();
-                        }} else {{
+                        } else {
                             alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
-                        }}
-                    }}
+                        }
+                    }
                     </script>
 
-                    <button onclick="abrirImpressao_{abs(hash(empresa_rel_epi_geral))}()" style="
+                    <button onclick="abrirImpressao()" style="
                         width: 100%;
                         background-color: #ff4b4b;
                         color: white;
@@ -4207,7 +4202,7 @@ if menu == "Cadastros Gerais":
                     ">
                         🖨️ Clique para Imprimir Relatório de EPIs
                     </button>
-                    """
+                    """.replace("__HTML_JSON__", html_json)
                     
                     st.markdown(component_code, unsafe_allow_html=True)
                    
