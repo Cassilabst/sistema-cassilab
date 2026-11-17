@@ -4169,10 +4169,15 @@ if menu == "Cadastros Gerais":
                     )
 
                     import streamlit.components.v1 as components
+                    import base64
 
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    # Componente completo, isolado e funcional que força a abertura da janela
+                    # Codifica o HTML do relatório em Base64 (zero risco de quebrar o JavaScript)
+                    html_bytes = html_relatorio.encode('utf-8')
+                    html_base64 = base64.b64encode(html_bytes).decode('utf-8')
+                    
+                    # Componente limpo e seguro
                     print_component = f"""
                     <!DOCTYPE html>
                     <html>
@@ -4208,11 +4213,16 @@ if menu == "Cadastros Gerais":
 
                         <script>
                         function imprimirRelatorio() {{
-                            var relatorioHtml = {json.dumps(html_relatorio)};
+                            // Decodifica o Base64 com segurança total na hora do clique
+                            var base64Html = "{html_base64}";
+                            var binString = atob(base64Html);
+                            var bytes = Uint8Array.from(binString, (m) => m.codePointAt(0));
+                            var decodedHtml = new TextDecoder().decode(bytes);
+                            
                             var win = window.open('', '_blank');
                             if (win) {{
                                 win.document.open();
-                                win.document.write(relatorioHtml);
+                                win.document.write(decodedHtml);
                                 win.document.close();
                             }} else {{
                                 alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups.');
@@ -4223,8 +4233,8 @@ if menu == "Cadastros Gerais":
                     </html>
                     """
                     
-                    # Renderiza o componente com altura perfeita (sem sobrar texto e com o botão clicável)
-                    components.html(print_component, height=130)
+                    # Renderiza o componente com altura perfeita
+                    components.html(print_component, height=70)
                    
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
