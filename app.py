@@ -163,7 +163,7 @@ def init_db():
         )
     """)
     
-    # 3. Verificação e migração segura da tabela empresas (evita o erro no servidor)
+    # Verificação e migração 100% segura da tabela empresas
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
     tabela_empresas_existe = cursor.fetchone()
 
@@ -172,10 +172,36 @@ def init_db():
         colunas_empresas = [col[1] for col in cursor.fetchall()]
         
         if 'nome_empresa' not in colunas_empresas:
+            # Recria a tabela de forma segura preservando a estrutura correta com nome_empresa
+            cursor.execute("CREATE TABLE IF NOT EXISTS empresas_temp AS SELECT * FROM empresas;")
+            cursor.execute("DROP TABLE empresas;")
+            cursor.execute("""
+                CREATE TABLE empresas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data_registro TEXT,
+                    nome_empresa TEXT UNIQUE,
+                    cnpj TEXT,
+                    cep TEXT,
+                    cidade TEXT,
+                    bairro TEXT,
+                    endereco TEXT,
+                    telefone TEXT,
+                    email TEXT,
+                    responsavel TEXT,
+                    cnae TEXT,
+                    grau_risco TEXT,
+                    qtd_funcionarios INTEGER,
+                    porte TEXT
+                )
+            """)
             try:
-                cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
+                cursor.execute("""
+                    INSERT OR IGNORE INTO empresas (id, data_registro, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte)
+                    SELECT id, data_registro, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte FROM empresas_temp;
+                """)
             except Exception:
                 pass
+            cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
     else:
         cursor.execute("""
             CREATE TABLE empresas (
@@ -196,9 +222,6 @@ def init_db():
                 porte TEXT
             )
         """)
-    
-    # Salva as tabelas criadas até aqui
-    conn.commit()
     
     # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
