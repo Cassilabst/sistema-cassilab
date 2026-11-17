@@ -135,8 +135,15 @@ def renderizar_aba_epis(*args, **kwargs):
         (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
     )
 
-    # 1. GARANTE QUE AS TABELAS EXISTEM LOGO NO INÍCIO DA FUNÇÃO (Evita 'no such table')
+    DB_NAME = (
+        kwargs.get("DB_NAME") or 
+        (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
+    )
+
+    # GARANTE QUE AS TABELAS DO SISTEMA EXISTEM LOGO NO INÍCIO
     conn_init = sqlite3.connect(DB_NAME, timeout=10.0)
+    
+    # 1. Tabela de Registros de EPIs
     conn_init.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,6 +160,19 @@ def renderizar_aba_epis(*args, **kwargs):
             status TEXT
         )
     """)
+
+    # 2. Tabela de CAs Oficiais (Resolve o erro do relatório)
+    conn_init.execute("""
+        CREATE TABLE IF NOT EXISTS cad_cas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ca TEXT,
+            validade TEXT,
+            situacao TEXT,
+            equipamento TEXT
+        )
+    """)
+
+    # 3. Tabela de Cadastro de EPIs por Empresa
     conn_init.execute("""
         CREATE TABLE IF NOT EXISTS cad_epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,8 +182,20 @@ def renderizar_aba_epis(*args, **kwargs):
             validade TEXT
         )
     """)
+    
     conn_init.commit()
     _garantir_colunas_ca_epis(conn_init)
+    
+    try:
+        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN armario TEXT")
+    except Exception:
+        pass
+    try:
+        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT")
+    except Exception:
+        pass
+    conn_init.commit()
+    conn_init.close()
     
     try:
         conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN armario TEXT")
