@@ -203,9 +203,23 @@ def init_db():
                 pass
             cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
     else:
-        # Garantir que a tabela empresas existe e possui a coluna nome_empresa
+        # 3. Verificação e criação/atualização 100% segura da tabela empresas
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
+    tabela_empresas_existe = cursor.fetchone()
+
+    if tabela_empresas_existe:
+        cursor.execute("PRAGMA table_info(empresas);")
+        colunas_empresas = [col[1] for col in cursor.fetchall()]
+        
+        if 'nome_empresa' not in colunas_empresas:
+            try:
+                cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
+                conn.commit()
+            except Exception:
+                pass
+    else:
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS empresas (
+            CREATE TABLE empresas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 data_registro TEXT,
                 nome_empresa TEXT UNIQUE,
@@ -224,14 +238,8 @@ def init_db():
             )
         """)
         conn.commit()
-    
-        # Adiciona a coluna nome_empresa caso a tabela seja antiga e não a tenha
-        try:
-            cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
-            conn.commit()
-        except Exception:
-            pass
-    
+          
+       
     # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
         "ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;",
