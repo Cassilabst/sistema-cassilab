@@ -2438,6 +2438,7 @@ else:
         "Controle de Documentos",
         "Alterar Senha",
         "Relatórios Consolidados",
+        "Consulta de CAs",
     ]
 
 idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
