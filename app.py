@@ -3827,7 +3827,7 @@ if menu == "Cadastros Gerais":
                 atualizados = 0
                 
                 if not df_todos.empty and os.path.exists("cassilab_sst.db"):
-                    import sqlite3, os, pandas as pd, re
+                    import sqlite3, os, pandas as pd, re, datetime
                     conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
                     cur_sst = conn_sst.cursor()
                     cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -3838,21 +3838,21 @@ if menu == "Cadastros Gerais":
                         if not ca_raw:
                             continue
                         
-                        # Remove pontos, traços e quaisquer caracteres não numéricos (ex: "30.456" vira "30456")
+                        # Limpa pontos, traços e caracteres não numéricos
                         ca_val_limpo = re.sub(r'\D', '', ca_raw)
                         ca_limpo_num = ca_val_limpo.lstrip('0')
                         val_ca_gravacao = "Não localizado"
                         
-                        # Varre a base oficial procurando o CA
+                        datas_encontradas = []
+                        
+                        # Varre a base oficial procurando todas as ocorrências do CA
                         for tab in tabelas:
                             try:
                                 cur_sst.execute(f"PRAGMA table_info({tab});")
                                 cols = [col[1] for col in cur_sst.fetchall()]
                                 
-                                encontrou = False
                                 for col in cols:
-                                    # Procura utilizando o CA limpo apenas com números
-                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) LIKE ? LIMIT 3"
+                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) LIKE ?"
                                     df_res = pd.read_sql(query, conn_sst, params=(ca_val_limpo, ca_limpo_num, f"%{ca_val_limpo}%"))
                                     
                                     if not df_res.empty:
@@ -3861,27 +3861,31 @@ if menu == "Cadastros Gerais":
                                             
                                             if ca_val_limpo in linha_completa or ca_limpo_num in linha_completa:
                                                 partes = [p.strip('"\' ') for p in linha_completa.split(';')]
-                                                val_oficial = ""
                                                 for parte in partes:
-                                                    if re.match(r'^\d{2}/\d{2}/\d{4}$', parte) or re.match(r'^\d{4}-\d{2}-\d{2}$', parte):
-                                                        if any(ano in parte for ano in ["202", "203", "201", "204", "205"]):
-                                                            val_oficial = parte
-                                                            break
-                                                
-                                                if val_oficial:
-                                                    val_ca_gravacao = val_oficial
-                                                else:
-                                                    val_ca_gravacao = "Válido"
-                                                
-                                                encontrou = True
-                                                break
-                                    if encontrou:
-                                        break
-                                if encontrou:
-                                    break
+                                                    match_dmy = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', parte)
+                                                    match_ymd = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', parte)
+                                                    
+                                                    try:
+                                                        if match_dmy:
+                                                            d, m, y = map(int, match_dmy.groups())
+                                                            dt_obj = datetime.date(y, m, d)
+                                                            if y >= 2010:
+                                                                datas_encontradas.append((dt_obj, f"{d:02d}/{m:02d}/{y}"))
+                                                        elif match_ymd:
+                                                            y, m, d = map(int, match_ymd.groups())
+                                                            dt_obj = datetime.date(y, m, d)
+                                                            if y >= 2010:
+                                                                datas_encontradas.append((dt_obj, f"{d:02d}/{m:02d}/{y}"))
+                                                    except:
+                                                        pass
                             except Exception:
                                 continue
                         
+                        # Se encontrou datas, seleciona a MAIS RECENTE (data mais futura / última renovação)
+                        if datas_encontradas:
+                            datas_encontradas.sort(key=lambda x: x[0], reverse=True)
+                            val_ca_gravacao = datas_encontradas[0][1]
+            
                         conn_upd.execute("UPDATE cad_epis SET validade_ca = ? WHERE id = ?", (val_ca_gravacao, int(r_cad["id"])))
                         atualizados += 1
                         
@@ -3889,7 +3893,7 @@ if menu == "Cadastros Gerais":
                     
                 conn_upd.commit()
                 conn_upd.close()
-                st.success(f"✅ {atualizados} CAs atualizados em massa com sucesso baseados no registo oficial!")
+                st.success(f"✅ {atualizados} CAs atualizados com sucesso utilizando a validade mais recente!")
                 st.rerun()
             # -----------------------------------------------------------------
             # Calcula o status automaticamente com base na data de validade do CA
