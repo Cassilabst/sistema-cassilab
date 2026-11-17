@@ -288,6 +288,11 @@ def adicionar_numeracao(canvas, doc):
     except Exception:
         pass
 
+def formatar_titulo(texto):
+    """Exibe um título formatado de forma padronizada no Streamlit."""
+    st.markdown(f"### 🏢 {texto}")
+    st.markdown("---")
+
 # --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
 from modulo_absenteismo import renderizar_aba_absenteismo
 from modulo_admin import renderizar_aba_admin
