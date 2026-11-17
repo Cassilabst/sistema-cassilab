@@ -157,6 +157,30 @@ def renderizar_aba_epis(*args, **kwargs):
         else (args[5] if len(args) > 5 else True)
     )
 
+    # --- COLOCA O BLOCO DE SEGURANÇA AQUI EM BAIXO ---
+    DB_NAME = "cassilab_sst.db"
+
+    if not emp_usuario or emp_usuario == "Todas":
+        st.warning(
+            "⚠️ Selecione uma empresa específica no filtro superior para realizar lançamentos e gerar fichas."
+        )
+    else:
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        _garantir_colunas_ca_epis(conn)
+
+        try:
+            conn.execute(
+                "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
+            )
+        except Exception:
+            pass
+        
+        # O resto do código da aba de EPIs continua logo a seguir...
+        
+        # TODO O RESTANTE CÓDIGO DA ABA DE EPIS FICA AQUI DENTRO (identado)
+        else (args[5] if len(args) > 5 else True)
+    )
+
     get_empresas_func = (
         kwargs.get("get_empresas_func")
         or kwargs.get("get_empresas")
