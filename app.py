@@ -4203,7 +4203,7 @@ if menu == "Cadastros Gerais":
 
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
-    renderizar_modulo_ca('cassilab_sst.db', is_admin)
+    renderizar_modulo_ca('cassilab_sst.db', st.session_state.get("is_admin", False))
 
 # ==========================================
 # 3. GESTÃO DE FUNCIONÁRIOS
