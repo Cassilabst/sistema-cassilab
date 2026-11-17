@@ -134,10 +134,10 @@ def renderizar_aba_epis(*args, **kwargs):
         kwargs.get("DB_NAME") or 
         (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
     )
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    
-    # Garante que a tabela 'epis' existe antes de tentar ler
-    conn.execute("""
+
+    # 1. GARANTE QUE AS TABELAS EXISTEM LOGO NO INÍCIO DA FUNÇÃO (Evita 'no such table')
+    conn_init = sqlite3.connect(DB_NAME, timeout=10.0)
+    conn_init.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             empresa TEXT,
@@ -153,10 +153,28 @@ def renderizar_aba_epis(*args, **kwargs):
             status TEXT
         )
     """)
-    conn.commit()
+    conn_init.execute("""
+        CREATE TABLE IF NOT EXISTS cad_epis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empresa TEXT,
+            epi TEXT,
+            ca TEXT,
+            validade TEXT
+        )
+    """)
+    conn_init.commit()
+    _garantir_colunas_ca_epis(conn_init)
     
-    _garantir_colunas_ca_epis(conn)
-    df = pd.read_sql("SELECT * FROM epis", conn)
+    try:
+        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN armario TEXT")
+    except Exception:
+        pass
+    try:
+        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT")
+    except Exception:
+        pass
+    conn_init.commit()
+    conn_init.close()
 
     is_admin = (
         kwargs.get("is_admin") or 
@@ -233,56 +251,6 @@ def renderizar_aba_epis(*args, **kwargs):
         or kwargs.get("dialog_editar_epi")
         or (args[16] if len(args) > 16 else lambda x: None)
     )
-
-    # --- VERIFICAÇÃO DE SEGURANÇA E BANCO CENTRALIZADO ---
-    DB_NAME = "cassilab_sst.db"
-
-    if not emp_usuario or emp_usuario == "Todas":
-        st.warning(
-            "⚠️ Selecione uma empresa específica no filtro superior para realizar lançamentos e gerar fichas."
-        )
-    else:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS epis (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                empresa TEXT,
-                matricula TEXT,
-                funcionario TEXT,
-                cargo TEXT,
-                setor TEXT,
-                epi TEXT,
-                ca TEXT,
-                validade_ca TEXT,
-                data_entrega TEXT,
-                quantidade INTEGER,
-                status TEXT
-            )
-        """)
-        conn.commit()
-        _garantir_colunas_ca_epis(conn)
-        df = pd.read_sql("SELECT * FROM epis", conn)
-        
-        # Garante que a tabela 'cad_epis' existe no banco centralizado
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS cad_epis (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                empresa TEXT,
-                epi TEXT,
-                ca TEXT,
-                validade TEXT
-            )
-        """)
-        conn.commit()
-
-        _garantir_colunas_ca_epis(conn)
-
-        try:
-            conn.execute(
-                "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
-            )
-        except Exception:
-            pass
 
     def registrar_log_func_seguro(*l_args, **l_kwargs):
         if not callable(raw_registrar_log_func):
@@ -538,6 +506,7 @@ def renderizar_aba_epis(*args, **kwargs):
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     _garantir_colunas_ca_epis(conn)
     df = pd.read_sql("SELECT * FROM epis", conn)
+    conn.close()
 
     try:
         df_cad_tipos = pd.read_sql(
