@@ -4204,6 +4204,7 @@ if menu == "Cadastros Gerais":
                     </button>
                     """.replace("__HTML_JSON__", html_json)
                     
+                    # USE ESTA LINHA E NUNCA O components.html:
                     st.markdown(component_code, unsafe_allow_html=True)
                    
 elif menu == "Consulta de CAs":
