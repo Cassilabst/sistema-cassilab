@@ -1,4 +1,3 @@
-import sqlite3
 from datetime import datetime, date, timedelta
 import re
 import sys
@@ -17,34 +16,432 @@ import base64
 import os
 import shutil
 
-# Definição do banco de dados global para evitar o erro de NameError em get_empresas()
-DB_NAME = "cassilab_sst.db"
+# --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
+if os.path.exists("/data"):
+    DB_PATH_PERSISTENT = "/data/cassilab_gestao.db"
+    DB_PATH_LOCAL = "cassilab_gestao.db"
+    
+    # Se o disco persistente ainda estiver vazio, mas o arquivo veio do GitHub, copia para lá automaticamente!
+    if not os.path.exists(DB_PATH_PERSISTENT) and os.path.exists(DB_PATH_LOCAL):
+        shutil.copy(DB_PATH_LOCAL, DB_PATH_PERSISTENT)
+        
+    DB_NAME = DB_PATH_PERSISTENT
+else:
+    DB_NAME = "cassilab_gestao.db"
+    
+DB_URL = f"sqlite:///{DB_NAME}"
+
+try:
+    engine = create_engine(DB_URL, connect_args={"timeout": 30}, pool_pre_ping=True)
+except Exception as e:
+    st.error(f"❌ Erro ao inicializar o motor do SQLite: {e}")
+
+# --- TRADUTOR PARA O PANDAS ---
+if not hasattr(pd, "_original_read_sql"):
+    pd._original_read_sql = pd.read_sql
+
+def _patched_read_sql(sql, con, *args, **kwargs):
+    # Se 'con' for string ou sqlite3 connection, usa sqlite nativo para máxima performance local
+    if isinstance(con, (str, sqlite_original.Connection)):
+        return pd._original_read_sql(sql, con, *args, **kwargs)
+    return pd._original_read_sql(sql, engine, *args, **kwargs)
+
+pd.read_sql = _patched_read_sql
+
+# --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
+from modulo_absenteismo import renderizar_aba_absenteismo
+from modulo_admin import renderizar_aba_admin
+from modulo_documentos import renderizar_aba_documentos, renderizar_botao_imprimir_termo
+from modulo_empresas import renderizar_aba_empresas
+from modulo_epis import renderizar_aba_epis
+from modulo_exames import renderizar_aba_exames
+from modulo_funcionarios import renderizar_aba_funcionarios
+from modulo_lista_presenca import renderizar_aba_lista_presenca
+from modulo_matriz import renderizar_matriz_treinamentos
+from modulo_os import renderizar_aba_os
+from modulo_relatorios import renderizar_aba_relatorios
+from modulo_servicos import renderizar_aba_servicos
+from modulo_treinamentos import renderizar_aba_treinamentos
+from modulo_senha import renderizar_aba_alterar_senha
+
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(
+    page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide"
+)
+
+def criar_backup_automatico():
+    pass
+
+def formatar_titulo(texto):
+    if not texto or pd.isna(texto):
+        return ""
+    excecoes = {"e", "da", "de", "do", "das", "dos", "em", "para", "com", "S.A."}
+    siglas_maiusculas = {
+        "ltda", "nr", "me", "mei", "epp", "epi", "cnae", "pgr", "pcmso",
+        "pgrs", "pca", "ppr", "npt", "ccb", "aet", "aep", "arp", "ltcat",
+        "apr", "ppp", "cipa", "epc", "aso", "sst", "sesmt", "ca", "nfes",
+        "dds", "w", "pemt"
+    }
+    palavras = str(texto).strip().split()
+    palavras_formatadas = []
+    for i, p in enumerate(palavras):
+        p_limpa = re.sub(r"[^a-zA-Z0-9]", "", p).lower()
+        if p_limpa in siglas_maiusculas:
+            palavras_formatadas.append(p.upper())
+        else:
+            p_lower = p.lower()
+            if i > 0 and p_lower in excecoes:
+                palavras_formatadas.append(p_lower)
+            else:
+                if "-" in p:
+                    partes = [
+                        sub.upper() if sub.lower() in siglas_maiusculas else sub.capitalize()
+                        for sub in p.split("-")
+                    ]
+                    palavras_formatadas.append("-".join(partes))
+                else:
+                    palavras_formatadas.append(p.capitalize())
+    return " ".join(palavras_formatadas)
+
+def adicionar_numeracao(df):
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    if "Nº" in df.columns:
+        df = df.drop(columns=["Nº"])
+    df.insert(0, "Nº", range(1, len(df) + 1))
+    return df
+
+def registrar_log(usuario, empresa, acao):
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        cursor = conn.cursor()
+        dt_atual = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
+        cursor.execute(
+            "INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES (?, ?, ?, ?)",
+            (dt_atual, str(usuario), str(empresa), str(acao)),
+        )
+        conn.commit()
+        conn.close()
+    except:
+        pass
+
+def enviar_email_smtp(destinatario, assunto, corpo):
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute("SELECT email, senha_app FROM configuracoes_email LIMIT 1")
+        cfg = cursor.fetchone()
+        conn.close()
+        if not cfg or not cfg[0] or not cfg[1]:
+            return False, "Configurações de e-mail não encontradas na aba Administração."
+        remetente = cfg[0]
+        senha_app = cfg[1]
+        msg = MIMEMultipart()
+        msg["From"] = remetente
+        msg["To"] = destinatario
+        msg["Subject"] = assunto
+        msg.attach(MIMEText(corpo, "plain", "utf-8"))
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(remetente, senha_app)
+        server.sendmail(remetente, destinatario, msg.as_string())
+        server.quit()
+        return True, "E-mail enviado com sucesso!"
+    except Exception as e:
+        return False, str(e)
+
+def calcular_proximo_exame(data_str, meses_str):
+    if not data_str or not meses_str:
+        return data_str
+    try:
+        meses_digitos = "".join(filter(str.isdigit, str(meses_str)))
+        meses = int(meses_digitos) if meses_digitos else 12
+        dt = None
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(str(data_str).strip(), fmt)
+                break
+            except ValueError:
+                continue
+        if not dt:
+            return data_str
+        mes_novo = dt.month - 1 + meses
+        ano_novo = dt.year + mes_novo // 12
+        mes_novo = mes_novo % 12 + 1
+        ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+        dia_novo = min(dt.day, ultimo_dia_mes)
+        dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+        return dt_futura.strftime("%d/%m/%Y")
+    except:
+        return data_str
+
+def calcular_proximo_treinamento(data_str, validade_str):
+    if not data_str or not validade_str:
+        return data_str
+    
+    # Tenta ler se a validade já é uma data válida formatada
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt_val = datetime.strptime(str(validade_str).strip(), fmt)
+            return dt_val.strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+            
+    try:
+        val_lower = str(validade_str).lower()
+        numeros = "".join(filter(str.isdigit, val_lower))
+        qtd = int(numeros) if numeros else 12
+        dt = None
+        
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(str(data_str).strip(), fmt)
+                break
+            except ValueError:
+                continue
+                
+        if not dt:
+            return data_str
+            
+        if "ano" in val_lower:
+            ano_novo = dt.year + qtd
+            try:
+                dt_futura = dt.replace(year=ano_novo)
+            except ValueError:
+                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+        elif "mes" in val_lower or "mês" in val_lower:
+            mes_novo = dt.month - 1 + qtd
+            ano_novo = dt.year + mes_novo // 12
+            mes_novo = mes_novo % 12 + 1
+            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+            dia_novo = min(dt.day, ultimo_dia_mes)
+            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+        elif "dia" in val_lower:
+            dt_futura = dt + timedelta(days=qtd)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+        else:
+            # Padrão caso venha apenas o número (ex: "12") -> assume meses
+            mes_novo = dt.month - 1 + qtd
+            ano_novo = dt.year + mes_novo // 12
+            mes_novo = mes_novo % 12 + 1
+            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+            dia_novo = min(dt.day, ultimo_dia_mes)
+            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+            return dt_futura.strftime("%d/%m/%Y")
+            
+    except:
+        return data_str
+
+def calcular_proxima_renovacao(data_str, vigencia_str):
+    if not data_str or not vigencia_str:
+        return data_str
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt_vig = datetime.strptime(str(vigencia_str).strip(), fmt)
+            return dt_vig.strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    try:
+        val_lower = str(vigencia_str).lower()
+        numeros = "".join(filter(str.isdigit, val_lower))
+        qtd = int(numeros) if numeros else 1
+        dt = None
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(str(data_str).strip(), fmt)
+                break
+            except ValueError:
+                continue
+        if not dt:
+            return data_str
+        if "ano" in val_lower:
+            ano_novo = dt.year + qtd
+            try:
+                dt_futura = dt.replace(year=ano_novo)
+            except ValueError:
+                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
+            return dt_futura.strftime("%d/%m/%Y")
+        elif "mes" in val_lower or "mês" in val_lower:
+            mes_novo = dt.month - 1 + qtd
+            ano_novo = dt.year + mes_novo // 12
+            mes_novo = mes_novo % 12 + 1
+            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
+            dia_novo = min(dt.day, ultimo_dia_mes)
+            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
+            return dt_futura.strftime("%d/%m/%Y")
+        elif "dia" in val_lower:
+            dt_futura = dt + timedelta(days=qtd)
+            return dt_futura.strftime("%d/%m/%Y")
+        else:
+            ano_novo = dt.year + qtd
+            dt_futura = dt.replace(year=ano_novo)
+            return dt_futura.strftime("%d/%m/%Y")
+    except:
+        return data_str
+
+def calcular_status_por_data(data_str):
+    if not data_str or pd.isna(data_str):
+        return "Válido"
+    hoje = datetime.today().date()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(str(data_str).strip(), fmt).date()
+            diff = (dt - hoje).days
+            if diff < 0:
+                return "Vencido"
+            elif diff <= 30:
+                return "A Vencer"
+            else:
+                return "Válido"
+        except ValueError:
+            continue
+    return "Válido"
+
+def calcular_status_exame(data_str):
+    if not data_str or pd.isna(data_str):
+        return "Válido"
+    hoje = datetime.today().date()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(str(data_str).strip(), fmt).date()
+            diff = (dt - hoje).days
+            if diff < 0:
+                return "Vencido"
+            elif diff <= 15:
+                return "A Vencer"
+            else:
+                return "Válido"
+        except ValueError:
+            continue
+    return "Válido"
+
+def sincronizar_status_exames():
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        df = pd.read_sql("SELECT id, proximo_exame FROM exames", conn)
+        if not df.empty:
+            cursor = conn.cursor()
+            for _, row in df.iterrows():
+                prox = row["proximo_exame"]
+                novo_st = calcular_status_exame(prox)
+                cursor.execute("UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"]))
+            conn.commit()
+        conn.close()
+    except:
+        pass
+
+def sincronizar_status_treinamentos():
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        df = pd.read_sql("SELECT id, proximo_treinamento FROM treinamentos", conn)
+        if not df.empty:
+            cursor = conn.cursor()
+            hoje = datetime.today().date()
+            for _, row in df.iterrows():
+                prox = row["proximo_treinamento"]
+                novo_st = "em dia"
+                if prox and not pd.isna(prox):
+                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                        try:
+                            dt = datetime.strptime(str(prox).strip(), fmt).date()
+                            diff = (dt - hoje).days
+                            if diff < 0:
+                                novo_st = "vencido"
+                            else:
+                                novo_st = "em dia"
+                            break
+                        except ValueError:
+                            continue
+                cursor.execute("UPDATE treinamentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
+            conn.commit()
+        conn.close()
+    except:
+        pass
+
+def sincronizar_status_documentos():
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        df = pd.read_sql("SELECT id, proxima_renovacao FROM documentos", conn)
+        if not df.empty:
+            cursor = conn.cursor()
+            hoje = datetime.today().date()
+            for _, row in df.iterrows():
+                prox = row["proxima_renovacao"]
+                novo_st = "Válido"
+                if prox and not pd.isna(prox):
+                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                        try:
+                            dt = datetime.strptime(str(prox).strip(), fmt).date()
+                            diff = (dt - hoje).days
+                            if diff < 0:
+                                novo_st = "Vencido"
+                            elif diff <= 30:
+                                novo_st = "A Vencer"
+                            else:
+                                novo_st = "Válido"
+                            break
+                        except ValueError:
+                            continue
+                cursor.execute("UPDATE documentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
+            conn.commit()
+        conn.close()
+    except:
+        pass
+
+def atualizar_cargo_setor_treinamentos_antigos():
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE treinamentos 
+            SET cargo = COALESCE(NULLIF(cargo, ''), (SELECT b.cargo FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1)),
+                setor = COALESCE(NULLIF(setor, ''), (SELECT b.setor FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1))
+            WHERE cargo IS NULL OR cargo = '' OR setor IS NULL OR setor = ''
+        """)
+        conn.commit()
+        conn.close()
+    except:
+        pass
+
+def atualizar_validade_treinamentos_para_meses():
+    try:
+        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, validade, data_realizacao FROM treinamentos WHERE validade LIKE '%ano%'")
+        rows = cursor.fetchall()
+        for row in rows:
+            rid, val_str, dt_real = row[0], str(row[1]).lower(), row[2]
+            numeros = "".join(filter(str.isdigit, val_str))
+            anos = int(numeros) if numeros else 1
+            meses = anos * 12
+            nova_val = f"{meses} meses"
+            novo_prox = calcular_proximo_treinamento(dt_real, nova_val)
+            cursor.execute("UPDATE treinamentos SET validade = ?, proximo_treinamento = ? WHERE id = ?", (nova_val, novo_prox, rid))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
     cursor = conn.cursor()
-
-    # 1. Criação e atualização inicial da tabela cad_treinamentos de forma 100% segura
+    
+    # 1. Corrige a tabela de treinamentos para remover a restrição UNIQUE global (com segurança)
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
     tabela_existe = cursor.fetchone()
-
+    
     if tabela_existe:
-        cursor.execute("PRAGMA table_info(cad_treinamentos);")
-        colunas_antigas = [col[1] for col in cursor.fetchall()]
-        
-        if 'carga_horaria' in colunas_antigas:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
-                SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
-            """)
-        else:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
-                SELECT id, empresa, treinamento FROM cad_treinamentos;
-            """)
-            
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
+            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
+        """)
         cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
-        
         cursor.execute("""
             CREATE TABLE cad_treinamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,21 +450,10 @@ def init_db():
                 carga_horaria TEXT
             );
         """)
-        
-        try:
-            if 'carga_horaria' in colunas_antigas:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
-                    SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
-                """)
-            else:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento)
-                    SELECT id, empresa, treinamento FROM cad_treinamentos_temp;
-                """)
-        except Exception:
-            pass
-            
+        cursor.execute("""
+            INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
+            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
+        """)
         cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
     else:
         cursor.execute("""
@@ -79,7 +465,7 @@ def init_db():
             );
         """)
 
-    # 2. Criação de TODAS as demais tabelas básicas
+    # 2. Criação de TODAS as demais tabelas usando a mesma conexão ativa
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS base_funcionarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,101 +549,34 @@ def init_db():
         )
     """)
     
-    # Verificação e migração 100% segura da tabela empresas
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
-    tabela_empresas_existe = cursor.fetchone()
-
-    if tabela_empresas_existe:
-        cursor.execute("PRAGMA table_info(empresas);")
-        colunas_empresas = [col[1] for col in cursor.fetchall()]
-        
-        if 'nome_empresa' not in colunas_empresas:
-            # Recria a tabela de forma segura preservando a estrutura correta com nome_empresa
-            cursor.execute("CREATE TABLE IF NOT EXISTS empresas_temp AS SELECT * FROM empresas;")
-            cursor.execute("DROP TABLE empresas;")
-            cursor.execute("""
-                CREATE TABLE empresas (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    data_registro TEXT,
-                    nome_empresa TEXT UNIQUE,
-                    cnpj TEXT,
-                    cep TEXT,
-                    cidade TEXT,
-                    bairro TEXT,
-                    endereco TEXT,
-                    telefone TEXT,
-                    email TEXT,
-                    responsavel TEXT,
-                    cnae TEXT,
-                    grau_risco TEXT,
-                    qtd_funcionarios INTEGER,
-                    porte TEXT
-                )
-            """)
-            try:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO empresas (id, data_registro, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte)
-                    SELECT id, data_registro, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte FROM empresas_temp;
-                """)
-            except Exception:
-                pass
-            cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
-    else:
-        # Verificação e recriação limpa da tabela empresas se estiver desatualizada
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
-        tabela_empresas_existe = cursor.fetchone()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS empresas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_registro TEXT,
+            nome_empresa TEXT UNIQUE,
+            cnpj TEXT,
+            cep TEXT,
+            cidade TEXT,
+            bairro TEXT,
+            endereco TEXT,
+            telefone TEXT,
+            email TEXT,
+            responsavel TEXT,
+            cnae TEXT,
+            grau_risco TEXT,
+            qtd_funcionarios INTEGER,
+            porte TEXT
+        )
+    """)
     
-        if tabela_empresas_existe:
-            cursor.execute("PRAGMA table_info(empresas);")
-            colunas_empresas = [col[1] for col in cursor.fetchall()]
-            
-            # Se a tabela existe mas falta a coluna nome_empresa, eliminamos a tabela antiga 
-            # para evitar qualquer conflito persistente no servidor do Render
-            if 'nome_empresa' not in colunas_empresas:
-                try:
-                    cursor.execute("DROP TABLE empresas;")
-                    conn.commit()
-                except Exception:
-                    pass
+    # Salva todas as alterações e fecha a conexão APENAS no final de tudo
+    conn.commit()
+    conn.close()
     
-        # Criação da tabela de empresas com um nome atualizado e limpo (evita qualquer lixo do disco antigo)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS empresas_cadastradas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data_registro TEXT,
-                nome_empresa TEXT UNIQUE,
-                cnpj TEXT,
-                cep TEXT,
-                cidade TEXT,
-                bairro TEXT,
-                endereco TEXT,
-                telefone TEXT,
-                email TEXT,
-                responsavel TEXT,
-                cnae TEXT,
-                grau_risco TEXT,
-                qtd_funcionarios INTEGER,
-                porte TEXT
-            )
-        """)
-        conn.commit()    
-       
-    # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
-        "ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;",
         "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
         "ALTER TABLE empresas ADD COLUMN cnae TEXT;",
         "ALTER TABLE empresas ADD COLUMN porte TEXT;",
-        "ALTER TABLE empresas ADD COLUMN cnpj TEXT;",
-        "ALTER TABLE empresas ADD COLUMN cep TEXT;",
-        "ALTER TABLE empresas ADD COLUMN cidade TEXT;",
-        "ALTER TABLE empresas ADD COLUMN bairro TEXT;",
-        "ALTER TABLE empresas ADD COLUMN endereco TEXT;",
-        "ALTER TABLE empresas ADD COLUMN telefone TEXT;",
-        "ALTER TABLE empresas ADD COLUMN email TEXT;",
-        "ALTER TABLE empresas ADD COLUMN responsavel TEXT;",
-        "ALTER TABLE empresas ADD COLUMN grau_risco TEXT;",
-        "ALTER TABLE empresas ADD COLUMN qtd_funcionarios INTEGER;",
         
         "CREATE TABLE IF NOT EXISTS base_funcionarios (id INTEGER PRIMARY KEY AUTOINCREMENT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
         "ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;",
@@ -293,22 +612,21 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, treinamento TEXT, carga_horaria TEXT, UNIQUE(empresa, treinamento));",
     
         "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);",
-    ]:
+       ]:
         try:
             cursor.execute(sql_alt)
             conn.commit()
-        except Exception:
+        except:
             try:
                 conn.rollback()
-            except Exception:
+            except:
                 pass
 
-    # 5. Atualizações de dados padrão dos utilizadores
     try:
         cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
         cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
         conn.commit()
-    except Exception:
+    except:
         pass
 
     try:
@@ -319,44 +637,18 @@ def init_db():
                 VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
             """)
             conn.commit()
-    except Exception:
+    except:
         pass
 
-    # 6. Fechamento seguro da conexão
     conn.close()
 
-def registrar_log(acao, usuario="Sistema", empresa="Todas"):
-    """Registra uma ação na tabela de logs do sistema de forma segura."""
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("""
-            INSERT INTO logs_sistema (data_hora, usuario, empresa, acao)
-            VALUES (?, ?, ?, ?)
-        """, (data_hora, str(usuario or "Sistema"), str(empresa or "Todas"), str(acao or "")))
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-
-def adicionar_numeracao(canvas, doc):
-    """Adiciona numeração de página de forma segura aos documentos gerados."""
-    try:
-        page_num = canvas.getPageNumber()
-        text = f"Página {page_num}"
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        # Posição padrão no rodapé (ajustável conforme o layout do seu PDF)
-        canvas.drawRightString(550, 30, text)
-        canvas.restoreState()
-    except Exception:
-        pass
-
-def formatar_titulo(texto):
-    """Exibe um título formatado de forma padronizada no Streamlit."""
-    st.markdown(f"### 🏢 {texto}")
-    st.markdown("---")
+init_db()
+atualizar_cargo_setor_treinamentos_antigos()
+atualizar_validade_treinamentos_para_meses()
+criar_backup_automatico()
+sincronizar_status_exames()
+sincronizar_status_treinamentos()
+sincronizar_status_documentos()
 
 # --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
 from modulo_absenteismo import renderizar_aba_absenteismo
@@ -2144,13 +2436,43 @@ else:
         "Exames Ocupacionais",
         "Controle de Absenteísmo",
         "Controle de EPIs",
-        "Consulta de CA",          # <--- Adicione esta linha aqui!
         "Controle de Documentos",
         "Alterar Senha",
         "Relatórios Consolidados",
     ]
 
 idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
+
+# --- SUPORTE TÉCNICO VIA WHATSAPP NA SIDEBAR ---
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📞 Precisa de Ajuda?")
+
+# --- BOTÃO DE SUPORTE WHATSAPP NA PARTE INFERIOR DA SIDEBAR ---
+whatsapp_url = "https://wa.me/5541985339760?text=Olá,%20preciso%20de%20suporte%20técnico%20no%20sistema%20Cassilab."
+
+st.sidebar.markdown(f'''
+<div style="text-align: center; margin-top: 30px; margin-bottom: 15px;">
+    <a href="{whatsapp_url}" target="_blank" style="
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #25D366;
+        color: white;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        text-decoration: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+    " title="Suporte WhatsApp">
+        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="white">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+        </svg>
+    </a>
+    <div style="font-size: 12px; font-weight: 600; color: #555; margin-top: 5px; font-family: sans-serif;">Suporte</div>
+</div>
+''', unsafe_allow_html=True)
+
+st.sidebar.markdown("<p style='text-align: center; font-size: 12px; color: #888; margin-top: 5px;'>📱 (41) 98533-9760</p>", unsafe_allow_html=True)
 
 menu = st.sidebar.selectbox(
     "Menu Principal",
@@ -2175,31 +2497,6 @@ if st.sidebar.button("💾 Salvar tudo e Sair"):
     st.session_state["nivel_permissao"] = "Somente Visualizar"
     st.sidebar.success("✅ Sessão encerrada com segurança!")
     st.rerun()
-
-# --- SUPORTE WHATSAPP NO RODAPÉ DA SIDEBAR (ABAIXO DE TUDO) ---
-whatsapp_url = "https://wa.me/5541985339760?text=Olá,%20preciso%20de%20suporte%20técnico%20no%20sistema%20Cassilab."
-
-st.sidebar.markdown(f'''
-<div style="text-align: center; margin-top: 30px; margin-bottom: 20px;">
-    <a href="{whatsapp_url}" target="_blank" style="
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background-color: #25D366;
-        color: white;
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        text-decoration: none;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.15);
-    " title="Suporte WhatsApp">
-        <svg pointer-events="none" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white">
-            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-        </svg>
-    </a>
-    <div style="font-size: 12px; font-weight: 600; color: #555; margin-top: 6px; font-family: sans-serif;">Suporte</div>
-</div>
-''', unsafe_allow_html=True)
 
 is_admin = st.session_state["is_admin"]
 emp_usuario = st.session_state["empresa_usuario"]
@@ -3536,73 +3833,61 @@ if menu == "Cadastros Gerais":
                 atualizados = 0
                 
                 if not df_todos.empty and os.path.exists("cassilab_sst.db"):
-                    import sqlite3, os, pandas as pd, re, datetime
+                    import sqlite3, os, pandas as pd, re
                     conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
                     cur_sst = conn_sst.cursor()
                     cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
                     tabelas = [r[0] for r in cur_sst.fetchall()]
                     
                     for _, r_cad in df_todos.iterrows():
-                        ca_raw = str(r_cad.get("ca", "")).strip()
-                        if not ca_raw:
+                        ca_val = str(r_cad.get("ca", "")).strip()
+                        if not ca_val:
                             continue
                         
-                        # Limpa pontos, traços e caracteres não numéricos
-                        ca_val_limpo = re.sub(r'\D', '', ca_raw)
-                        ca_limpo_num = ca_val_limpo.lstrip('0')
-                        val_ca_gravacao = "Não localizado"
+                        ca_limpo_num = ca_val.lstrip('0')
+                        linha_encontrada_str = None
                         
-                        datas_encontradas = []
-                        
-                        # Varre a base oficial procurando todas as ocorrências do CA
+                        # Varre a base oficial procurando o CA
                         for tab in tabelas:
                             try:
                                 cur_sst.execute(f"PRAGMA table_info({tab});")
                                 cols = [col[1] for col in cur_sst.fetchall()]
-                                
                                 for col in cols:
-                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) = ? OR CAST({col} AS TEXT) LIKE ?"
-                                    df_res = pd.read_sql(query, conn_sst, params=(ca_val_limpo, ca_limpo_num, f"%{ca_val_limpo}%"))
-                                    
+                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? LIMIT 5"
+                                    df_res = pd.read_sql(query, conn_sst, params=(f"%{ca_val}%", f"%{ca_limpo_num}%"))
                                     if not df_res.empty:
                                         for _, row in df_res.iterrows():
                                             linha_completa = ";".join([str(val) for val in row.values])
-                                            
-                                            if ca_val_limpo in linha_completa or ca_limpo_num in linha_completa:
-                                                partes = [p.strip('"\' ') for p in linha_completa.split(';')]
-                                                for parte in partes:
-                                                    match_dmy = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', parte)
-                                                    match_ymd = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', parte)
-                                                    
-                                                    try:
-                                                        if match_dmy:
-                                                            d, m, y = map(int, match_dmy.groups())
-                                                            dt_obj = datetime.date(y, m, d)
-                                                            if y >= 2010:
-                                                                datas_encontradas.append((dt_obj, f"{d:02d}/{m:02d}/{y}"))
-                                                        elif match_ymd:
-                                                            y, m, d = map(int, match_ymd.groups())
-                                                            dt_obj = datetime.date(y, m, d)
-                                                            if y >= 2010:
-                                                                datas_encontradas.append((dt_obj, f"{d:02d}/{m:02d}/{y}"))
-                                                    except:
-                                                        pass
+                                            if f'"{ca_val}"' in linha_completa or f'"{ca_limpo_num}"' in linha_completa or f';{ca_val};' in linha_completa or f';{ca_limpo_num};' in linha_completa:
+                                                linha_encontrada_str = linha_completa
+                                                break
+                                        if linha_encontrada_str:
+                                            break
+                                if linha_encontrada_str:
+                                    break
                             except Exception:
                                 continue
+                                
+                        val_ca_gravacao = "Não localizado"
+                        if linha_encontrada_str:
+                            partes = [p.strip('"') for p in linha_encontrada_str.split(';')]
+                            val_oficial = ""
+                            for parte in partes:
+                                if re.match(r'^\d{2}/\d{2}/\d{4}$', parte) or re.match(r'^\d{4}-\d{2}-\d{2}$', parte):
+                                    if "202" in parte or "203" in parte or "201" in parte:
+                                        val_oficial = parte
+                            if val_oficial:
+                                val_ca_gravacao = val_oficial
+                            else:
+                                val_ca_gravacao = "Válido"
                         
-                        # Se encontrou datas, seleciona a MAIS RECENTE (data mais futura / última renovação)
-                        if datas_encontradas:
-                            datas_encontradas.sort(key=lambda x: x[0], reverse=True)
-                            val_ca_gravacao = datas_encontradas[0][1]
-            
                         conn_upd.execute("UPDATE cad_epis SET validade_ca = ? WHERE id = ?", (val_ca_gravacao, int(r_cad["id"])))
                         atualizados += 1
-                        
                     conn_sst.close()
                     
                 conn_upd.commit()
                 conn_upd.close()
-                st.success(f"✅ {atualizados} CAs atualizados com sucesso utilizando a validade mais recente!")
+                st.success(f"✅ {atualizados} CAs atualizados em massa com sucesso baseados no registo oficial!")
                 st.rerun()
             # -----------------------------------------------------------------
             # Calcula o status automaticamente com base na data de validade do CA
@@ -3758,10 +4043,10 @@ if menu == "Cadastros Gerais":
         else:
             st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
 
-        # --- RELATÓRIO DE EPIS COM DOWNLOAD SEGURO (IMUNE A BLOQUEIOS) ---
+        # --- RELATÓRIO DE EPIS COM COMPONENTE SEGURO DE IMPRESSÃO ---
         st.markdown("---")
         st.subheader("📄 Relatório de EPIs Cadastrados")
-        st.markdown("Gere o relatório em formato paisagem com validades, status e abertura automática da impressão.")
+        st.markdown("Gere o relatório em formato paisagem com validades, status e abertura automática da janela de impressão.")
 
         col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
         empresa_rel_epi_geral = col_pdf_e1.selectbox(
@@ -3773,7 +4058,7 @@ if menu == "Cadastros Gerais":
         with col_pdf_e2:
             st.write("")
             st.write("")
-            btn_gerar_pdf_cad_epis = st.button("⚙️ Gerar Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis")
+            btn_gerar_pdf_cad_epis = st.button("🖨️ Preparar Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis")
 
         if btn_gerar_pdf_cad_epis:
             if empresa_rel_epi_geral == "Nenhuma":
@@ -3823,6 +4108,7 @@ if menu == "Cadastros Gerais":
                         columns={"tipo": "Tipo / Categoria", "epi": "Nome do EPI", "ca": "Número do CA"}
                     )
 
+                    # HTML formatado com .format()
                     html_relatorio = """
                     <html>
                         <head>
@@ -3894,17 +4180,47 @@ if menu == "Cadastros Gerais":
                         tabela_html=df_html_tabela.to_html(index=False, classes='table')
                     )
 
-                    st.success("✅ Relatório gerado com sucesso! Clique no botão abaixo para baixar e imprimir.")
-                    
-                    st.download_button(
-                        label="📥 Baixar e Imprimir Relatório de EPIs",
-                        data=html_relatorio,
-                        file_name=f"relatorio_epis_{empresa_rel_epi_geral.replace(' ', '_')}.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
+                    import json
+                    import streamlit.components.v1 as components
 
-elif menu == "Consulta de CA":
+                    html_json = json.dumps(html_relatorio)
+                    
+                    st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
+                    
+                    # Usando string normal com .replace() para evitar qualquer conflito de f-string no JavaScript
+                    component_code = """
+                    <button onclick="abrirImpressao()" style="
+                        width: 100%;
+                        background-color: #ff4b4b;
+                        color: white;
+                        border: none;
+                        padding: 0.7rem 1rem;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        font-family: sans-serif;
+                        cursor: pointer;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                        🖨️ Clique para Imprimir Relatório de EPIs
+                    </button>
+
+                    <script>
+                    function abrirImpressao() {
+                        var htmlContent = __HTML_JSON__;
+                        var win = window.open('', '_blank');
+                        if (win) {
+                            win.document.write(htmlContent);
+                            win.document.close();
+                        } else {
+                            alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
+                        }
+                    }
+                    </script>
+                    """.replace("__HTML_JSON__", html_json)
+                    
+                    components.html(component_code, height=70)
+
+elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
     renderizar_modulo_ca('cassilab_sst.db', is_admin)
 
