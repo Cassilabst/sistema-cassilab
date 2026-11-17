@@ -136,7 +136,7 @@ def renderizar_aba_epis(*args, **kwargs):
     )
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
 
-    # Garante que a tabela 'epis' existe para evitar o erro
+    # GARANTE QUE A TABELA EXISTE LOGO NA ABERTURA DA FUNÇÃO
     conn.execute("""
         CREATE TABLE IF NOT EXISTS epis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +154,7 @@ def renderizar_aba_epis(*args, **kwargs):
         )
     """)
     conn.commit()
+    conn.close() # Fecha para reabrir com segurança nas consultas posteriores
 
     is_admin = (
         kwargs.get("is_admin") or 
@@ -240,8 +241,6 @@ def renderizar_aba_epis(*args, **kwargs):
         )
     else:
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        
-        # Garante que a tabela 'epis' existe no banco centralizado
         conn.execute("""
             CREATE TABLE IF NOT EXISTS epis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,6 +258,8 @@ def renderizar_aba_epis(*args, **kwargs):
             )
         """)
         conn.commit()
+        _garantir_colunas_ca_epis(conn)
+        df = pd.read_sql("SELECT * FROM epis", conn)
         
         # Garante que a tabela 'cad_epis' existe no banco centralizado
         conn.execute("""
