@@ -2497,6 +2497,19 @@ if st.sidebar.button("💾 Salvar tudo e Sair"):
     st.sidebar.success("✅ Sessão encerrada com segurança!")
     st.rerun()
 
+# ==========================================
+# 🛟 COLE O SUPORTE AQUI EMBAIXO:
+# ==========================================
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🛟 Suporte Técnico")
+st.sidebar.markdown(
+    '<a href="https://wa.me/5541999999999" target="_blank" style="text-decoration: none;">'
+    '<button style="width: 100%; background-color: #25D366; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px;">'
+    '<span>💬</span> <span>Suporte</span>'
+    '</button></a>',
+    unsafe_allow_html=True
+)
+
 is_admin = st.session_state["is_admin"]
 emp_usuario = st.session_state["empresa_usuario"]
 nivel_permissao = st.session_state["nivel_permissao"]
