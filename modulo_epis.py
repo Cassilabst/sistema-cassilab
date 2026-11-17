@@ -80,7 +80,6 @@ def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
         "status_ca": "⚪ Não encontrado",
         "descricao": "",
     }
-
         conn_ca.close()
     except Exception:
         pass
