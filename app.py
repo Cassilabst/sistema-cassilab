@@ -203,8 +203,9 @@ def init_db():
                 pass
             cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
     else:
+        # Garantir que a tabela empresas existe e possui a coluna nome_empresa
         cursor.execute("""
-            CREATE TABLE empresas (
+            CREATE TABLE IF NOT EXISTS empresas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 data_registro TEXT,
                 nome_empresa TEXT UNIQUE,
@@ -222,6 +223,14 @@ def init_db():
                 porte TEXT
             )
         """)
+        conn.commit()
+    
+        # Adiciona a coluna nome_empresa caso a tabela seja antiga e não a tenha
+        try:
+            cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
+            conn.commit()
+        except Exception:
+            pass
     
     # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
