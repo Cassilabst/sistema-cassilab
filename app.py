@@ -4175,14 +4175,16 @@ if menu == "Cadastros Gerais":
                     
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    # Usando HTML direto com st.markdown para o botão e a função de impressão
+                    # Montando o botão de forma limpa com st.markdown para não vazar código
+                    import html
+                    html_escaped = html.escape(html_relatorio)
+                    
                     component_code = f"""
                     <script>
                     function abrirImpressao_{abs(hash(empresa_rel_epi_geral))}() {{
-                        var htmlContent = {html_json};
                         var win = window.open('', '_blank');
                         if (win) {{
-                            win.document.write(htmlContent);
+                            win.document.write(`{html_relatorio}`);
                             win.document.close();
                         }} else {{
                             alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
