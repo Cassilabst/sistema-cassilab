@@ -2950,7 +2950,7 @@ if menu == "Cadastro de Empresas":
         renderizar_aba_empresas(
             DB_NAME,
             st.session_state.get("is_admin", False),
-            emp_usuario,
+            st.session_state.get("empresa_usuario", ""),
             formatar_titulo,
             formatar_data_br,
             formatar_cnpj,
