@@ -4206,23 +4206,7 @@ if menu == "Cadastros Gerais":
                     """
                     
                     st.markdown(component_code, unsafe_allow_html=True)
-
-                    <script>
-                    function abrirImpressao() {
-                        var htmlContent = __HTML_JSON__;
-                        var win = window.open('', '_blank');
-                        if (win) {
-                            win.document.write(htmlContent);
-                            win.document.close();
-                        } else {
-                            alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
-                        }
-                    }
-                    </script>
-                    """.replace("__HTML_JSON__", html_json)
-                    
-                    components.html(component_code, height=120)
-
+                   
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
     renderizar_modulo_ca('cassilab_sst.db', is_admin)
