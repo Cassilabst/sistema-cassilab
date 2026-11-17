@@ -130,13 +130,34 @@ def _garantir_colunas_ca_epis(conn):
 
 
 def renderizar_aba_epis(*args, **kwargs):
-    DB_NAME = kwargs.get("DB_NAME") or (
-        args[0] if len(args) > 0 else "cassilab_gestao.db"
+    DB_NAME = (
+        kwargs.get("DB_NAME") or 
+        (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
     )
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+
+    # Garante que a tabela 'epis' existe para evitar o erro
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS epis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empresa TEXT,
+            matricula TEXT,
+            funcionario TEXT,
+            cargo TEXT,
+            setor TEXT,
+            epi TEXT,
+            ca TEXT,
+            validade_ca TEXT,
+            data_entrega TEXT,
+            quantidade INTEGER,
+            status TEXT
+        )
+    """)
+    conn.commit()
+
     is_admin = (
-        kwargs.get("is_admin")
-        if "is_admin" in kwargs
-        else (args[1] if len(args) > 1 else False)
+        kwargs.get("is_admin") or 
+        (args[1] if len(args) > 1 else False)
     )
     emp_usuario = kwargs.get("emp_usuario") or (
         args[2] if len(args) > 2 else ""
