@@ -10,6 +10,8 @@ import streamlit.components.v1 as components
 
 def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
     ca_limpo = str(ca_numero or "").strip()
+    ca_apenas_digitos = "".join(filter(str.isdigit, ca_limpo))
+    
     if not ca_limpo or ca_limpo.lower() in ("nan", "none", ""):
         return {
             "encontrado": False,
@@ -30,83 +32,98 @@ def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
 
     try:
         conn_ca = sqlite3.connect(db_ca_path, timeout=5.0)
-        cur_ca = conn_ca.cursor()
-        cur_ca.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tabelas = [r[0] for r in cur_ca.fetchall()]
-
-        tabela_alvo = None
-        colunas_alvo = []
-        for tab in tabelas:
-            cur_ca.execute(f"PRAGMA table_info({tab});")
-            cols = [col[1] for col in cur_ca.fetchall()]
-            if any("ca" in c.lower() for c in cols):
-                tabela_alvo = tab
-                colunas_alvo = cols
-                break
-
-        if not tabela_alvo:
+        cursor = conn_ca.cursor()
+        
+        # 1. Tenta buscar primeiro na tabela de Cadastros Gerais de EPIs (cad_epis) onde você já cadastra
+        cursor.execute("""
+            SELECT validade, epi FROM cad_epis 
+            WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
+            LIMIT 1
+        """, (ca_apenas_digitos,))
+        res_cad = cursor.fetchone()
+        
+        if res_cad and res_cad[0]:
             conn_ca.close()
             return {
-                "encontrado": False,
-                "valido": False,
-                "validade": "",
-                "status_ca": "⚠️ Tabela CA não encontrada",
-                "descricao": "",
+                "encontrado": True,
+                "valido": True,
+                "validade": str(res_cad[0]),
+                "status_ca": "🟢 Válido (Cadastrado)",
+                "descricao": str(res_cad[1] or ""),
             }
 
-        col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next(
-            (c for c in colunas_alvo if "ca" in c.lower()), None
-        )
+        # 2. Se não achar, procura na base geral de CAs (cad_cas)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tabelas = [r[0] for r in cursor.fetchall()]
+        
+        tabela_alvo = "cad_cas" if "cad_cas" in tabelas else None
+        if not tabela_alvo:
+            for tab in tabelas:
+                cursor.execute(f"PRAGMA table_info({tab});")
+                cols = [col[1] for col in cursor.fetchall()]
+                if any("ca" in c.lower() for c in cols):
+                    tabela_alvo = tab
+                    break
 
-        query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
-        df_res = pd.read_sql(query, conn_ca, params=(ca_limpo, f"%{ca_limpo}%"))
+        if tabela_alvo:
+            cursor.execute(f"PRAGMA table_info({tabela_alvo});")
+            cols_tab = [col[1] for col in cursor.fetchall()]
+            col_ca = next((c for c in cols_tab if c.lower() == "ca"), cols_tab[0])
+            
+            cursor.execute(f"""
+                SELECT * FROM {tabela_alvo} 
+                WHERE REPLACE(REPLACE(REPLACE(CAST({col_ca} AS TEXT), '.', ''), '-', ''), ' ', '') = ?
+                LIMIT 1
+            """, (ca_apenas_digitos,))
+            df_res = pd.read_sql(f"""
+                SELECT * FROM {tabela_alvo} 
+                WHERE REPLACE(REPLACE(REPLACE(CAST({col_ca} AS TEXT), '.', ''), '-', ''), ' ', '') = '{ca_apenas_digitos}'
+                LIMIT 1
+            """, conn_ca)
+            
+            conn_ca.close()
+            
+            if not df_res.empty:
+                linha = df_res.iloc[0]
+                linha_lower = {str(k).lower(): v for k, v in linha.items()}
+                
+                validade = ""
+                for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
+                    if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
+                        validade = str(linha_lower[chave_val]).strip()
+                        break
+                
+                situacao_bruta = ""
+                for chave_sit in ("situacao", "status", "situacao_ca"):
+                    if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
+                        situacao_bruta = str(linha_lower[chave_sit]).strip()
+                        break
+                
+                descricao = ""
+                for chave_desc in ("equipamento", "descricao", "nome_equipamento", "produto", "epi"):
+                    if chave_desc in linha_lower and pd.notna(linha_lower[chave_desc]):
+                        descricao = str(linha_lower[chave_desc]).strip()
+                        break
+                
+                return {
+                    "encontrado": True,
+                    "valido": True,
+                    "validade": validade or "N/D",
+                    "status_ca": "🟢 Válido",
+                    "descricao": descricao,
+                }
+
         conn_ca.close()
+    except Exception:
+        pass
 
-        if df_res.empty:
-            return {
-                "encontrado": False,
-                "valido": False,
-                "validade": "Não encontrado",
-                "status_ca": "⚪ Não encontrado",
-                "descricao": "",
-            }
-
-        linha = df_res.iloc[0]
-        linha_lower = {str(k).lower(): v for k, v in linha.items()}
-
-        validade = ""
-        for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
-            if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
-                validade = str(linha_lower[chave_val]).strip()
-                break
-
-        situacao_bruta = ""
-        for chave_sit in ("situacao", "status", "situacao_ca"):
-            if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
-                situacao_bruta = str(linha_lower[chave_sit]).strip()
-                break
-
-        descricao = ""
-        for chave_desc in ("equipamento", "descricao", "nome_equipamento", "produto"):
-            if chave_desc in linha_lower and pd.notna(linha_lower[chave_desc]):
-                descricao = str(linha_lower[chave_desc]).strip()
-                break
-
-        sit_upper = situacao_bruta.upper()
-        if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
-            status_ca = f"🔴 {situacao_bruta.capitalize() if situacao_bruta else 'Irregular'}"
-            valido = False
-        else:
-            status_ca = "🟢 Válido"
-            valido = True
-
-        return {
-            "encontrado": True,
-            "valido": valido,
-            "validade": validade or "N/D",
-            "status_ca": status_ca,
-            "descricao": descricao,
-        }
+    return {
+        "encontrado": False,
+        "valido": False,
+        "validade": "Não encontrado",
+        "status_ca": "⚪ Não encontrado",
+        "descricao": "",
+    }
     except Exception:
         return {
             "encontrado": False,
