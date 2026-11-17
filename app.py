@@ -275,6 +275,19 @@ def registrar_log(acao, usuario="Sistema", empresa="Todas"):
     except Exception:
         pass
 
+def adicionar_numeracao(canvas, doc):
+    """Adiciona numeração de página de forma segura aos documentos gerados."""
+    try:
+        page_num = canvas.getPageNumber()
+        text = f"Página {page_num}"
+        canvas.saveState()
+        canvas.setFont("Helvetica", 9)
+        # Posição padrão no rodapé (ajustável conforme o layout do seu PDF)
+        canvas.drawRightString(550, 30, text)
+        canvas.restoreState()
+    except Exception:
+        pass
+
 # --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
 from modulo_absenteismo import renderizar_aba_absenteismo
 from modulo_admin import renderizar_aba_admin
