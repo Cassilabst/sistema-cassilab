@@ -16,7 +16,7 @@ import base64
 import os
 import shutil
 
-# 1. Criação e atualização inicial da tabela cad_treinamentos de forma 100% segura
+# 1. Criação e atualização segura da tabela cad_treinamentos
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
     tabela_existe = cursor.fetchone()
 
@@ -25,7 +25,7 @@ import shutil
         cursor.execute("PRAGMA table_info(cad_treinamentos);")
         colunas_antigas = [col[1] for col in cursor.fetchall()]
         
-        # Cria a tabela temporária adaptada às colunas existentes
+        # Cria a tabela temporária de forma dinâmica conforme as colunas disponíveis
         if 'carga_horaria' in colunas_antigas:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
