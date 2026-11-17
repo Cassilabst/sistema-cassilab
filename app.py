@@ -4168,19 +4168,34 @@ if menu == "Cadastros Gerais":
                     )
 
                     import json
+                    import streamlit.components.v1 as components
 
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    # Usamos json.dumps para codificar o HTML com segurança total
+                    # Codificamos o relatório em JSON com segurança
                     html_json_str = json.dumps(html_relatorio)
                     
-                    # Criamos um identificador único para a função para evitar conflitos
-                    func_id = abs(hash(empresa_rel_epi_geral))
-                    
-                    # Injecão segura separando o script do HTML
-                    component_code = f"""
+                    # Usamos um componente isolado do Streamlit que aceita script sem poluir a tela
+                    component_html = f"""
+                    <div style="margin-bottom: 15px;">
+                        <button onclick="abrirImpressao()" style="
+                            width: 100%;
+                            background-color: #ff4b4b;
+                            color: white;
+                            border: none;
+                            padding: 0.7rem 1rem;
+                            border-radius: 6px;
+                            font-weight: 600;
+                            font-family: sans-serif;
+                            cursor: pointer;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        ">
+                            🖨️ Clique para Imprimir Relatório de EPIs
+                        </button>
+                    </div>
+
                     <script>
-                    function abrirImpressao_{func_id}() {{
+                    function abrirImpressao() {{
                         var conteudoHtml = {html_json_str};
                         var win = window.open('', '_blank');
                         if (win) {{
@@ -4192,25 +4207,10 @@ if menu == "Cadastros Gerais":
                         }}
                     }}
                     </script>
-
-                    <button onclick="abrirImpressao_{func_id}()" style="
-                        width: 100%;
-                        background-color: #ff4b4b;
-                        color: white;
-                        border: none;
-                        padding: 0.7rem 1rem;
-                        border-radius: 6px;
-                        font-weight: 600;
-                        font-family: sans-serif;
-                        cursor: pointer;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        margin-bottom: 15px;
-                    ">
-                        🖨️ Clique para Imprimir Relatório de EPIs
-                    </button>
                     """
                     
-                    st.markdown(component_code, unsafe_allow_html=True)
+                    # Renderiza o componente com altura exata para o botão
+                    components.html(component_html, height=70)
                    
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
