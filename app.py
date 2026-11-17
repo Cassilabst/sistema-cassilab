@@ -4171,19 +4171,29 @@ if menu == "Cadastros Gerais":
 
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    html_json = json.dumps(html_relatorio)
+                    # Usamos json.dumps para codificar o HTML com segurança total
+                    html_json_str = json.dumps(html_relatorio)
                     
-                    # Botão limpo com a função direto no onclick (sem usar script solto)
-                    st.markdown(f"""
-                    <button onclick="(function() {{
+                    # Criamos um identificador único para a função para evitar conflitos
+                    func_id = abs(hash(empresa_rel_epi_geral))
+                    
+                    # Injecão segura separando o script do HTML
+                    component_code = f"""
+                    <script>
+                    function abrirImpressao_{func_id}() {{
+                        var conteudoHtml = {html_json_str};
                         var win = window.open('', '_blank');
                         if (win) {{
-                            win.document.write({html_json});
+                            win.document.open();
+                            win.document.write(conteudoHtml);
                             win.document.close();
                         }} else {{
                             alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
                         }}
-                    }})()" style="
+                    }}
+                    </script>
+
+                    <button onclick="abrirImpressao_{func_id}()" style="
                         width: 100%;
                         background-color: #ff4b4b;
                         color: white;
@@ -4198,7 +4208,9 @@ if menu == "Cadastros Gerais":
                     ">
                         🖨️ Clique para Imprimir Relatório de EPIs
                     </button>
-                    """, unsafe_allow_html=True)
+                    """
+                    
+                    st.markdown(component_code, unsafe_allow_html=True)
                    
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
