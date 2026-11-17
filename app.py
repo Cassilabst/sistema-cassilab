@@ -429,7 +429,8 @@ def atualizar_validade_treinamentos_para_meses():
         pass
 
 def init_db():
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+    conn = sqlite_original.connect(DB_NAME, timeout=30.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
     cursor = conn.cursor()
     
     # 1. Corrige a tabela de treinamentos para remover a restrição UNIQUE global (com segurança)
@@ -438,9 +439,10 @@ def init_db():
     
     if tabela_existe:
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
+            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
             SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
         """)
+        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
         cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
         cursor.execute("""
             CREATE TABLE cad_treinamentos (
