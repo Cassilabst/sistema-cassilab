@@ -6,6 +6,7 @@ import requests
 import smtplib
 from email.mime.text import MIMEText
 import streamlit as st
+import json  # <--- ADICIONE ESTA LINHA AQUI
 import sqlalchemy
 from sqlalchemy import create_engine, text
 import sqlite3 as sqlite_original
