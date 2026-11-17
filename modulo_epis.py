@@ -219,6 +219,26 @@ def renderizar_aba_epis(*args, **kwargs):
         )
     else:
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        
+        # Garante que a tabela 'epis' existe no banco centralizado
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS epis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                empresa TEXT,
+                matricula TEXT,
+                funcionario TEXT,
+                cargo TEXT,
+                setor TEXT,
+                epi TEXT,
+                ca TEXT,
+                validade_ca TEXT,
+                data_entrega TEXT,
+                quantidade INTEGER,
+                status TEXT
+            )
+        """)
+        conn.commit()
+        
         _garantir_colunas_ca_epis(conn)
 
         try:
