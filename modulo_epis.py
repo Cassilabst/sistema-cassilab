@@ -156,35 +156,6 @@ def renderizar_aba_epis(*args, **kwargs):
         if "pode_excluir" in kwargs
         else (args[5] if len(args) > 5 else True)
     )
-
-    get_empresas_func = (
-        kwargs.get("get_empresas_func")
-        or kwargs.get("get_empresas")
-        or (args[6] if len(args) > 6 else lambda: [])
-    )
-
-    # --- AGORA A VERIFICAÇÃO DE SEGURANÇA DA EMPRESA ---
-    DB_NAME = "cassilab_sst.db"
-
-    if not emp_usuario or emp_usuario == "Todas":
-        st.warning(
-            "⚠️ Selecione uma empresa específica no filtro superior para realizar lançamentos e gerar fichas."
-        )
-    else:
-        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-        _garantir_colunas_ca_epis(conn)
-
-        try:
-            conn.execute(
-                "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
-            )
-        except Exception:
-            pass
-        
-       
-        # TODO O RESTANTE CÓDIGO DA ABA DE EPIS FICA AQUI DENTRO (identado)
-        else (args[5] if len(args) > 5 else True)
-
     get_empresas_func = (
         kwargs.get("get_empresas_func")
         or kwargs.get("get_empresas")
@@ -239,6 +210,25 @@ def renderizar_aba_epis(*args, **kwargs):
         or (args[16] if len(args) > 16 else lambda x: None)
     )
 
+    # --- VERIFICAÇÃO DE SEGURANÇA E BANCO CENTRALIZADO ---
+    DB_NAME = "cassilab_sst.db"
+
+    if not emp_usuario or emp_usuario == "Todas":
+        st.warning(
+            "⚠️ Selecione uma empresa específica no filtro superior para realizar lançamentos e gerar fichas."
+        )
+    else:
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        _garantir_colunas_ca_epis(conn)
+
+        try:
+            conn.execute(
+                "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
+            )
+        except Exception:
+            pass
+        
+        # A partir daqui fica todo o código funcional da aba de EPIs (já indentado dentro do else)
     def registrar_log_func_seguro(*l_args, **l_kwargs):
         if not callable(raw_registrar_log_func):
             return
