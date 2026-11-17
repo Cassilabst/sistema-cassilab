@@ -55,7 +55,7 @@ from modulo_empresas import renderizar_aba_empresas
 from modulo_epis import renderizar_aba_epis
 from modulo_exames import renderizar_aba_exames
 from modulo_funcionarios import renderizar_aba_funcionarios
-from modulo_lista_presenimport renderizar_aba_lista_presenca
+from modulo_lista_presenca import renderizar_aba_lista_presenca
 from modulo_matriz import renderizar_matriz_treinamentos
 from modulo_os import renderizar_aba_os
 from modulo_relatorios import renderizar_aba_relatorios
