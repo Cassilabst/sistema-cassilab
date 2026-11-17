@@ -826,39 +826,38 @@ def renderizar_aba_epis(*args, **kwargs):
                 params=(empresa_selecionada,),
             )
             df_cad_epis = pd.read_sql(
-                "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi"
-                " ASC",
-                conn,
-                params=(empresa_selecionada,),
-            )
-            df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
+            "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
+            conn,
+            params=(empresa_selecionada,),
+        )
+        df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
 
-            df_historico_epi = pd.read_sql(
-                "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
-                " FROM epis WHERE empresa = ?",
-                conn,
-                params=(empresa_selecionada,),
-            )
-            conn.close()
+        df_historico_epi = pd.read_sql(
+            "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
+            " FROM epis WHERE empresa = ?",
+            conn,
+            params=(empresa_selecionada,),
+        )
+        conn.close()
 
-            lista_f = (
-                df_funcs["funcionario"].tolist()
-                if not df_funcs.empty
-                else []
-            )
-            lista_epis_cad = (
-                df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
-            )
-            mapa_ca = (
-                dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
-                if not df_cad_epis.empty
-                else {}
-            )
+        lista_f = (
+            df_funcs["funcionario"].tolist()
+            if not df_funcs.empty
+            else []
+        )
+        lista_epis_cad = (
+            df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
+        )
+        mapa_ca = (
+            dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
+            if not df_cad_epis.empty
+            else {}
+        )
 
-            if not lista_f:
-                st.info(
-                    "ℹ️ Nenhum funcionário cadastrado para esta empresa."
-                )
+        if not lista_f:
+            st.info(
+                "ℹ️ Nenhum funcionário cadastrado para esta empresa."
+            )
             else:
                 if "ultimo_epi_selecionado" not in st.session_state:
                     st.session_state["ultimo_epi_selecionado"] = None
