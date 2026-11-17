@@ -157,7 +157,7 @@ def renderizar_aba_epis(*args, **kwargs):
         else (args[5] if len(args) > 5 else True)
     )
 
-    # --- COLOCA O BLOCO DE SEGURANÇA AQUI EM BAIXO ---
+    # Garante o uso do banco centralizado correto e aplica a validação de empresa
     DB_NAME = "cassilab_sst.db"
 
     if not emp_usuario or emp_usuario == "Todas":
