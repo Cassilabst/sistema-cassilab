@@ -204,40 +204,40 @@ def init_db():
             cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
     else:
         # 3. Verificação e criação/atualização 100% segura da tabela empresas
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
-    tabela_empresas_existe = cursor.fetchone()
-
-    if tabela_empresas_existe:
-        cursor.execute("PRAGMA table_info(empresas);")
-        colunas_empresas = [col[1] for col in cursor.fetchall()]
-        
-        if 'nome_empresa' not in colunas_empresas:
-            try:
-                cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
-                conn.commit()
-            except Exception:
-                pass
-    else:
-        cursor.execute("""
-            CREATE TABLE empresas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data_registro TEXT,
-                nome_empresa TEXT UNIQUE,
-                cnpj TEXT,
-                cep TEXT,
-                cidade TEXT,
-                bairro TEXT,
-                endereco TEXT,
-                telefone TEXT,
-                email TEXT,
-                responsavel TEXT,
-                cnae TEXT,
-                grau_risco TEXT,
-                qtd_funcionarios INTEGER,
-                porte TEXT
-            )
-        """)
-        conn.commit()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
+        tabela_empresas_existe = cursor.fetchone()
+    
+        if tabela_empresas_existe:
+            cursor.execute("PRAGMA table_info(empresas);")
+            colunas_empresas = [col[1] for col in cursor.fetchall()]
+            
+            if 'nome_empresa' not in colunas_empresas:
+                try:
+                    cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
+                    conn.commit()
+                except Exception:
+                    pass
+        else:
+            cursor.execute("""
+                CREATE TABLE empresas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data_registro TEXT,
+                    nome_empresa TEXT UNIQUE,
+                    cnpj TEXT,
+                    cep TEXT,
+                    cidade TEXT,
+                    bairro TEXT,
+                    endereco TEXT,
+                    telefone TEXT,
+                    email TEXT,
+                    responsavel TEXT,
+                    cnae TEXT,
+                    grau_risco TEXT,
+                    qtd_funcionarios INTEGER,
+                    porte TEXT
+                )
+            """)
+            conn.commit()
           
        
     # 4. Execução segura das demais migrações e colunas adicionais
