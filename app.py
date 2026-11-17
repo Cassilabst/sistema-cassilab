@@ -2961,8 +2961,8 @@ if menu == "Cadastro de Empresas":
             adicionar_numeracao,
             atualizar_filtro_empresa,
             registrar_log,
-      )
-except Exception as e:
+        )
+    except Exception as e:
         st.error(f"Erro ao carregar a aba de Empresas: {e}")
 
 if menu == "Cadastros Gerais":
