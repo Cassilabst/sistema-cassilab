@@ -805,54 +805,54 @@ def renderizar_aba_epis(*args, **kwargs):
             if st.session_state.get("modal_del_epi_ids"):
                 modal_excluir_registros_pin(st.session_state["modal_del_epi_ids"], empresa_selecionada)
 
-with aba_gestao_ficha:
-st.markdown(
-    "### ➕ Registrar Entrega e Gerar Ficha Individual de EPI"
-)
-
-if empresa_selecionada == "Todas":
-    st.warning(
-        "⚠️ Selecione uma empresa específica no filtro superior para"
-        " realizar lançamentos e gerar fichas."
+    with aba_gestao_ficha:
+    st.markdown(
+        "### ➕ Registrar Entrega e Gerar Ficha Individual de EPI"
     )
-else:
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    _garantir_colunas_ca_epis(conn)
-
-    try:
-        conn.execute(
-            "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
+    
+    if empresa_selecionada == "Todas":
+        st.warning(
+            "⚠️ Selecione uma empresa específica no filtro superior para"
+            " realizar lançamentos e gerar fichas."
         )
-    except Exception:
-        pass
-    try:
-        conn.execute(
-            "ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT"
+    else:
+        conn = sqlite3.connect(DB_NAME, timeout=10.0)
+        _garantir_colunas_ca_epis(conn)
+    
+        try:
+            conn.execute(
+                "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
+            )
+        except Exception:
+            pass
+        try:
+            conn.execute(
+                "ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT"
+            )
+        except Exception:
+            pass
+        conn.commit()
+    
+        df_funcs = pd.read_sql(
+            "SELECT funcionario, matricula, cargo, setor, data_admissao,"
+            " armario, calcado FROM base_funcionarios WHERE empresa = ?",
+            conn,
+            params=(empresa_selecionada,),
         )
-    except Exception:
-        pass
-    conn.commit()
-
-    df_funcs = pd.read_sql(
-        "SELECT funcionario, matricula, cargo, setor, data_admissao,"
-        " armario, calcado FROM base_funcionarios WHERE empresa = ?",
-        conn,
-        params=(empresa_selecionada,),
-    )
-    df_cad_epis = pd.read_sql(
-        "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
-        conn,
-        params=(empresa_selecionada,),
-    )
-    df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
-
-    df_historico_epi = pd.read_sql(
-        "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
-        " FROM epis WHERE empresa = ?",
-        conn,
-        params=(empresa_selecionada,),
-    )
-    conn.close()
+        df_cad_epis = pd.read_sql(
+            "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
+            conn,
+            params=(empresa_selecionada,),
+        )
+        df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
+    
+        df_historico_epi = pd.read_sql(
+            "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
+            " FROM epis WHERE empresa = ?",
+            conn,
+            params=(empresa_selecionada,),
+        )
+        conn.close()
 
     lista_f = (
         df_funcs["funcionario"].tolist()
