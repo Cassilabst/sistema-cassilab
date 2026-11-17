@@ -5,15 +5,64 @@ from datetime import datetime
 import base64
 
 def garantir_coluna_logo(DB_NAME):
-    """Garante que a coluna de logo exista na tabela de empresas"""
+    """Garante que a tabela de empresas e todas as colunas essenciais existam"""
     try:
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
         cursor = conn.cursor()
+        
+        # Cria a tabela do zero caso ela não exista
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS empresas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data_registro TEXT,
+                nome_empresa TEXT UNIQUE,
+                cnpj TEXT,
+                cep TEXT,
+                cidade TEXT,
+                bairro TEXT,
+                endereco TEXT,
+                telefone TEXT,
+                email TEXT,
+                responsavel TEXT,
+                cnae TEXT,
+                grau_risco TEXT,
+                qtd_funcionarios INTEGER,
+                porte TEXT,
+                logo_empresa TEXT
+            )
+        """)
+        conn.commit()
+
+        # Garante individualmente cada coluna caso a tabela seja de uma versão anterior
+        colunas_necessarias = [
+            ("nome_empresa", "TEXT"),
+            ("data_registro", "TEXT"),
+            ("cnpj", "TEXT"),
+            ("cep", "TEXT"),
+            ("cidade", "TEXT"),
+            ("bairro", "TEXT"),
+            ("endereco", "TEXT"),
+            ("telefone", "TEXT"),
+            ("email", "TEXT"),
+            ("responsavel", "TEXT"),
+            ("cnae", "TEXT"),
+            ("grau_risco", "TEXT"),
+            ("qtd_funcionarios", "INTEGER"),
+            ("porte", "TEXT"),
+            ("logo_empresa", "TEXT")
+        ]
+
         cursor.execute("PRAGMA table_info(empresas)")
-        colunas = [col[1] for col in cursor.fetchall()]
-        if "logo_empresa" not in colunas:
-            cursor.execute("ALTER TABLE empresas ADD COLUMN logo_empresa TEXT")
-            conn.commit()
+        colunas_atuais = [col[1] for col in cursor.fetchall()]
+
+        for coluna, tipo in colunas_necessarias:
+            if coluna not in colunas_atuais:
+                try:
+                    cursor.execute(f"ALTER TABLE empresas ADD COLUMN {coluna} {tipo}")
+                    conn.commit()
+                except Exception:
+                    pass
+
         conn.close()
     except Exception:
         pass
@@ -33,7 +82,7 @@ def renderizar_aba_empresas(
     atualizar_filtro_empresa_func, 
     registrar_log_func
 ):
-    # Garante que a coluna de logo existe no banco
+    # Garante que a tabela e todas as colunas existem no banco antes de renderizar
     garantir_coluna_logo(DB_NAME)
 
     col_h1, col_h2 = st.columns([0.8, 0.2])
@@ -97,9 +146,9 @@ def renderizar_aba_empresas(
 
                 opcoes_risco = ["1", "2", "3", "4"]
                 try:
-                  idx_risco = opcoes_risco.index(str(st.session_state["form_grau_risco"]))
+                    idx_risco = opcoes_risco.index(str(st.session_state["form_grau_risco"]))
                 except:
-                  idx_risco = 0
+                    idx_risco = 0
 
                 grau_risco = col_r5_1.selectbox("Grau de Risco", opcoes_risco, index=idx_risco)
                 qtd_funcionarios = col_r5_2.number_input(
