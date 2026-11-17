@@ -580,7 +580,6 @@ def renderizar_aba_epis(*args, **kwargs):
             conn_rel = sqlite3.connect(DB_NAME, timeout=10.0)
             _garantir_colunas_ca_epis(conn_rel)
             
-            # Busca os lançamentos da empresa selecionada
             if empresa_selecionada == "Todas":
                 query_epis = "SELECT * FROM epis"
                 df_epis = pd.read_sql(query_epis, conn_rel)
@@ -594,7 +593,6 @@ def renderizar_aba_epis(*args, **kwargs):
             else:
                 st.markdown(f"#### 📊 Relatório Analítico de EPIs - {empresa_selecionada}")
                 
-                # Cruza com a tabela cad_cas para buscar a validade oficial de cada CA
                 cursor_rel = conn_rel.cursor()
                 validades_oficiais = []
                 status_cas = []
@@ -625,14 +623,11 @@ def renderizar_aba_epis(*args, **kwargs):
                 
                 conn_rel.close()
                 
-                # Métricas rápidas no topo do relatório
                 total_entregas = len(df_epis)
                 st.metric("Total de Registros de Entrega", total_entregas)
                 
-                # Exibe a tabela interativa com o relatório
                 st.dataframe(df_epis, use_container_width=True)
                 
-                # Botão para descarregar o relatório em CSV para o cliente guardar
                 csv_data = df_epis.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Descarregar Relatório em CSV",
@@ -641,19 +636,6 @@ def renderizar_aba_epis(*args, **kwargs):
                     mime="text/csv",
                     key="download_csv_relatorio_epis"
                 )
-
-            atualizados_qtd = 0
-            for _, row_ep in df_all_epis.iterrows():
-                info_ca = _buscar_info_ca_cassilab(row_ep.get("ca"))
-                conn_upd_ca.execute(
-                    "UPDATE epis SET validade_ca = ?, status_ca = ? WHERE id = ?",
-                    (info_ca["validade"], info_ca["status_ca"], int(row_ep["id"])),
-                )
-                atualizados_qtd += 1
-            conn_upd_ca.commit()
-            conn_upd_ca.close()
-            st.success(f"✅ {atualizados_qtd} lançamento(s) verificado(s) e atualizado(s) com a base de CAs!")
-            st.rerun()
 
         if df.empty:
             st.info("Nenhum registro de EPI encontrado.")
@@ -837,38 +819,38 @@ def renderizar_aba_epis(*args, **kwargs):
                 params=(empresa_selecionada,),
             )
             df_cad_epis = pd.read_sql(
-            "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
-            conn,
-            params=(empresa_selecionada,),
-        )
-        df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
-
-        df_historico_epi = pd.read_sql(
-            "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
-            " FROM epis WHERE empresa = ?",
-            conn,
-            params=(empresa_selecionada,),
-        )
-        conn.close()
-
-        lista_f = (
-            df_funcs["funcionario"].tolist()
-            if not df_funcs.empty
-            else []
-        )
-        lista_epis_cad = (
-            df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
-        )
-        mapa_ca = (
-            dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
-            if not df_cad_epis.empty
-            else {}
-        )
-
-        if not lista_f:
-            st.info(
-                "ℹ️ Nenhum funcionário cadastrado para esta empresa."
+                "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
+                conn,
+                params=(empresa_selecionada,),
             )
+            df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
+
+            df_historico_epi = pd.read_sql(
+                "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
+                " FROM epis WHERE empresa = ?",
+                conn,
+                params=(empresa_selecionada,),
+            )
+            conn.close()
+
+            lista_f = (
+                df_funcs["funcionario"].tolist()
+                if not df_funcs.empty
+                else []
+            )
+            lista_epis_cad = (
+                df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
+            )
+            mapa_ca = (
+                dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
+                if not df_cad_epis.empty
+                else {}
+            )
+
+            if not lista_f:
+                st.info(
+                    "ℹ️ Nenhum funcionário cadastrado para esta empresa."
+                )
             else:
                 if "ultimo_epi_selecionado" not in st.session_state:
                     st.session_state["ultimo_epi_selecionado"] = None
@@ -909,7 +891,6 @@ def renderizar_aba_epis(*args, **kwargs):
                     "Quantidade", min_value=1, value=1, key="unificado_qtd"
                 )
 
-                # Busca automática e validação do CA na base cassilab_sst.db
                 info_ca_atual = _buscar_info_ca_cassilab(ca_in)
 
                 if info_ca_atual["encontrado"]:
