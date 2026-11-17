@@ -34,7 +34,7 @@ def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
         conn_ca = sqlite3.connect(db_ca_path, timeout=5.0)
         cursor = conn_ca.cursor()
         
-        # 1. Tenta buscar primeiro na tabela de Cadastros Gerais de EPIs (cad_epis) onde você já cadastra
+        # 1. Busca na tabela de Cadastros Gerais de EPIs (cad_epis)
         cursor.execute("""
             SELECT validade, epi FROM cad_epis 
             WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
@@ -52,66 +52,34 @@ def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
                 "descricao": str(res_cad[1] or ""),
             }
 
-        # 2. Se não achar, procura na base geral de CAs (cad_cas)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tabelas = [r[0] for r in cursor.fetchall()]
+        # 2. Busca na base geral de CAs (cad_cas)
+        cursor.execute("""
+            SELECT validade, situacao, equipamento FROM cad_cas 
+            WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
+            LIMIT 1
+        """, (ca_apenas_digitos,))
+        res_cas = cursor.fetchone()
+        conn_ca.close()
         
-        tabela_alvo = "cad_cas" if "cad_cas" in tabelas else None
-        if not tabela_alvo:
-            for tab in tabelas:
-                cursor.execute(f"PRAGMA table_info({tab});")
-                cols = [col[1] for col in cursor.fetchall()]
-                if any("ca" in c.lower() for c in cols):
-                    tabela_alvo = tab
-                    break
+        if res_cas:
+            return {
+                "encontrado": True,
+                "valido": True,
+                "validade": str(res_cas[0] or "N/D"),
+                "status_ca": "🟢 Válido",
+                "descricao": str(res_cas[2] or ""),
+            }
+            
+    except Exception:
+        pass
 
-        if tabela_alvo:
-            cursor.execute(f"PRAGMA table_info({tabela_alvo});")
-            cols_tab = [col[1] for col in cursor.fetchall()]
-            col_ca = next((c for c in cols_tab if c.lower() == "ca"), cols_tab[0])
-            
-            cursor.execute(f"""
-                SELECT * FROM {tabela_alvo} 
-                WHERE REPLACE(REPLACE(REPLACE(CAST({col_ca} AS TEXT), '.', ''), '-', ''), ' ', '') = ?
-                LIMIT 1
-            """, (ca_apenas_digitos,))
-            df_res = pd.read_sql(f"""
-                SELECT * FROM {tabela_alvo} 
-                WHERE REPLACE(REPLACE(REPLACE(CAST({col_ca} AS TEXT), '.', ''), '-', ''), ' ', '') = '{ca_apenas_digitos}'
-                LIMIT 1
-            """, conn_ca)
-            
-            conn_ca.close()
-            
-            if not df_res.empty:
-                linha = df_res.iloc[0]
-                linha_lower = {str(k).lower(): v for k, v in linha.items()}
-                
-                validade = ""
-                for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
-                    if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
-                        validade = str(linha_lower[chave_val]).strip()
-                        break
-                
-                situacao_bruta = ""
-                for chave_sit in ("situacao", "status", "situacao_ca"):
-                    if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
-                        situacao_bruta = str(linha_lower[chave_sit]).strip()
-                        break
-                
-                descricao = ""
-                for chave_desc in ("equipamento", "descricao", "nome_equipamento", "produto", "epi"):
-                    if chave_desc in linha_lower and pd.notna(linha_lower[chave_desc]):
-                        descricao = str(linha_lower[chave_desc]).strip()
-                        break
-                
-                return {
-                    "encontrado": True,
-                    "valido": True,
-                    "validade": validade or "N/D",
-                    "status_ca": "🟢 Válido",
-                    "descricao": descricao,
-                }
+    return {
+        "encontrado": False,
+        "valido": False,
+        "validade": "Não encontrado",
+        "status_ca": "⚪ Não encontrado",
+        "descricao": "",
+    }
 
         conn_ca.close()
     except Exception:
