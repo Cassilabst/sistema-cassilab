@@ -257,13 +257,6 @@ def init_db():
     # 5. Fechamento seguro da conexão no final de tudo
     conn.close()
     
-init_db()
-atualizar_cargo_setor_treinamentos_antigos()
-atualizar_validade_treinamentos_para_meses()
-criar_backup_automatico()
-sincronizar_status_exames()
-sincronizar_status_treinamentos()
-sincronizar_status_documentos()
 
 # --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
 from modulo_absenteismo import renderizar_aba_absenteismo
