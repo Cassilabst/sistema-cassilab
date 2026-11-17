@@ -2446,6 +2446,8 @@ idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📞 Precisa de Ajuda?")
 
+# --- BOTÃO DE SUPORTE WHATSAPP NA PARTE INFERIOR DA SIDEBAR ---
+whatsapp_url = "https://wa.me/5541985339760?text=Olá,%20preciso%20de%20suporte%20técnico%20no%20sistema%20Cassilab."
 
 st.sidebar.markdown(f'''
 <div style="text-align: center; margin-top: 30px; margin-bottom: 15px;">
@@ -4241,27 +4243,28 @@ elif menu == "Consulta de CAs":
 elif menu == "Gestão de Funcionários":
     renderizar_aba_funcionarios(
         DB_NAME,
-        is_admin=st.session_state.get("is_admin", False),
-        emp_usuario=emp_usuario,
-        pode_lancar=pode_lancar,
-        pode_editar=pode_editar,
-        pode_excluir=pode_excluir,
-        get_empresas=get_empresas,
-        get_cargos_por_empresa=get_cargos_por_empresa,
-        get_setores_por_empresa=get_setores_por_empresa,
-        formatar_titulo=formatar_titulo,
-        formatar_cpf=formatar_cpf,
-        validar_e_formatar_data_input=validar_e_formatar_data_input,
-        limpar_status_banco=limpar_status_banco,
-        atualizar_filtro_empresa=atualizar_filtro_empresa,
-        registrar_log=registrar_log,
-        formatar_data_br=formatar_data_br,
-        formatar_status_visual=formatar_status_visual,
-        formatar_colunas_tabela=formatar_colunas_tabela,
-        adicionar_numeracao=adicionar_numeracao,
-        reset_func_selection=reset_func_selection,
-        dialog_editar_funcionario=dialog_editar_funcionario,
+        is_admin,
+        emp_usuario,
+        pode_lancar,
+        pode_editar,
+        pode_excluir,
+        get_empresas,
+        get_cargos_por_empresa,
+        get_setores_por_empresa,
+        formatar_titulo,
+        formatar_cpf,
+        validar_e_formatar_data_input,
+        limpar_status_banco,
+        atualizar_filtro_empresa,
+        registrar_log,
+        formatar_data_br,
+        formatar_status_visual,
+        formatar_colunas_tabela,
+        adicionar_numeracao,
+        reset_func_selection,
+        dialog_editar_funcionario,
     )
+
 # ==========================================
 # 4. TREINAMENTOS (Com Matriz Integrada)
 # ==========================================
