@@ -16,433 +16,29 @@ import base64
 import os
 import shutil
 
-# --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
-if os.path.exists("/data"):
-    DB_PATH_PERSISTENT = "/data/cassilab_gestao.db"
-    DB_PATH_LOCAL = "cassilab_gestao.db"
-    
-    # Se o disco persistente ainda estiver vazio, mas o arquivo veio do GitHub, copia para lá automaticamente!
-    if not os.path.exists(DB_PATH_PERSISTENT) and os.path.exists(DB_PATH_LOCAL):
-        shutil.copy(DB_PATH_LOCAL, DB_PATH_PERSISTENT)
-        
-    DB_NAME = DB_PATH_PERSISTENT
-else:
-    DB_NAME = "cassilab_gestao.db"
-    
-DB_URL = f"sqlite:///{DB_NAME}"
-
-try:
-    engine = create_engine(DB_URL, connect_args={"timeout": 30}, pool_pre_ping=True)
-except Exception as e:
-    st.error(f"❌ Erro ao inicializar o motor do SQLite: {e}")
-
-# --- TRADUTOR PARA O PANDAS ---
-if not hasattr(pd, "_original_read_sql"):
-    pd._original_read_sql = pd.read_sql
-
-def _patched_read_sql(sql, con, *args, **kwargs):
-    # Se 'con' for string ou sqlite3 connection, usa sqlite nativo para máxima performance local
-    if isinstance(con, (str, sqlite_original.Connection)):
-        return pd._original_read_sql(sql, con, *args, **kwargs)
-    return pd._original_read_sql(sql, engine, *args, **kwargs)
-
-pd.read_sql = _patched_read_sql
-
-# --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
-from modulo_absenteismo import renderizar_aba_absenteismo
-from modulo_admin import renderizar_aba_admin
-from modulo_documentos import renderizar_aba_documentos, renderizar_botao_imprimir_termo
-from modulo_empresas import renderizar_aba_empresas
-from modulo_epis import renderizar_aba_epis
-from modulo_exames import renderizar_aba_exames
-from modulo_funcionarios import renderizar_aba_funcionarios
-from modulo_lista_presenca import renderizar_aba_lista_presenca
-from modulo_matriz import renderizar_matriz_treinamentos
-from modulo_os import renderizar_aba_os
-from modulo_relatorios import renderizar_aba_relatorios
-from modulo_servicos import renderizar_aba_servicos
-from modulo_treinamentos import renderizar_aba_treinamentos
-from modulo_senha import renderizar_aba_alterar_senha
-
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide"
-)
-
-def criar_backup_automatico():
-    pass
-
-def formatar_titulo(texto):
-    if not texto or pd.isna(texto):
-        return ""
-    excecoes = {"e", "da", "de", "do", "das", "dos", "em", "para", "com", "S.A."}
-    siglas_maiusculas = {
-        "ltda", "nr", "me", "mei", "epp", "epi", "cnae", "pgr", "pcmso",
-        "pgrs", "pca", "ppr", "npt", "ccb", "aet", "aep", "arp", "ltcat",
-        "apr", "ppp", "cipa", "epc", "aso", "sst", "sesmt", "ca", "nfes",
-        "dds", "w", "pemt"
-    }
-    palavras = str(texto).strip().split()
-    palavras_formatadas = []
-    for i, p in enumerate(palavras):
-        p_limpa = re.sub(r"[^a-zA-Z0-9]", "", p).lower()
-        if p_limpa in siglas_maiusculas:
-            palavras_formatadas.append(p.upper())
-        else:
-            p_lower = p.lower()
-            if i > 0 and p_lower in excecoes:
-                palavras_formatadas.append(p_lower)
-            else:
-                if "-" in p:
-                    partes = [
-                        sub.upper() if sub.lower() in siglas_maiusculas else sub.capitalize()
-                        for sub in p.split("-")
-                    ]
-                    palavras_formatadas.append("-".join(partes))
-                else:
-                    palavras_formatadas.append(p.capitalize())
-    return " ".join(palavras_formatadas)
-
-def adicionar_numeracao(df):
-    if df is None or df.empty:
-        return df
-    df = df.copy()
-    if "Nº" in df.columns:
-        df = df.drop(columns=["Nº"])
-    df.insert(0, "Nº", range(1, len(df) + 1))
-    return df
-
-def registrar_log(usuario, empresa, acao):
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        dt_atual = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
-        cursor.execute(
-            "INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES (?, ?, ?, ?)",
-            (dt_atual, str(usuario), str(empresa), str(acao)),
-        )
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def enviar_email_smtp(destinatario, assunto, corpo):
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        cursor.execute("SELECT email, senha_app FROM configuracoes_email LIMIT 1")
-        cfg = cursor.fetchone()
-        conn.close()
-        if not cfg or not cfg[0] or not cfg[1]:
-            return False, "Configurações de e-mail não encontradas na aba Administração."
-        remetente = cfg[0]
-        senha_app = cfg[1]
-        msg = MIMEMultipart()
-        msg["From"] = remetente
-        msg["To"] = destinatario
-        msg["Subject"] = assunto
-        msg.attach(MIMEText(corpo, "plain", "utf-8"))
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(remetente, senha_app)
-        server.sendmail(remetente, destinatario, msg.as_string())
-        server.quit()
-        return True, "E-mail enviado com sucesso!"
-    except Exception as e:
-        return False, str(e)
-
-def calcular_proximo_exame(data_str, meses_str):
-    if not data_str or not meses_str:
-        return data_str
-    try:
-        meses_digitos = "".join(filter(str.isdigit, str(meses_str)))
-        meses = int(meses_digitos) if meses_digitos else 12
-        dt = None
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(str(data_str).strip(), fmt)
-                break
-            except ValueError:
-                continue
-        if not dt:
-            return data_str
-        mes_novo = dt.month - 1 + meses
-        ano_novo = dt.year + mes_novo // 12
-        mes_novo = mes_novo % 12 + 1
-        ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-        dia_novo = min(dt.day, ultimo_dia_mes)
-        dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-        return dt_futura.strftime("%d/%m/%Y")
-    except:
-        return data_str
-
-def calcular_proximo_treinamento(data_str, validade_str):
-    if not data_str or not validade_str:
-        return data_str
-    
-    # Tenta ler se a validade já é uma data válida formatada
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt_val = datetime.strptime(str(validade_str).strip(), fmt)
-            return dt_val.strftime("%d/%m/%Y")
-        except ValueError:
-            continue
-            
-    try:
-        val_lower = str(validade_str).lower()
-        numeros = "".join(filter(str.isdigit, val_lower))
-        qtd = int(numeros) if numeros else 12
-        dt = None
-        
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(str(data_str).strip(), fmt)
-                break
-            except ValueError:
-                continue
-                
-        if not dt:
-            return data_str
-            
-        if "ano" in val_lower:
-            ano_novo = dt.year + qtd
-            try:
-                dt_futura = dt.replace(year=ano_novo)
-            except ValueError:
-                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-        elif "mes" in val_lower or "mês" in val_lower:
-            mes_novo = dt.month - 1 + qtd
-            ano_novo = dt.year + mes_novo // 12
-            mes_novo = mes_novo % 12 + 1
-            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-            dia_novo = min(dt.day, ultimo_dia_mes)
-            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-        elif "dia" in val_lower:
-            dt_futura = dt + timedelta(days=qtd)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-        else:
-            # Padrão caso venha apenas o número (ex: "12") -> assume meses
-            mes_novo = dt.month - 1 + qtd
-            ano_novo = dt.year + mes_novo // 12
-            mes_novo = mes_novo % 12 + 1
-            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-            dia_novo = min(dt.day, ultimo_dia_mes)
-            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-    except:
-        return data_str
-
-def calcular_proxima_renovacao(data_str, vigencia_str):
-    if not data_str or not vigencia_str:
-        return data_str
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt_vig = datetime.strptime(str(vigencia_str).strip(), fmt)
-            return dt_vig.strftime("%d/%m/%Y")
-        except ValueError:
-            continue
-    try:
-        val_lower = str(vigencia_str).lower()
-        numeros = "".join(filter(str.isdigit, val_lower))
-        qtd = int(numeros) if numeros else 1
-        dt = None
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(str(data_str).strip(), fmt)
-                break
-            except ValueError:
-                continue
-        if not dt:
-            return data_str
-        if "ano" in val_lower:
-            ano_novo = dt.year + qtd
-            try:
-                dt_futura = dt.replace(year=ano_novo)
-            except ValueError:
-                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
-            return dt_futura.strftime("%d/%m/%Y")
-        elif "mes" in val_lower or "mês" in val_lower:
-            mes_novo = dt.month - 1 + qtd
-            ano_novo = dt.year + mes_novo // 12
-            mes_novo = mes_novo % 12 + 1
-            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-            dia_novo = min(dt.day, ultimo_dia_mes)
-            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-        elif "dia" in val_lower:
-            dt_futura = dt + timedelta(days=qtd)
-            return dt_futura.strftime("%d/%m/%Y")
-        else:
-            ano_novo = dt.year + qtd
-            dt_futura = dt.replace(year=ano_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-    except:
-        return data_str
-
-def calcular_status_por_data(data_str):
-    if not data_str or pd.isna(data_str):
-        return "Válido"
-    hoje = datetime.today().date()
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(str(data_str).strip(), fmt).date()
-            diff = (dt - hoje).days
-            if diff < 0:
-                return "Vencido"
-            elif diff <= 30:
-                return "A Vencer"
-            else:
-                return "Válido"
-        except ValueError:
-            continue
-    return "Válido"
-
-def calcular_status_exame(data_str):
-    if not data_str or pd.isna(data_str):
-        return "Válido"
-    hoje = datetime.today().date()
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(str(data_str).strip(), fmt).date()
-            diff = (dt - hoje).days
-            if diff < 0:
-                return "Vencido"
-            elif diff <= 15:
-                return "A Vencer"
-            else:
-                return "Válido"
-        except ValueError:
-            continue
-    return "Válido"
-
-def sincronizar_status_exames():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df = pd.read_sql("SELECT id, proximo_exame FROM exames", conn)
-        if not df.empty:
-            cursor = conn.cursor()
-            for _, row in df.iterrows():
-                prox = row["proximo_exame"]
-                novo_st = calcular_status_exame(prox)
-                cursor.execute("UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"]))
-            conn.commit()
-        conn.close()
-    except:
-        pass
-
-def sincronizar_status_treinamentos():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df = pd.read_sql("SELECT id, proximo_treinamento FROM treinamentos", conn)
-        if not df.empty:
-            cursor = conn.cursor()
-            hoje = datetime.today().date()
-            for _, row in df.iterrows():
-                prox = row["proximo_treinamento"]
-                novo_st = "em dia"
-                if prox and not pd.isna(prox):
-                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                        try:
-                            dt = datetime.strptime(str(prox).strip(), fmt).date()
-                            diff = (dt - hoje).days
-                            if diff < 0:
-                                novo_st = "vencido"
-                            else:
-                                novo_st = "em dia"
-                            break
-                        except ValueError:
-                            continue
-                cursor.execute("UPDATE treinamentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
-            conn.commit()
-        conn.close()
-    except:
-        pass
-
-def sincronizar_status_documentos():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df = pd.read_sql("SELECT id, proxima_renovacao FROM documentos", conn)
-        if not df.empty:
-            cursor = conn.cursor()
-            hoje = datetime.today().date()
-            for _, row in df.iterrows():
-                prox = row["proxima_renovacao"]
-                novo_st = "Válido"
-                if prox and not pd.isna(prox):
-                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                        try:
-                            dt = datetime.strptime(str(prox).strip(), fmt).date()
-                            diff = (dt - hoje).days
-                            if diff < 0:
-                                novo_st = "Vencido"
-                            elif diff <= 30:
-                                novo_st = "A Vencer"
-                            else:
-                                novo_st = "Válido"
-                            break
-                        except ValueError:
-                            continue
-                cursor.execute("UPDATE documentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
-            conn.commit()
-        conn.close()
-    except:
-        pass
-
-def atualizar_cargo_setor_treinamentos_antigos():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE treinamentos 
-            SET cargo = COALESCE(NULLIF(cargo, ''), (SELECT b.cargo FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1)),
-                setor = COALESCE(NULLIF(setor, ''), (SELECT b.setor FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1))
-            WHERE cargo IS NULL OR cargo = '' OR setor IS NULL OR setor = ''
-        """)
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def atualizar_validade_treinamentos_para_meses():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, validade, data_realizacao FROM treinamentos WHERE validade LIKE '%ano%'")
-        rows = cursor.fetchall()
-        for row in rows:
-            rid, val_str, dt_real = row[0], str(row[1]).lower(), row[2]
-            numeros = "".join(filter(str.isdigit, val_str))
-            anos = int(numeros) if numeros else 1
-            meses = anos * 12
-            nova_val = f"{meses} meses"
-            novo_prox = calcular_proximo_treinamento(dt_real, nova_val)
-            cursor.execute("UPDATE treinamentos SET validade = ?, proximo_treinamento = ? WHERE id = ?", (nova_val, novo_prox, rid))
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def init_db():
-    conn = sqlite_original.connect(DB_NAME, timeout=30.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    cursor = conn.cursor()
-    
-    # 1. Criação e atualização inicial da tabela cad_treinamentos de forma segura
+# 1. Criação e atualização inicial da tabela cad_treinamentos de forma 100% segura
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
     tabela_existe = cursor.fetchone()
 
     if tabela_existe:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
-            SELECT id, empresa, treinamento FROM cad_treinamentos;
-        """)
+        # Verifica quais colunas realmente existem na tabela antiga
+        cursor.execute("PRAGMA table_info(cad_treinamentos);")
+        colunas_antigas = [col[1] for col in cursor.fetchall()]
+        
+        # Cria a tabela temporária adaptada às colunas existentes
+        if 'carga_horaria' in colunas_antigas:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
+                SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
+                SELECT id, empresa, treinamento FROM cad_treinamentos;
+            """)
+            
         cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
+        
         cursor.execute("""
             CREATE TABLE cad_treinamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -451,13 +47,21 @@ def init_db():
                 carga_horaria TEXT
             );
         """)
+        
         try:
-            cursor.execute("""
-                INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento)
-                SELECT id, empresa, treinamento FROM cad_treinamentos_temp;
-            """)
+            if 'carga_horaria' in colunas_antigas:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
+                    SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
+                """)
+            else:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento)
+                    SELECT id, empresa, treinamento FROM cad_treinamentos_temp;
+                """)
         except Exception:
             pass
+            
         cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
     else:
         cursor.execute("""
@@ -645,7 +249,7 @@ def init_db():
     except Exception:
         pass
 
-    # 5. Fechamento único e seguro da conexão no final absolute da função
+    # 5. Fechamento seguro da conexão no final de tudo
     conn.close()
 
 init_db()
