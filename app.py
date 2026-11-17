@@ -203,7 +203,7 @@ def init_db():
                 pass
             cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
     else:
-        # 3. Verificação forçada e migração da tabela empresas
+        # 3. Verificação e migração segura da tabela empresas com rastreio de erro
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
         tabela_empresas_existe = cursor.fetchone()
     
@@ -211,39 +211,14 @@ def init_db():
             cursor.execute("PRAGMA table_info(empresas);")
             colunas_empresas = [col[1] for col in cursor.fetchall()]
             
-            # Se a tabela existe mas falta a coluna nome_empresa, recriamos a tabela com segurança
             if 'nome_empresa' not in colunas_empresas:
                 try:
-                    cursor.execute("CREATE TABLE empresas_temp AS SELECT * FROM empresas;")
-                    cursor.execute("DROP TABLE empresas;")
-                    cursor.execute("""
-                        CREATE TABLE empresas (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            data_registro TEXT,
-                            nome_empresa TEXT UNIQUE,
-                            cnpj TEXT,
-                            cep TEXT,
-                            cidade TEXT,
-                            bairro TEXT,
-                            endereco TEXT,
-                            telefone TEXT,
-                            email TEXT,
-                            responsavel TEXT,
-                            cnae TEXT,
-                            grau_risco TEXT,
-                            qtd_funcionarios INTEGER,
-                            porte TEXT
-                        )
-                    """)
-                    # Tenta trazer os dados antigos de volta mapeando o que for compatível
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO empresas (id, data_registro, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte)
-                        SELECT id, data_registro, cnpj, cep, cidade, bairro, endereco, telefone, email, responsavel, cnae, grau_risco, qtd_funcionarios, porte FROM empresas_temp;
-                    """)
-                    cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
+                    # Tenta adicionar a coluna diretamente (o SQLite permite adicionar colunas TEXT sem restrições complexas)
+                    cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
                     conn.commit()
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Se falhar, mostra o erro exato na tela do Streamlit para sabermos o motivo
+                    st.error(f"Erro detalhado na migração da tabela empresas: {e}")
         else:
             cursor.execute("""
                 CREATE TABLE empresas (
@@ -264,7 +239,7 @@ def init_db():
                     porte TEXT
                 )
             """)
-            conn.commit()          
+            conn.commit()    
        
     # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
