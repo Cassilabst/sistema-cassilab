@@ -190,9 +190,20 @@ def init_db():
     
     # 3. Execução segura das migrações e colunas adicionais usando a MESMA conexão ativa
     for sql_alt in [
+        "ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;",
         "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
         "ALTER TABLE empresas ADD COLUMN cnae TEXT;",
         "ALTER TABLE empresas ADD COLUMN porte TEXT;",
+        "ALTER TABLE empresas ADD COLUMN cnpj TEXT;",
+        "ALTER TABLE empresas ADD COLUMN cep TEXT;",
+        "ALTER TABLE empresas ADD COLUMN cidade TEXT;",
+        "ALTER TABLE empresas ADD COLUMN bairro TEXT;",
+        "ALTER TABLE empresas ADD COLUMN endereco TEXT;",
+        "ALTER TABLE empresas ADD COLUMN telefone TEXT;",
+        "ALTER TABLE empresas ADD COLUMN email TEXT;",
+        "ALTER TABLE empresas ADD COLUMN responsavel TEXT;",
+        "ALTER TABLE empresas ADD COLUMN grau_risco TEXT;",
+        "ALTER TABLE empresas ADD COLUMN qtd_funcionarios INTEGER;",
         
         "CREATE TABLE IF NOT EXISTS base_funcionarios (id INTEGER PRIMARY KEY AUTOINCREMENT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
         "ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;",
@@ -237,7 +248,6 @@ def init_db():
                 conn.rollback()
             except Exception:
                 pass
-
     # 4. Atualizações de dados padrão dos utilizadores
     try:
         cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
