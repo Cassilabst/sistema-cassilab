@@ -4243,7 +4243,7 @@ elif menu == "Consulta de CAs":
 elif menu == "Gestão de Funcionários":
     renderizar_aba_funcionarios(
         DB_NAME,
-        is_admin,
+        is_admin = st.session_state.get("is_admin", False),
         emp_usuario,
         pode_lancar,
         pode_editar,
@@ -4264,7 +4264,6 @@ elif menu == "Gestão de Funcionários":
         reset_func_selection,
         dialog_editar_funcionario,
     )
-
 # ==========================================
 # 4. TREINAMENTOS (Com Matriz Integrada)
 # ==========================================
