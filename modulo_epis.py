@@ -1287,18 +1287,7 @@ def renderizar_aba_epis(*args, **kwargs):
                     ])
 
                     components.html(html_ficha, height=850, scrolling=True)
-
-    st.markdown("---")
-    st.subheader("📋 Histórico de Entregas Cadastradas")
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)
-    _garantir_colunas_ca_epis(conn)
-    df_hist = pd.read_sql(
-        "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
-        conn,
-        params=(empresa_selecionada,),
-    )
-    conn.close()
-
+    
     if not df_hist.empty:
         if "id" in df_hist.columns:
             df_hist = df_hist.drop(columns=["id"])
