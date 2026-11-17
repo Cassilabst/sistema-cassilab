@@ -4173,21 +4173,17 @@ if menu == "Cadastros Gerais":
                     
                     html_json = json.dumps(html_relatorio)
                     
-                    component_code = """
-                    <script>
-                    function abrirImpressao() {
-                        var htmlContent = __HTML_JSON__;
+                    # Botão limpo com a função direto no onclick (sem usar script solto)
+                    st.markdown(f"""
+                    <button onclick="(function() {{
                         var win = window.open('', '_blank');
-                        if (win) {
-                            win.document.write(htmlContent);
+                        if (win) {{
+                            win.document.write({html_json});
                             win.document.close();
-                        } else {
+                        }} else {{
                             alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
-                        }
-                    }
-                    </script>
-
-                    <button onclick="abrirImpressao()" style="
+                        }}
+                    }})()" style="
                         width: 100%;
                         background-color: #ff4b4b;
                         color: white;
@@ -4202,10 +4198,7 @@ if menu == "Cadastros Gerais":
                     ">
                         🖨️ Clique para Imprimir Relatório de EPIs
                     </button>
-                    """.replace("__HTML_JSON__", html_json)
-                    
-                    # USE ESTA LINHA E NUNCA O components.html:
-                    st.markdown(component_code, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
                    
 elif menu == "Consulta de CAs":
     from modulo_ca import renderizar_modulo_ca
