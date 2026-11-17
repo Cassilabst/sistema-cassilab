@@ -10,8 +10,6 @@ import streamlit.components.v1 as components
 
 def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
     ca_limpo = str(ca_numero or "").strip()
-    ca_apenas_digitos = "".join(filter(str.isdigit, ca_limpo))
-    
     if not ca_limpo or ca_limpo.lower() in ("nan", "none", ""):
         return {
             "encontrado": False,
@@ -32,54 +30,92 @@ def _buscar_info_ca_cassilab(ca_numero, db_ca_path="cassilab_sst.db"):
 
     try:
         conn_ca = sqlite3.connect(db_ca_path, timeout=5.0)
-        cursor = conn_ca.cursor()
-        
-        # 1. Busca na tabela de Cadastros Gerais de EPIs (cad_epis)
-        cursor.execute("""
-            SELECT validade, epi FROM cad_epis 
-            WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
-            LIMIT 1
-        """, (ca_apenas_digitos,))
-        res_cad = cursor.fetchone()
-        
-        if res_cad and res_cad[0]:
+        cur_ca = conn_ca.cursor()
+        cur_ca.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tabelas = [r[0] for r in cur_ca.fetchall()]
+
+        tabela_alvo = None
+        colunas_alvo = []
+        for tab in tabelas:
+            cur_ca.execute(f"PRAGMA table_info({tab});")
+            cols = [col[1] for col in cur_ca.fetchall()]
+            if any("ca" in c.lower() for c in cols):
+                tabela_alvo = tab
+                colunas_alvo = cols
+                break
+
+        if not tabela_alvo:
             conn_ca.close()
             return {
-                "encontrado": True,
-                "valido": True,
-                "validade": str(res_cad[0]),
-                "status_ca": "🟢 Válido (Cadastrado)",
-                "descricao": str(res_cad[1] or ""),
+                "encontrado": False,
+                "valido": False,
+                "validade": "",
+                "status_ca": "⚠️ Tabela CA não encontrada",
+                "descricao": "",
             }
 
-        # 2. Busca na base geral de CAs (cad_cas)
-        cursor.execute("""
-            SELECT validade, situacao, equipamento FROM cad_cas 
-            WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
-            LIMIT 1
-        """, (ca_apenas_digitos,))
-        res_cas = cursor.fetchone()
+        col_ca = next((c for c in colunas_alvo if c.lower() == "ca"), None) or next(
+            (c for c in colunas_alvo if "ca" in c.lower()), None
+        )
+
+        query = f"SELECT * FROM {tabela_alvo} WHERE TRIM(CAST({col_ca} AS TEXT)) = ? OR {col_ca} LIKE ? LIMIT 1"
+        df_res = pd.read_sql(query, conn_ca, params=(ca_limpo, f"%{ca_limpo}%"))
         conn_ca.close()
-        
-        if res_cas:
-            return {
-                "encontrado": True,
-                "valido": True,
-                "validade": str(res_cas[0] or "N/D"),
-                "status_ca": "🟢 Válido",
-                "descricao": str(res_cas[2] or ""),
-            }
-            
-    except Exception:
-        pass
 
-    return {
-        "encontrado": False,
-        "valido": False,
-        "validade": "Não encontrado",
-        "status_ca": "⚪ Não encontrado",
-        "descricao": "",
-    }
+        if df_res.empty:
+            return {
+                "encontrado": False,
+                "valido": False,
+                "validade": "Não encontrado",
+                "status_ca": "⚪ Não encontrado",
+                "descricao": "",
+            }
+
+        linha = df_res.iloc[0]
+        linha_lower = {str(k).lower(): v for k, v in linha.items()}
+
+        validade = ""
+        for chave_val in ("validade", "data_validade", "dt_validade", "vencimento"):
+            if chave_val in linha_lower and pd.notna(linha_lower[chave_val]):
+                validade = str(linha_lower[chave_val]).strip()
+                break
+
+        situacao_bruta = ""
+        for chave_sit in ("situacao", "status", "situacao_ca"):
+            if chave_sit in linha_lower and pd.notna(linha_lower[chave_sit]):
+                situacao_bruta = str(linha_lower[chave_sit]).strip()
+                break
+
+        descricao = ""
+        for chave_desc in ("equipamento", "descricao", "nome_equipamento", "produto"):
+            if chave_desc in linha_lower and pd.notna(linha_lower[chave_desc]):
+                descricao = str(linha_lower[chave_desc]).strip()
+                break
+
+        sit_upper = situacao_bruta.upper()
+        if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
+            status_ca = f"🔴 {situacao_bruta.capitalize() if situacao_bruta else 'Irregular'}"
+            valido = False
+        else:
+            status_ca = "🟢 Válido"
+            valido = True
+
+        return {
+            "encontrado": True,
+            "valido": valido,
+            "validade": validade or "N/D",
+            "status_ca": status_ca,
+            "descricao": descricao,
+        }
+    except Exception:
+        return {
+            "encontrado": False,
+            "valido": False,
+            "validade": "Erro",
+            "status_ca": "⚠️ Erro na consulta",
+            "descricao": "",
+        }
+
 
 def _garantir_colunas_ca_epis(conn):
     for col_sql in (
@@ -94,79 +130,13 @@ def _garantir_colunas_ca_epis(conn):
 
 
 def renderizar_aba_epis(*args, **kwargs):
-    DB_NAME = (
-        kwargs.get("DB_NAME") or 
-        (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
+    DB_NAME = kwargs.get("DB_NAME") or (
+        args[0] if len(args) > 0 else "cassilab_gestao.db"
     )
-
-    DB_NAME = (
-        kwargs.get("DB_NAME") or 
-        (args[0] if len(args) > 0 and args[0] else "cassilab_sst.db")
-    )
-
-    # GARANTE QUE AS TABELAS DO SISTEMA EXISTEM LOGO NO INÍCIO
-    conn_init = sqlite3.connect(DB_NAME, timeout=10.0)
-    
-    # 1. Tabela de Registros de EPIs
-    conn_init.execute("""
-        CREATE TABLE IF NOT EXISTS epis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            matricula TEXT,
-            funcionario TEXT,
-            cargo TEXT,
-            setor TEXT,
-            epi TEXT,
-            ca TEXT,
-            validade_ca TEXT,
-            data_entrega TEXT,
-            quantidade INTEGER,
-            status TEXT
-        )
-    """)
-
-    # 2. Tabela de CAs Oficiais
-    conn_init.execute("""
-        CREATE TABLE IF NOT EXISTS cad_cas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ca TEXT,
-            validade TEXT,
-            situacao TEXT,
-            equipamento TEXT
-        )
-    """)
-
-    # 3. Tabela de Cadastro de EPIs por Empresa
-    conn_init.execute("""
-        CREATE TABLE IF NOT EXISTS cad_epis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            epi TEXT,
-            ca TEXT,
-            validade TEXT
-        )
-    """)
-    
-    _garantir_colunas_ca_epis(conn_init)
-    
-    try:
-        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN armario TEXT")
-    except Exception:
-        pass
-    try:
-        conn_init.execute("ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT")
-    except Exception:
-        pass
-
-    # FAZ O COMMIT DE TUDO DE UMA SÓ VEZ ANTES DE FECHAR
-    conn_init.commit()
-    
-    # FECHA APENAS NO FINAL DA INICIALIZAÇÃO
-    conn_init.close()
-
     is_admin = (
-        kwargs.get("is_admin") or 
-        (args[1] if len(args) > 1 else False)
+        kwargs.get("is_admin")
+        if "is_admin" in kwargs
+        else (args[1] if len(args) > 1 else False)
     )
     emp_usuario = kwargs.get("emp_usuario") or (
         args[2] if len(args) > 2 else ""
@@ -186,6 +156,7 @@ def renderizar_aba_epis(*args, **kwargs):
         if "pode_excluir" in kwargs
         else (args[5] if len(args) > 5 else True)
     )
+
     get_empresas_func = (
         kwargs.get("get_empresas_func")
         or kwargs.get("get_empresas")
@@ -494,7 +465,6 @@ def renderizar_aba_epis(*args, **kwargs):
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     _garantir_colunas_ca_epis(conn)
     df = pd.read_sql("SELECT * FROM epis", conn)
-    conn.close()
 
     try:
         df_cad_tipos = pd.read_sql(
@@ -550,166 +520,36 @@ def renderizar_aba_epis(*args, **kwargs):
     )
 
     with aba_lista:
-        col_tit_lista, col_btn_relatorio = st.columns([3, 2])
-        col_tit_lista.markdown("### 📋 Registros de Entrega e Relatório de EPIs")
-        
-        # --- RELATÓRIO DE EPIS COM DOWNLOAD SEGURO (PADRÃO PDF/HTML) ---
-        st.markdown("---")
-        st.subheader("📄 Relatório Analítico de EPIs da Empresa")
-        st.markdown("Gere o relatório formatado com validades dos CAs verificados e abertura automática.")
-
-        col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
-        empresa_rel_epi_geral = col_pdf_e1.selectbox(
-            "Selecione a Empresa para o Relatório", 
-            empresas_cad if empresas_cad else ["Nenhuma"],
-            key="sel_emp_rel_epi_geral_pdf_lista"
-        )
-        
-        with col_pdf_e2:
-            st.write("")
-            st.write("")
-            btn_gerar_pdf_cad_epis = st.button("⚙️ Gerar Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis_lista")
-
-        if btn_gerar_pdf_cad_epis:
-            if empresa_rel_epi_geral == "Nenhuma":
-                st.warning("⚠️ Selecione uma empresa válida para gerar o relatório.")
+        col_tit_lista, col_btn_atualizar_ca = st.columns([3, 2])
+        col_tit_lista.markdown("### 📋 Registros de Entrega de EPIs")
+        if col_btn_atualizar_ca.button(
+            "🔄 Atualizar CAs Já Lançados",
+            use_container_width=True,
+            key="btn_atualizar_cas_lancados",
+        ):
+            conn_upd_ca = sqlite3.connect(DB_NAME, timeout=10.0)
+            _garantir_colunas_ca_epis(conn_upd_ca)
+            if empresa_selecionada == "Todas":
+                df_all_epis = pd.read_sql("SELECT id, ca FROM epis", conn_upd_ca)
             else:
-                conn_rel = sqlite3.connect(DB_NAME, timeout=10.0)
-                _garantir_colunas_ca_epis(conn_rel)
-                
-                if empresa_rel_epi_geral == "Todas":
-                    query_epis = "SELECT * FROM epis"
-                    df_epis = pd.read_sql(query_epis, conn_rel)
-                else:
-                    query_epis = "SELECT * FROM epis WHERE LOWER(TRIM(empresa)) = ?"
-                    df_epis = pd.read_sql(query_epis, conn_rel, params=(str(empresa_rel_epi_geral).strip().lower(),))
+                df_all_epis = pd.read_sql(
+                    "SELECT id, ca FROM epis WHERE LOWER(TRIM(empresa)) = ?",
+                    conn_upd_ca,
+                    params=(str(empresa_selecionada).strip().lower(),),
+                )
 
-                if df_epis.empty:
-                    st.warning(f"⚠️ Não há registos de entrega de EPIs para a empresa **{empresa_rel_epi_geral}**.")
-                    conn_rel.close()
-                else:
-                    cursor_rel = conn_rel.cursor()
-                    validades_oficiais = []
-                    status_cas = []
-                    
-                    for idx, row in df_epis.iterrows():
-                        ca_val = str(row.get('ca', '')).strip()
-                        ca_limpo = ''.join(filter(str.isdigit, ca_val))
-                        
-                        validade_encontrada = "Não Cadastrado"
-                        status = "⚠️ CA Não Encontrado"
-                        
-                        if ca_limpo:
-                            cursor_rel.execute("""
-                                SELECT validade FROM cad_cas 
-                                WHERE REPLACE(REPLACE(REPLACE(ca, '.', ''), '-', ''), ' ', '') = ?
-                                LIMIT 1
-                            """, (ca_limpo,))
-                            res = cursor_rel.fetchone()
-                            if res and res[0]:
-                                validade_encontrada = res[0]
-                                status = "✅ Válido na Base"
-                                
-                        validades_oficiais.append(validade_encontrada)
-                        status_cas.append(status)
-                    
-                    df_epis['validade_oficial'] = validades_oficiais
-                    df_epis['status_ca_verificado'] = status_cas
-                    conn_rel.close()
-
-                    df_html_tabela = df_epis[['funcionario', 'cargo', 'epi', 'ca', 'validade_oficial', 'status_ca_verificado', 'data_entrega', 'quantidade']].rename(
-                        columns={
-                            'funcionario': 'Colaborador',
-                            'cargo': 'Cargo',
-                            'epi': 'EPI',
-                            'ca': 'CA',
-                            'validade_oficial': 'Validade CA',
-                            'status_ca_verificado': 'Status CA',
-                            'data_entrega': 'Data Entrega',
-                            'quantidade': 'Qtd'
-                        }
-                    )
-
-                    html_relatorio = """
-                    <html>
-                        <head>
-                            <title>Relatório de EPIs - {empresa}</title>
-                            <style>
-                                @page {{
-                                    size: landscape;
-                                    margin: 15mm;
-                                }}
-                                body {{
-                                    font-family: Arial, sans-serif;
-                                    color: #333;
-                                    margin: 20px;
-                                }}
-                                h2 {{
-                                    text-align: center;
-                                    color: #1b365d;
-                                    margin-bottom: 5px;
-                                }}
-                                p.sub {{
-                                    text-align: center;
-                                    font-size: 14px;
-                                    color: #555;
-                                    margin-bottom: 20px;
-                                }}
-                                table {{
-                                    width: 100%;
-                                    border-collapse: collapse;
-                                    margin-top: 10px;
-                                }}
-                                th, td {{
-                                    border: 1px solid #dcdcdc;
-                                    padding: 8px;
-                                    text-align: left;
-                                    font-size: 12px;
-                                }}
-                                th {{
-                                    background-color: #1b365d;
-                                    color: white;
-                                }}
-                                tr:nth-child(even) {{
-                                    background-color: #f8f9fa;
-                                }}
-                                .footer {{
-                                    margin-top: 30px;
-                                    text-align: right;
-                                    font-size: 11px;
-                                    color: #888;
-                                }}
-                            </style>
-                        </head>
-                        <body>
-                            <h2>Relatório Analítico de Entrega de EPIs e Validades de CAs</h2>
-                            <p class="sub"><b>Empresa:</b> {empresa} &nbsp;|&nbsp; <b>Emitido em:</b> {data_emissao}</p>
-                            {tabela_html}
-                            <div class="footer">
-                                F Z SSTMA E COMERCIO LTDA - Cassilab & Izitus - Sistema de Gestão de SST
-                            </div>
-                            <script>
-                                window.onload = function() {{
-                                    window.print();
-                                }};
-                            </script>
-                        </body>
-                    </html>
-                    """.format(
-                        empresa=empresa_rel_epi_geral,
-                        data_emissao=datetime.now(fuso_brasil).strftime('%d/%m/%Y às %H:%M'),
-                        tabela_html=df_html_tabela.to_html(index=False, classes='table')
-                    )
-
-                    st.success("✅ Relatório gerado com sucesso!")
-                    st.download_button(
-                        label="📥 Baixar e Imprimir Relatório de EPIs",
-                        data=html_relatorio,
-                        file_name=f"relatorio_entregas_epis_{empresa_rel_epi_geral.replace(' ', '_')}.html",
-                        mime="text/html",
-                        use_container_width=True,
-                        key="btn_download_html_relatorio_epis"
-                    )
+            atualizados_qtd = 0
+            for _, row_ep in df_all_epis.iterrows():
+                info_ca = _buscar_info_ca_cassilab(row_ep.get("ca"))
+                conn_upd_ca.execute(
+                    "UPDATE epis SET validade_ca = ?, status_ca = ? WHERE id = ?",
+                    (info_ca["validade"], info_ca["status_ca"], int(row_ep["id"])),
+                )
+                atualizados_qtd += 1
+            conn_upd_ca.commit()
+            conn_upd_ca.close()
+            st.success(f"✅ {atualizados_qtd} lançamento(s) verificado(s) e atualizado(s) com a base de CAs!")
+            st.rerun()
 
         if df.empty:
             st.info("Nenhum registro de EPI encontrado.")
@@ -741,122 +581,122 @@ def renderizar_aba_epis(*args, **kwargs):
             else:
                 df_edit = df_filtrado_tipo.copy()
                 df_edit["_id_banco"] = (
-                df_edit["id"]
-                if "id" in df_edit.columns
-                else df_filtrado_tipo.index
-            )
-            if "id" in df_edit.columns:
-                df_edit = df_edit.drop(columns=["id"])
-
-            if "sel_id_epi" not in st.session_state:
-                st.session_state["sel_id_epi"] = None
-
-            df_edit["Selecionar"] = (
-                df_edit["_id_banco"] == st.session_state["sel_id_epi"]
-            )
-
-            cols_epi_ord = [
-                "Selecionar",
-                "_id_banco",
-                "funcionario",
-                "tipo",
-                "epi",
-                "ca",
-                "validade_ca",
-                "status_ca",
-                "data_entrega",
-                "quantidade",
-                "status",
-            ]
-            df_epi_sel = df_edit[
-                [c for c in cols_epi_ord if c in df_edit.columns]
-            ]
-
-            df_fmt = (
-                formatar_colunas_func(df_epi_sel)
-                if callable(formatar_colunas_func)
-                else df_epi_sel
-            )
-            if "Status" in df_fmt.columns:
-                df_fmt["Status"] = df_fmt["Status"].apply(
-                    lambda x: formatar_status_visual_seguro(x, "epi")
+                    df_edit["id"]
+                    if "id" in df_edit.columns
+                    else df_filtrado_tipo.index
                 )
-            df_fmt = (
-                adicionar_numeracao_func(df_fmt)
-                if callable(adicionar_numeracao_func)
-                else df_fmt
-            )
+                if "id" in df_edit.columns:
+                    df_edit = df_edit.drop(columns=["id"])
 
-            edit_df = st.data_editor(
-                df_fmt,
-                hide_index=True,
-                num_rows="fixed",
-                key="editor_selecao_epis",
-                use_container_width=True,
-                column_config={
-                    "Selecionar": st.column_config.CheckboxColumn(
-                        "Selecionar", required=True, pinned=True
-                    ),
-                    "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn(
-                        "Nº", disabled=True, pinned=True
-                    ),
-                    "funcionario": st.column_config.TextColumn(
-                        "Funcionário", disabled=True, pinned=True
-                    ),
-                },
-            )
+                if "sel_id_epi" not in st.session_state:
+                    st.session_state["sel_id_epi"] = None
 
-            linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
-                "_id_banco"
-            ].tolist()
-            if linhas_marcadas:
-                st.session_state["sel_id_epi"] = int(linhas_marcadas[-1])
-            else:
-                st.session_state["sel_id_epi"] = None
+                df_edit["Selecionar"] = (
+                    df_edit["_id_banco"] == st.session_state["sel_id_epi"]
+                )
 
-            st.write("")
-            col_acao1, col_acao2 = st.columns(2)
+                cols_epi_ord = [
+                    "Selecionar",
+                    "_id_banco",
+                    "funcionario",
+                    "tipo",
+                    "epi",
+                    "ca",
+                    "validade_ca",
+                    "status_ca",
+                    "data_entrega",
+                    "quantidade",
+                    "status",
+                ]
+                df_epi_sel = df_edit[
+                    [c for c in cols_epi_ord if c in df_edit.columns]
+                ]
 
-            if pode_editar:
-                if col_acao1.button(
-                    "✏️ Editar Registro Selecionado",
+                df_fmt = (
+                    formatar_colunas_func(df_epi_sel)
+                    if callable(formatar_colunas_func)
+                    else df_epi_sel
+                )
+                if "Status" in df_fmt.columns:
+                    df_fmt["Status"] = df_fmt["Status"].apply(
+                        lambda x: formatar_status_visual_seguro(x, "epi")
+                    )
+                df_fmt = (
+                    adicionar_numeracao_func(df_fmt)
+                    if callable(adicionar_numeracao_func)
+                    else df_fmt
+                )
+
+                edit_df = st.data_editor(
+                    df_fmt,
+                    hide_index=True,
+                    num_rows="fixed",
+                    key="editor_selecao_epis",
                     use_container_width=True,
-                    key="btn_edit_epi",
-                ):
-                    if st.session_state.get("sel_id_epi") is not None:
-                        st.session_state["modal_edit_epi_id"] = int(
-                            st.session_state["sel_id_epi"]
-                        )
-                        st.rerun()
-                    else:
-                        st.warning(
-                            "⚠️ Selecione um registro marcando o"
-                            " quadradinho para editar."
-                        )
+                    column_config={
+                        "Selecionar": st.column_config.CheckboxColumn(
+                            "Selecionar", required=True, pinned=True
+                        ),
+                        "_id_banco": None,
+                        "Nº": st.column_config.NumberColumn(
+                            "Nº", disabled=True, pinned=True
+                        ),
+                        "funcionario": st.column_config.TextColumn(
+                            "Funcionário", disabled=True, pinned=True
+                        ),
+                    },
+                )
 
-            if st.session_state.get("modal_edit_epi_id"):
-                id_ed = st.session_state["modal_edit_epi_id"]
-                modal_editar_registro_pin(id_ed, empresa_selecionada)
+                linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
+                    "_id_banco"
+                ].tolist()
+                if linhas_marcadas:
+                    st.session_state["sel_id_epi"] = int(linhas_marcadas[-1])
+                else:
+                    st.session_state["sel_id_epi"] = None
 
-            if pode_excluir:
-                if col_acao2.button(
-                    "🗑️ Excluir Registro(s) Selecionado(s)",
-                    use_container_width=True,
-                    key="btn_del_epi",
-                ):
-                    linhas_para_excluir = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
-                    if linhas_para_excluir:
-                        st.session_state["modal_del_epi_ids"] = linhas_para_excluir
-                        st.rerun()
-                    else:
-                        st.warning(
-                            "⚠️ Selecione pelo menos um registro marcando o"
-                            " quadradinho para excluir."
-                        )
+                st.write("")
+                col_acao1, col_acao2 = st.columns(2)
 
-            if st.session_state.get("modal_del_epi_ids"):
-                modal_excluir_registros_pin(st.session_state["modal_del_epi_ids"], empresa_selecionada)
+                if pode_editar:
+                    if col_acao1.button(
+                        "✏️ Editar Registro Selecionado",
+                        use_container_width=True,
+                        key="btn_edit_epi",
+                    ):
+                        if st.session_state.get("sel_id_epi") is not None:
+                            st.session_state["modal_edit_epi_id"] = int(
+                                st.session_state["sel_id_epi"]
+                            )
+                            st.rerun()
+                        else:
+                            st.warning(
+                                "⚠️ Selecione um registro marcando o"
+                                " quadradinho para editar."
+                            )
+
+                if st.session_state.get("modal_edit_epi_id"):
+                    id_ed = st.session_state["modal_edit_epi_id"]
+                    modal_editar_registro_pin(id_ed, empresa_selecionada)
+
+                if pode_excluir:
+                    if col_acao2.button(
+                        "🗑️ Excluir Registro(s) Selecionado(s)",
+                        use_container_width=True,
+                        key="btn_del_epi",
+                    ):
+                        linhas_para_excluir = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
+                        if linhas_para_excluir:
+                            st.session_state["modal_del_epi_ids"] = linhas_para_excluir
+                            st.rerun()
+                        else:
+                            st.warning(
+                                "⚠️ Selecione pelo menos um registro marcando o"
+                                " quadradinho para excluir."
+                            )
+
+                if st.session_state.get("modal_del_epi_ids"):
+                    modal_excluir_registros_pin(st.session_state["modal_del_epi_ids"], empresa_selecionada)
 
     with aba_gestao_ficha:
         st.markdown(
@@ -893,7 +733,8 @@ def renderizar_aba_epis(*args, **kwargs):
                 params=(empresa_selecionada,),
             )
             df_cad_epis = pd.read_sql(
-                "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
+                "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi"
+                " ASC",
                 conn,
                 params=(empresa_selecionada,),
             )
@@ -965,6 +806,7 @@ def renderizar_aba_epis(*args, **kwargs):
                     "Quantidade", min_value=1, value=1, key="unificado_qtd"
                 )
 
+                # Busca automática e validação do CA na base cassilab_sst.db
                 info_ca_atual = _buscar_info_ca_cassilab(ca_in)
 
                 if info_ca_atual["encontrado"]:
@@ -1366,3 +1208,27 @@ def renderizar_aba_epis(*args, **kwargs):
                     ])
 
                     components.html(html_ficha, height=850, scrolling=True)
+
+    st.markdown("---")
+    st.subheader("📋 Histórico de Entregas Cadastradas")
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    _garantir_colunas_ca_epis(conn)
+    df_hist = pd.read_sql(
+        "SELECT * FROM epis WHERE empresa = ? ORDER BY id DESC",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    conn.close()
+
+    if not df_hist.empty:
+        if "id" in df_hist.columns:
+            df_hist = df_hist.drop(columns=["id"])
+
+        df_hist["_id_banco"] = df_hist.index
+        if "Selecionar" not in df_hist.columns:
+            df_hist.insert(0, "Selecionar", False)
+
+        df_hist_exib = adicionar_numeracao_func(formatar_colunas_func(df_hist))
+        st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma entrega registrada para esta empresa.")
