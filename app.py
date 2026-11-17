@@ -4168,15 +4168,27 @@ if menu == "Cadastros Gerais":
                     )
 
                     import json
-                    import streamlit.components.v1 as components
 
                     html_json = json.dumps(html_relatorio)
                     
                     st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
                     
-                    # Usando string normal com .replace() para evitar qualquer conflito de f-string no JavaScript
-                    component_code = """
-                    <button onclick="abrirImpressao()" style="
+                    # Usando HTML direto com st.markdown para o botão e a função de impressão
+                    component_code = f"""
+                    <script>
+                    function abrirImpressao_{abs(hash(empresa_rel_epi_geral))}() {{
+                        var htmlContent = {html_json};
+                        var win = window.open('', '_blank');
+                        if (win) {{
+                            win.document.write(htmlContent);
+                            win.document.close();
+                        }} else {{
+                            alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups para este site.');
+                        }}
+                    }}
+                    </script>
+
+                    <button onclick="abrirImpressao_{abs(hash(empresa_rel_epi_geral))}()" style="
                         width: 100%;
                         background-color: #ff4b4b;
                         color: white;
@@ -4187,9 +4199,13 @@ if menu == "Cadastros Gerais":
                         font-family: sans-serif;
                         cursor: pointer;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        margin-bottom: 15px;
                     ">
                         🖨️ Clique para Imprimir Relatório de EPIs
                     </button>
+                    """
+                    
+                    st.markdown(component_code, unsafe_allow_html=True)
 
                     <script>
                     function abrirImpressao() {
