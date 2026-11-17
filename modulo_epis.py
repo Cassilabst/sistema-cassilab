@@ -1293,16 +1293,4 @@ def renderizar_aba_epis(*args, **kwargs):
 
                     components.html(html_ficha, height=850, scrolling=True)
     
-    if 'df_historico_epi' in locals() and not df_historico_epi.empty:
-        df_hist_leg = df_historico_epi.copy()
-        if "id" in df_hist_leg.columns:
-            df_hist_leg = df_hist_leg.drop(columns=["id"])
-
-        df_hist_leg["_id_banco"] = df_hist_leg.index
-        if "Selecionar" not in df_hist_leg.columns:
-            df_hist_leg.insert(0, "Selecionar", False)
-
-        df_hist_exib = adicionar_numeracao_func(formatar_colunas_func(df_hist_leg))
-        st.dataframe(df_hist_exib, use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhuma entrega registrada para esta empresa.")
+    
