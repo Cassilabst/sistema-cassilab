@@ -281,17 +281,17 @@ def renderizar_aba_epis(*args, **kwargs):
         except Exception:
             pass
 
-        def registrar_log_func_seguro(*l_args, **l_kwargs):
-            if not callable(raw_registrar_log_func):
-                return
+    def registrar_log_func_seguro(*l_args, **l_kwargs):
+        if not callable(raw_registrar_log_func):
+            return
+        try:
+            return raw_registrar_log_func(*l_args, **l_kwargs)
+        except Exception:
             try:
-                return raw_registrar_log_func(*l_args, **l_kwargs)
+                if len(l_args) >= 2:
+                    return raw_registrar_log_func(l_args[0], l_args[1])
             except Exception:
-                try:
-                    if len(l_args) >= 2:
-                        return raw_registrar_log_func(l_args[0], l_args[1])
-                except Exception:
-                    pass
+                pass
 
     def buscar_logo_empresa(db_name, nome_empresa):
         try:
@@ -688,630 +688,628 @@ def renderizar_aba_epis(*args, **kwargs):
             else:
                 df_edit = df_filtrado_tipo.copy()
                 df_edit["_id_banco"] = (
-                    df_edit["id"]
-                    if "id" in df_edit.columns
-                    else df_filtrado_tipo.index
+                df_edit["id"]
+                if "id" in df_edit.columns
+                else df_filtrado_tipo.index
+            )
+            if "id" in df_edit.columns:
+                df_edit = df_edit.drop(columns=["id"])
+
+            if "sel_id_epi" not in st.session_state:
+                st.session_state["sel_id_epi"] = None
+
+            df_edit["Selecionar"] = (
+                df_edit["_id_banco"] == st.session_state["sel_id_epi"]
+            )
+
+            cols_epi_ord = [
+                "Selecionar",
+                "_id_banco",
+                "funcionario",
+                "tipo",
+                "epi",
+                "ca",
+                "validade_ca",
+                "status_ca",
+                "data_entrega",
+                "quantidade",
+                "status",
+            ]
+            df_epi_sel = df_edit[
+                [c for c in cols_epi_ord if c in df_edit.columns]
+            ]
+
+            df_fmt = (
+                formatar_colunas_func(df_epi_sel)
+                if callable(formatar_colunas_func)
+                else df_epi_sel
+            )
+            if "Status" in df_fmt.columns:
+                df_fmt["Status"] = df_fmt["Status"].apply(
+                    lambda x: formatar_status_visual_seguro(x, "epi")
                 )
-                if "id" in df_edit.columns:
-                    df_edit = df_edit.drop(columns=["id"])
+            df_fmt = (
+                adicionar_numeracao_func(df_fmt)
+                if callable(adicionar_numeracao_func)
+                else df_fmt
+            )
 
-                if "sel_id_epi" not in st.session_state:
-                    st.session_state["sel_id_epi"] = None
+            edit_df = st.data_editor(
+                df_fmt,
+                hide_index=True,
+                num_rows="fixed",
+                key="editor_selecao_epis",
+                use_container_width=True,
+                column_config={
+                    "Selecionar": st.column_config.CheckboxColumn(
+                        "Selecionar", required=True, pinned=True
+                    ),
+                    "_id_banco": None,
+                    "Nº": st.column_config.NumberColumn(
+                        "Nº", disabled=True, pinned=True
+                    ),
+                    "funcionario": st.column_config.TextColumn(
+                        "Funcionário", disabled=True, pinned=True
+                    ),
+                },
+            )
 
-                df_edit["Selecionar"] = (
-                    df_edit["_id_banco"] == st.session_state["sel_id_epi"]
-                )
+            linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
+                "_id_banco"
+            ].tolist()
+            if linhas_marcadas:
+                st.session_state["sel_id_epi"] = int(linhas_marcadas[-1])
+            else:
+                st.session_state["sel_id_epi"] = None
 
-                cols_epi_ord = [
-                    "Selecionar",
-                    "_id_banco",
-                    "funcionario",
-                    "tipo",
-                    "epi",
-                    "ca",
-                    "validade_ca",
-                    "status_ca",
-                    "data_entrega",
-                    "quantidade",
-                    "status",
-                ]
-                df_epi_sel = df_edit[
-                    [c for c in cols_epi_ord if c in df_edit.columns]
-                ]
+            st.write("")
+            col_acao1, col_acao2 = st.columns(2)
 
-                df_fmt = (
-                    formatar_colunas_func(df_epi_sel)
-                    if callable(formatar_colunas_func)
-                    else df_epi_sel
-                )
-                if "Status" in df_fmt.columns:
-                    df_fmt["Status"] = df_fmt["Status"].apply(
-                        lambda x: formatar_status_visual_seguro(x, "epi")
-                    )
-                df_fmt = (
-                    adicionar_numeracao_func(df_fmt)
-                    if callable(adicionar_numeracao_func)
-                    else df_fmt
-                )
-
-                edit_df = st.data_editor(
-                    df_fmt,
-                    hide_index=True,
-                    num_rows="fixed",
-                    key="editor_selecao_epis",
+            if pode_editar:
+                if col_acao1.button(
+                    "✏️ Editar Registro Selecionado",
                     use_container_width=True,
-                    column_config={
-                        "Selecionar": st.column_config.CheckboxColumn(
-                            "Selecionar", required=True, pinned=True
-                        ),
-                        "_id_banco": None,
-                        "Nº": st.column_config.NumberColumn(
-                            "Nº", disabled=True, pinned=True
-                        ),
-                        "funcionario": st.column_config.TextColumn(
-                            "Funcionário", disabled=True, pinned=True
-                        ),
-                    },
-                )
+                    key="btn_edit_epi",
+                ):
+                    if st.session_state.get("sel_id_epi") is not None:
+                        st.session_state["modal_edit_epi_id"] = int(
+                            st.session_state["sel_id_epi"]
+                        )
+                        st.rerun()
+                    else:
+                        st.warning(
+                            "⚠️ Selecione um registro marcando o"
+                            " quadradinho para editar."
+                        )
 
-                linhas_marcadas = edit_df[edit_df["Selecionar"] == True][
-                    "_id_banco"
-                ].tolist()
-                if linhas_marcadas:
-                    st.session_state["sel_id_epi"] = int(linhas_marcadas[-1])
-                else:
-                    st.session_state["sel_id_epi"] = None
+            if st.session_state.get("modal_edit_epi_id"):
+                id_ed = st.session_state["modal_edit_epi_id"]
+                modal_editar_registro_pin(id_ed, empresa_selecionada)
 
-                st.write("")
-                col_acao1, col_acao2 = st.columns(2)
+            if pode_excluir:
+                if col_acao2.button(
+                    "🗑️ Excluir Registro(s) Selecionado(s)",
+                    use_container_width=True,
+                    key="btn_del_epi",
+                ):
+                    linhas_para_excluir = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
+                    if linhas_para_excluir:
+                        st.session_state["modal_del_epi_ids"] = linhas_para_excluir
+                        st.rerun()
+                    else:
+                        st.warning(
+                            "⚠️ Selecione pelo menos um registro marcando o"
+                            " quadradinho para excluir."
+                        )
 
-                if pode_editar:
-                    if col_acao1.button(
-                        "✏️ Editar Registro Selecionado",
-                        use_container_width=True,
-                        key="btn_edit_epi",
-                    ):
-                        if st.session_state.get("sel_id_epi") is not None:
-                            st.session_state["modal_edit_epi_id"] = int(
-                                st.session_state["sel_id_epi"]
-                            )
-                            st.rerun()
-                        else:
-                            st.warning(
-                                "⚠️ Selecione um registro marcando o"
-                                " quadradinho para editar."
-                            )
+            if st.session_state.get("modal_del_epi_ids"):
+                modal_excluir_registros_pin(st.session_state["modal_del_epi_ids"], empresa_selecionada)
 
-                if st.session_state.get("modal_edit_epi_id"):
-                    id_ed = st.session_state["modal_edit_epi_id"]
-                    modal_editar_registro_pin(id_ed, empresa_selecionada)
+with aba_gestao_ficha:
+st.markdown(
+    "### ➕ Registrar Entrega e Gerar Ficha Individual de EPI"
+)
 
-                if pode_excluir:
-                    if col_acao2.button(
-                        "🗑️ Excluir Registro(s) Selecionado(s)",
-                        use_container_width=True,
-                        key="btn_del_epi",
-                    ):
-                        linhas_para_excluir = edit_df[edit_df["Selecionar"] == True]["_id_banco"].tolist()
-                        if linhas_para_excluir:
-                            st.session_state["modal_del_epi_ids"] = linhas_para_excluir
-                            st.rerun()
-                        else:
-                            st.warning(
-                                "⚠️ Selecione pelo menos um registro marcando o"
-                                " quadradinho para excluir."
-                            )
+if empresa_selecionada == "Todas":
+    st.warning(
+        "⚠️ Selecione uma empresa específica no filtro superior para"
+        " realizar lançamentos e gerar fichas."
+    )
+else:
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)
+    _garantir_colunas_ca_epis(conn)
 
-                if st.session_state.get("modal_del_epi_ids"):
-                    modal_excluir_registros_pin(st.session_state["modal_del_epi_ids"], empresa_selecionada)
+    try:
+        conn.execute(
+            "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT"
+        )
+    except Exception:
+        pass
+    conn.commit()
 
-    with aba_gestao_ficha:
-        st.markdown(
-            "### ➕ Registrar Entrega e Gerar Ficha Individual de EPI"
+    df_funcs = pd.read_sql(
+        "SELECT funcionario, matricula, cargo, setor, data_admissao,"
+        " armario, calcado FROM base_funcionarios WHERE empresa = ?",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    df_cad_epis = pd.read_sql(
+        "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
+
+    df_historico_epi = pd.read_sql(
+        "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
+        " FROM epis WHERE empresa = ?",
+        conn,
+        params=(empresa_selecionada,),
+    )
+    conn.close()
+
+    lista_f = (
+        df_funcs["funcionario"].tolist()
+        if not df_funcs.empty
+        else []
+    )
+    lista_epis_cad = (
+        df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
+    )
+    mapa_ca = (
+        dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
+        if not df_cad_epis.empty
+        else {}
+    )
+
+    if not lista_f:
+        st.info(
+            "ℹ️ Nenhum funcionário cadastrado para esta empresa."
+        )
+    else:
+        if "ultimo_epi_selecionado" not in st.session_state:
+            st.session_state["ultimo_epi_selecionado"] = None
+        if "unificado_ca" not in st.session_state:
+            st.session_state["unificado_ca"] = ""
+
+        col_l1, col_l2 = st.columns(2)
+        func_escolhido = col_l1.selectbox(
+            "Funcionário", lista_f, key="unificado_func"
         )
 
-        if empresa_selecionada == "Todas":
-            st.warning(
-                "⚠️ Selecione uma empresa específica no filtro superior para"
-                " realizar lançamentos e gerar fichas."
+        if lista_epis_cad:
+            epi_sel = col_l2.selectbox(
+                "EPI", lista_epis_cad, key="unificado_epi"
             )
+
+            if st.session_state["ultimo_epi_selecionado"] != epi_sel:
+                st.session_state["ultimo_epi_selecionado"] = epi_sel
+                st.session_state["unificado_ca"] = str(
+                    mapa_ca.get(epi_sel, "")
+                )
+                st.rerun()
         else:
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
-            _garantir_colunas_ca_epis(conn)
-
-            try:
-                conn.execute(
-                    "ALTER TABLE base_funcionarios ADD COLUMN armario TEXT"
-                )
-            except Exception:
-                pass
-            try:
-                conn.execute(
-                    "ALTER TABLE base_funcionarios ADD COLUMN calcado TEXT"
-                )
-            except Exception:
-                pass
-            conn.commit()
-
-            df_funcs = pd.read_sql(
-                "SELECT funcionario, matricula, cargo, setor, data_admissao,"
-                " armario, calcado FROM base_funcionarios WHERE empresa = ?",
-                conn,
-                params=(empresa_selecionada,),
-            )
-            df_cad_epis = pd.read_sql(
-                "SELECT epi, ca FROM cad_epis WHERE empresa = ? ORDER BY epi ASC",
-                conn,
-                params=(empresa_selecionada,),
-            )
-            df_cad_epis = df_cad_epis.drop_duplicates(subset=["epi"])
-
-            df_historico_epi = pd.read_sql(
-                "SELECT epi, ca, data_entrega, quantidade, funcionario, status"
-                " FROM epis WHERE empresa = ?",
-                conn,
-                params=(empresa_selecionada,),
-            )
-            conn.close()
-
-            lista_f = (
-                df_funcs["funcionario"].tolist()
-                if not df_funcs.empty
-                else []
-            )
-            lista_epis_cad = (
-                df_cad_epis["epi"].tolist() if not df_cad_epis.empty else []
-            )
-            mapa_ca = (
-                dict(zip(df_cad_epis["epi"], df_cad_epis["ca"]))
-                if not df_cad_epis.empty
-                else {}
+            epi_sel = col_l2.text_input(
+                "EPI",
+                value="Óculos de Proteção",
+                key="unificado_epi_txt",
             )
 
-            if not lista_f:
-                st.info(
-                    "ℹ️ Nenhum funcionário cadastrado para esta empresa."
-                )
+        col_l3, col_l4, col_l5 = st.columns(3)
+        ca_in = col_l3.text_input("Número do CA", key="unificado_ca")
+        data_ent = col_l4.text_input(
+            "Data de Entrega",
+            value=datetime.now(fuso_brasil).strftime("%d/%m/%Y"),
+            key="unificado_data",
+        )
+        qtd_in = col_l5.number_input(
+            "Quantidade", min_value=1, value=1, key="unificado_qtd"
+        )
+
+        info_ca_atual = _buscar_info_ca_cassilab(ca_in)
+
+        if info_ca_atual["encontrado"]:
+            if not info_ca_atual["valido"]:
+                st.error(f"⚠️ **Atenção:** CA **{ca_in.strip()}** consta como **{info_ca_atual['status_ca']}**! (Validade Oficial: **{info_ca_atual['validade']}**) - {info_ca_atual['descricao'][:100]}")
             else:
-                if "ultimo_epi_selecionado" not in st.session_state:
-                    st.session_state["ultimo_epi_selecionado"] = None
-                if "unificado_ca" not in st.session_state:
-                    st.session_state["unificado_ca"] = ""
+                st.success(f"✅ **CA {ca_in.strip()} Válido / Ativo.** (Validade Oficial: **{info_ca_atual['validade']}**) | {info_ca_atual['descricao'][:100]}")
+        elif ca_in and ca_in.strip():
+            st.warning(f"ℹ️ CA **{ca_in.strip()}** não encontrado na base de CAs.")
 
-                col_l1, col_l2 = st.columns(2)
-                func_escolhido = col_l1.selectbox(
-                    "Funcionário", lista_f, key="unificado_func"
+        tipo_assinatura_lanc = st.radio(
+            "🔑 Forma de Validação / Assinatura",
+            [
+                "Física (Assinatura manual na ficha impressa)",
+                "Eletrônica (Validar com PIN de 4 dígitos do colaborador)",
+            ],
+            horizontal=True,
+            key="tipo_ass_lanc_epi",
+        )
+
+        pin_informado = ""
+        if "Eletrônica" in tipo_assinatura_lanc:
+            if st.session_state.get("reset_pin_input", False):
+                st.session_state["pin_lanc_epi_input"] = ""
+                st.session_state["reset_pin_input"] = False
+
+            pin_informado = st.text_input(
+                "Digite o PIN (4 dígitos) do Colaborador para"
+                " Confirmar",
+                type="password",
+                max_chars=4,
+                key="pin_lanc_epi_input",
+            )
+
+        if st.button(
+            "Salvar Entrega de EPI",
+            type="primary",
+            key="btn_salvar_epi_unif",
+        ):
+            if func_escolhido and epi_sel:
+                mat_f, cargo_f, setor_f, pin_cadastrado, termo_aceito = (
+                    "",
+                    "",
+                    "",
+                    "",
+                    0,
                 )
 
-                if lista_epis_cad:
-                    epi_sel = col_l2.selectbox(
-                        "EPI", lista_epis_cad, key="unificado_epi"
-                    )
+                conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
+                df_f_info = pd.read_sql(
+                    "SELECT matricula, cargo, setor, pin_colaborador,"
+                    " termo_adesao FROM base_funcionarios WHERE empresa"
+                    " = ? AND funcionario = ?",
+                    conn_f,
+                    params=(empresa_selecionada, func_escolhido),
+                )
+                conn_f.close()
 
-                    if st.session_state["ultimo_epi_selecionado"] != epi_sel:
-                        st.session_state["ultimo_epi_selecionado"] = epi_sel
-                        st.session_state["unificado_ca"] = str(
-                            mapa_ca.get(epi_sel, "")
+                if not df_f_info.empty:
+                    mat_f = df_f_info.iloc[0].get("matricula", "")
+                    cargo_f = df_f_info.iloc[0].get("cargo", "")
+                    setor_f = df_f_info.iloc[0].get("setor", "")
+                    pin_cadastrado = str(
+                        df_f_info.iloc[0].get(
+                            "pin_colaborador", ""
                         )
-                        st.rerun()
-                else:
-                    epi_sel = col_l2.text_input(
-                        "EPI",
-                        value="Óculos de Proteção",
-                        key="unificado_epi_txt",
+                    ).strip()
+                    termo_aceito = int(
+                        df_f_info.iloc[0].get("termo_adesao", 0) or 0
                     )
 
-                col_l3, col_l4, col_l5 = st.columns(3)
-                ca_in = col_l3.text_input("Número do CA", key="unificado_ca")
-                data_ent = col_l4.text_input(
-                    "Data de Entrega",
-                    value=datetime.now(fuso_brasil).strftime("%d/%m/%Y"),
-                    key="unificado_data",
-                )
-                qtd_in = col_l5.number_input(
-                    "Quantidade", min_value=1, value=1, key="unificado_qtd"
-                )
-
-                info_ca_atual = _buscar_info_ca_cassilab(ca_in)
-
-                if info_ca_atual["encontrado"]:
-                    if not info_ca_atual["valido"]:
-                        st.error(f"⚠️ **Atenção:** CA **{ca_in.strip()}** consta como **{info_ca_atual['status_ca']}**! (Validade Oficial: **{info_ca_atual['validade']}**) - {info_ca_atual['descricao'][:100]}")
-                    else:
-                        st.success(f"✅ **CA {ca_in.strip()} Válido / Ativo.** (Validade Oficial: **{info_ca_atual['validade']}**) | {info_ca_atual['descricao'][:100]}")
-                elif ca_in and ca_in.strip():
-                    st.warning(f"ℹ️ CA **{ca_in.strip()}** não encontrado na base de CAs.")
-
-                tipo_assinatura_lanc = st.radio(
-                    "🔑 Forma de Validação / Assinatura",
-                    [
-                        "Física (Assinatura manual na ficha impressa)",
-                        "Eletrônica (Validar com PIN de 4 dígitos do colaborador)",
-                    ],
-                    horizontal=True,
-                    key="tipo_ass_lanc_epi",
-                )
-
-                pin_informado = ""
+                status_gravacao = "Entregue"
                 if "Eletrônica" in tipo_assinatura_lanc:
-                    if st.session_state.get("reset_pin_input", False):
-                        st.session_state["pin_lanc_epi_input"] = ""
-                        st.session_state["reset_pin_input"] = False
-
-                    pin_informado = st.text_input(
-                        "Digite o PIN (4 dígitos) do Colaborador para"
-                        " Confirmar",
-                        type="password",
-                        max_chars=4,
-                        key="pin_lanc_epi_input",
+                    if not termo_aceito:
+                        st.error(
+                            "⚠️ O colaborador selecionado ainda não"
+                            " possui o Termo de Adesão ao EPI Eletrônico"
+                            " assinado no cadastro!"
+                        )
+                        st.stop()
+                    if (
+                        pin_informado.strip() != pin_cadastrado
+                        or len(pin_cadastrado) != 4
+                    ):
+                        st.error(
+                            "❌ PIN incorreto ou colaborador sem PIN"
+                            " de 4 dígitos cadastrado!"
+                        )
+                        st.stop()
+                    status_gravacao = (
+                        f"Assinado Eletronicamente via PIN"
+                        f" ({datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')})"
                     )
 
-                if st.button(
-                    "Salvar Entrega de EPI",
-                    type="primary",
-                    key="btn_salvar_epi_unif",
-                ):
-                    if func_escolhido and epi_sel:
-                        mat_f, cargo_f, setor_f, pin_cadastrado, termo_aceito = (
-                            "",
-                            "",
-                            "",
-                            "",
-                            0,
+                data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now(fuso_brasil).strftime('%H:%M')}"
+
+                conn = sqlite3.connect(DB_NAME, timeout=10.0)
+                _garantir_colunas_ca_epis(conn)
+                conn.execute(
+                    """
+                    INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, validade_ca, status_ca, data_entrega, quantidade, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        empresa_selecionada,
+                        str(mat_f),
+                        func_escolhido,
+                        str(cargo_f),
+                        str(setor_f),
+                        epi_sel,
+                        ca_in.strip(),
+                        info_ca_atual["validade"],
+                        info_ca_atual["status_ca"],
+                        data_hora_atual_str,
+                        int(qtd_in),
+                        status_gravacao,
+                    ),
+                )
+                conn.commit()
+                conn.close()
+
+                if "pin_lanc_epi_input" in st.session_state:
+                    st.session_state["reset_pin_input"] = True
+
+                st.success(
+                    "✅ Entrega de EPI cadastrada com sucesso!"
+                )
+                registrar_log_func_seguro(
+                    st.session_state.get(
+                        "nome_usuario", "Desconhecido"
+                    ),
+                    empresa_selecionada,
+                    f"Cadastrou EPI ({epi_sel}) para"
+                    f" {func_escolhido} [{status_gravacao}]",
+                )
+                st.rerun()
+            else:
+                st.error("Preencha todos os campos obrigatórios.")
+
+        st.markdown("---")
+        st.markdown(
+            "### 📄 Configuração e Geração da Ficha Individual (Paisagem)"
+        )
+
+        f_atual = (
+            df_funcs[df_funcs["funcionario"] == func_escolhido].iloc[
+                0
+            ]
+            if not df_funcs.empty
+            else {}
+        )
+        val_armario_salvo = str(f_atual.get("armario", "") or "")
+        val_calcado_salvo = str(f_atual.get("calcado", "") or "")
+
+        col_f_cfg1, col_f_cfg2 = st.columns(2)
+        armario_num = col_f_cfg1.text_input(
+            "Armário nº (Opcional para a Ficha)",
+            value=val_armario_salvo,
+            key="ficha_armario",
+        )
+        calcado_num = col_f_cfg2.text_input(
+            "Calçado nº (Opcional para a Ficha)",
+            value=val_calcado_salvo,
+            key="ficha_calcado",
+        )
+        logo_ficha_html = buscar_logo_empresa(
+            DB_NAME, empresa_selecionada
+        )
+
+        if st.button(
+            "📄 Gerar e Exibir Ficha de EPI do Colaborador Selecionado",
+            type="primary",
+            use_container_width=True,
+            key="btn_gerar_ficha_unif",
+        ):
+            if armario_num or calcado_num:
+                conn_up = sqlite3.connect(DB_NAME, timeout=10.0)
+                conn_up.execute(
+                    """
+                    UPDATE base_funcionarios 
+                    SET armario = ?, calcado = ? 
+                    WHERE empresa = ? AND funcionario = ?
+                    """,
+                    (
+                        armario_num,
+                        calcado_num,
+                        empresa_selecionada,
+                        func_escolhido,
+                    ),
+                )
+                conn_up.commit()
+                conn_up.close()
+
+            f_dados = df_funcs[
+                df_funcs["funcionario"] == func_escolhido
+            ].iloc[0]
+            cargo_func = f_dados.get("cargo", "")
+            setor_func = f_dados.get("setor", "")
+            admissao_func = f_dados.get("data_admissao", "")
+            if not admissao_func or pd.isna(admissao_func):
+                admissao_func = ""
+
+            if not df_historico_epi.empty:
+                mask_func = (
+                    df_historico_epi["funcionario"]
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
+                    == str(func_escolhido).strip().lower()
+                )
+                if "status" in df_historico_epi.columns:
+                    status_lower = df_historico_epi["status"].astype(str).str.lower()
+                    mask_func = mask_func & (~status_lower.str.contains("devolvido|substituído|substituido", na=False))
+                historico_func = df_historico_epi[mask_func]
+            else:
+                historico_func = pd.DataFrame()
+
+            itens_por_pagina = 15
+            total_registros = len(historico_func)
+            total_paginas = max(
+                1, math.ceil(total_registros / itens_por_pagina)
+            )
+
+            html_paginas_acumulado = ""
+
+            for pagina_idx in range(total_paginas):
+                inicio_slice = pagina_idx * itens_por_pagina
+                fim_slice = inicio_slice + itens_por_pagina
+                fatia_historico = historico_func.iloc[
+                    inicio_slice:fim_slice
+                ]
+
+                linhas_ficha_html = ""
+                c_reg = 0
+
+                for _, r_hist in fatia_historico.iterrows():
+                    e_nome = str(r_hist.get("epi", ""))
+                    e_quant = str(r_hist.get("quantidade", "1"))
+                    e_data = str(r_hist.get("data_entrega", ""))
+                    e_ca = str(r_hist.get("ca", ""))
+                    e_status = str(r_hist.get("status", ""))
+
+                    if (
+                        "Assinado Eletronicamente" in e_status
+                        or "PIN" in e_status
+                        or "Corrigido" in e_status
+                    ):
+                        texto_assinatura_celula = (
+                            "<div style='font-size: 7px; color:"
+                            " #0b2545; line-height: 1.1; font-weight:"
+                            " bold; text-align: center;'>Validado"
+                            " via PIN<br>(Validade Jurídica)</div>"
                         )
-
-                        conn_f = sqlite3.connect(DB_NAME, timeout=10.0)
-                        df_f_info = pd.read_sql(
-                            "SELECT matricula, cargo, setor, pin_colaborador,"
-                            " termo_adesao FROM base_funcionarios WHERE empresa"
-                            " = ? AND funcionario = ?",
-                            conn_f,
-                            params=(empresa_selecionada, func_escolhido),
-                        )
-                        conn_f.close()
-
-                        if not df_f_info.empty:
-                            mat_f = df_f_info.iloc[0].get("matricula", "")
-                            cargo_f = df_f_info.iloc[0].get("cargo", "")
-                            setor_f = df_f_info.iloc[0].get("setor", "")
-                            pin_cadastrado = str(
-                                df_f_info.iloc[0].get(
-                                    "pin_colaborador", ""
-                                )
-                            ).strip()
-                            termo_aceito = int(
-                                df_f_info.iloc[0].get("termo_adesao", 0) or 0
-                            )
-
-                        status_gravacao = "Entregue"
-                        if "Eletrônica" in tipo_assinatura_lanc:
-                            if not termo_aceito:
-                                st.error(
-                                    "⚠️ O colaborador selecionado ainda não"
-                                    " possui o Termo de Adesão ao EPI Eletrônico"
-                                    " assinado no cadastro!"
-                                )
-                                st.stop()
-                            if (
-                                pin_informado.strip() != pin_cadastrado
-                                or len(pin_cadastrado) != 4
-                            ):
-                                st.error(
-                                    "❌ PIN incorreto ou colaborador sem PIN"
-                                    " de 4 dígitos cadastrado!"
-                                )
-                                st.stop()
-                            status_gravacao = (
-                                f"Assinado Eletronicamente via PIN"
-                                f" ({datetime.now(fuso_brasil).strftime('%d/%m/%Y %H:%M')})"
-                            )
-
-                        data_hora_atual_str = f"{validar_e_formatar_data_input_func(data_ent) if callable(validar_e_formatar_data_input_func) else data_ent} {datetime.now(fuso_brasil).strftime('%H:%M')}"
-
-                        conn = sqlite3.connect(DB_NAME, timeout=10.0)
-                        _garantir_colunas_ca_epis(conn)
-                        conn.execute(
-                            """
-                            INSERT INTO epis (empresa, matricula, funcionario, cargo, setor, epi, ca, validade_ca, status_ca, data_entrega, quantidade, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                empresa_selecionada,
-                                str(mat_f),
-                                func_escolhido,
-                                str(cargo_f),
-                                str(setor_f),
-                                epi_sel,
-                                ca_in.strip(),
-                                info_ca_atual["validade"],
-                                info_ca_atual["status_ca"],
-                                data_hora_atual_str,
-                                int(qtd_in),
-                                status_gravacao,
-                            ),
-                        )
-                        conn.commit()
-                        conn.close()
-
-                        if "pin_lanc_epi_input" in st.session_state:
-                            st.session_state["reset_pin_input"] = True
-
-                        st.success(
-                            "✅ Entrega de EPI cadastrada com sucesso!"
-                        )
-                        registrar_log_func_seguro(
-                            st.session_state.get(
-                                "nome_usuario", "Desconhecido"
-                            ),
-                            empresa_selecionada,
-                            f"Cadastrou EPI ({epi_sel}) para"
-                            f" {func_escolhido} [{status_gravacao}]",
-                        )
-                        st.rerun()
                     else:
-                        st.error("Preencha todos os campos obrigatórios.")
+                        texto_assinatura_celula = ""
 
-                st.markdown("---")
-                st.markdown(
-                    "### 📄 Configuração e Geração da Ficha Individual (Paisagem)"
-                )
+                    linhas_ficha_html += "".join([
+                        "<tr>",
+                        f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>",
+                        f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>",
+                        f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>",
+                        f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>",
+                        f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>",
+                        "</tr>"
+                    ])
+                    c_reg += 1
 
-                f_atual = (
-                    df_funcs[df_funcs["funcionario"] == func_escolhido].iloc[
-                        0
-                    ]
-                    if not df_funcs.empty
-                    else {}
-                )
-                val_armario_salvo = str(f_atual.get("armario", "") or "")
-                val_calcado_salvo = str(f_atual.get("calcado", "") or "")
-
-                col_f_cfg1, col_f_cfg2 = st.columns(2)
-                armario_num = col_f_cfg1.text_input(
-                    "Armário nº (Opcional para a Ficha)",
-                    value=val_armario_salvo,
-                    key="ficha_armario",
-                )
-                calcado_num = col_f_cfg2.text_input(
-                    "Calçado nº (Opcional para a Ficha)",
-                    value=val_calcado_salvo,
-                    key="ficha_calcado",
-                )
-                logo_ficha_html = buscar_logo_empresa(
-                    DB_NAME, empresa_selecionada
-                )
-
-                if st.button(
-                    "📄 Gerar e Exibir Ficha de EPI do Colaborador Selecionado",
-                    type="primary",
-                    use_container_width=True,
-                    key="btn_gerar_ficha_unif",
-                ):
-                    if armario_num or calcado_num:
-                        conn_up = sqlite3.connect(DB_NAME, timeout=10.0)
-                        conn_up.execute(
-                            """
-                            UPDATE base_funcionarios 
-                            SET armario = ?, calcado = ? 
-                            WHERE empresa = ? AND funcionario = ?
-                            """,
-                            (
-                                armario_num,
-                                calcado_num,
-                                empresa_selecionada,
-                                func_escolhido,
-                            ),
-                        )
-                        conn_up.commit()
-                        conn_up.close()
-
-                    f_dados = df_funcs[
-                        df_funcs["funcionario"] == func_escolhido
-                    ].iloc[0]
-                    cargo_func = f_dados.get("cargo", "")
-                    setor_func = f_dados.get("setor", "")
-                    admissao_func = f_dados.get("data_admissao", "")
-                    if not admissao_func or pd.isna(admissao_func):
-                        admissao_func = ""
-
-                    if not df_historico_epi.empty:
-                        mask_func = (
-                            df_historico_epi["funcionario"]
-                            .astype(str)
-                            .str.strip()
-                            .str.lower()
-                            == str(func_escolhido).strip().lower()
-                        )
-                        if "status" in df_historico_epi.columns:
-                            status_lower = df_historico_epi["status"].astype(str).str.lower()
-                            mask_func = mask_func & (~status_lower.str.contains("devolvido|substituído|substituido", na=False))
-                        historico_func = df_historico_epi[mask_func]
-                    else:
-                        historico_func = pd.DataFrame()
-
-                    itens_por_pagina = 15
-                    total_registros = len(historico_func)
-                    total_paginas = max(
-                        1, math.ceil(total_registros / itens_por_pagina)
+                while c_reg < itens_por_pagina:
+                    linhas_ficha_html += (
+                        "<tr>"
+                        "<td style='height: 18px;'></td>"
+                        "<td></td><td></td><td></td><td></td>"
+                        "</tr>"
                     )
+                    c_reg += 1
 
-                    html_paginas_acumulado = ""
+                num_pagina_atual = pagina_idx + 1
+                if total_paginas > 1:
+                    indicador_pagina = f"<b>Página {num_pagina_atual} de {total_paginas}</b>"
+                else:
+                    indicador_pagina = ""
 
-                    for pagina_idx in range(total_paginas):
-                        inicio_slice = pagina_idx * itens_por_pagina
-                        fim_slice = inicio_slice + itens_por_pagina
-                        fatia_historico = historico_func.iloc[
-                            inicio_slice:fim_slice
-                        ]
+                html_paginas_acumulado += "".join([
+                    "<div class='sheet'>",
+                    "<div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>",
+                    f"<div>{logo_ficha_html}</div>",
+                    f"<div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>",
+                    "</div>",
+                    "<div class='cabecalho-principal-ficha'>",
+                    "CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I.",
+                    "</div>",
+                    "<table class='tabela-ficha'>",
+                    f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>",
+                    "<tr>",
+                    f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>",
+                    f"<td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>",
+                    "</tr>",
+                    "<tr>",
+                    f"<td><b>Função:</b> {cargo_func}</td>",
+                    f"<td colspan='2'><b>Armário nº:</b> {armario_num}</td>",
+                    "</tr>",
+                    "<tr>",
+                    f"<td><b>Setor:</b> {setor_func}</td>",
+                    f"<td colspan='2'><b>Calçado nº:</b> {calcado_num}</td>",
+                    "</tr>",
+                    "</table>",
+                    "<table class='tabela-itens'>",
+                    "<thead>",
+                    "<tr>",
+                    "<th style='width: 44%;'>Tipo de E.P.I.</th>",
+                    "<th style='width: 8%;'>Quant.</th>",
+                    "<th style='width: 18%;'>Data / Hora da Entrega</th>",
+                    "<th style='width: 20%;'>Assinatura do Funcionário</th>",
+                    "<th style='width: 10%;'>C.A.</th>",
+                    "</tr>",
+                    "</thead>",
+                    "<tbody>",
+                    linhas_ficha_html,
+                    "</tbody>",
+                    "</table>",
+                    "<div class='termo-legal'>",
+                    "Declaro, para os devidos fins, que recebi os E.P.I.s acima descritos e me comprometo:<br>",
+                    "&nbsp;&nbsp;&bull; Usá-los apenas para a finalidade a que se destinam;<br>",
+                    "&nbsp;&nbsp;&bull; Responsabilizar-me por sua guarda e conservação;<br>",
+                    "&nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>",
+                    "&nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>",
+                    "Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>",
+                    "Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.",
+                    "</div>",
+                    "<div class='assinatura-area' style='padding: 10px 10px; border: 1px solid #000; border-top: none;'>",
+                    "<div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;'>",
+                    "<div style='font-size: 9px; color: #333; text-align: left;'>",
+                    "<i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>",
+                    "</div>",
+                    "<div style='font-size: 9px; text-align: right;'>",
+                    "___________, _____ de _________________________ de 20_____",
+                    "</div>",
+                    "</div>",
+                    "<div style='text-align: center; padding-top: 5px;'>",
+                    "<div style='display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px; text-align: center;'>",
+                    f"<b>{func_escolhido}</b><br>Assinatura do Funcionário",
+                    "</div>",
+                    "</div>",
+                    "</div>",
+                    "</div>"
+                ])
 
-                        linhas_ficha_html = ""
-                        c_reg = 0
+            css_estilos_ficha = "".join([
+                "<style>",
+                "@page { size: A4 landscape !important; margin: 5mm !important; }",
+                "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }",
+                ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }",
+                ".tabela-ficha { width: 100%; border-collapse: collapse; }",
+                ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }",
+                ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }",
+                ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }",
+                ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }",
+                ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }",
+                ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }",
+                ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }",
+                "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }",
+                "</style>"
+            ])
 
-                        for _, r_hist in fatia_historico.iterrows():
-                            e_nome = str(r_hist.get("epi", ""))
-                            e_quant = str(r_hist.get("quantidade", "1"))
-                            e_data = str(r_hist.get("data_entrega", ""))
-                            e_ca = str(r_hist.get("ca", ""))
-                            e_status = str(r_hist.get("status", ""))
+            html_conteudo_bruto = "".join([
+                "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>",
+                f"<title>Ficha de EPI - {str(func_escolhido)}</title>",
+                css_estilos_ficha,
+                "</head><body>",
+                html_paginas_acumulado,
+                "</body></html>"
+            ])
 
-                            if (
-                                "Assinado Eletronicamente" in e_status
-                                or "PIN" in e_status
-                                or "Corrigido" in e_status
-                            ):
-                                texto_assinatura_celula = (
-                                    "<div style='font-size: 7px; color:"
-                                    " #0b2545; line-height: 1.1; font-weight:"
-                                    " bold; text-align: center;'>Validado"
-                                    " via PIN<br>(Validade Jurídica)</div>"
-                                )
-                            else:
-                                texto_assinatura_celula = ""
+            html_b64_seguro = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
 
-                            linhas_ficha_html += "".join([
-                                "<tr>",
-                                f"<td style='padding: 3px 5px; font-size: 9px; height: 18px;'>{e_nome}</td>",
-                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_quant}</td>",
-                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_data}</td>",
-                                f"<td style='text-align: center; padding: 2px 3px; height: 18px; vertical-align: middle;'>{texto_assinatura_celula}</td>",
-                                f"<td style='text-align: center; padding: 3px 5px; font-size: 9px; height: 18px;'>{e_ca}</td>",
-                                "</tr>"
-                            ])
-                            c_reg += 1
+            trecho_botao_impressao = "".join([
+                "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>",
+                "<button onclick=\"",
+                "var win = window.open('', '_blank');",
+                "var htmlContent = decodeURIComponent(escape(window.atob('" + html_b64_seguro + "')));",
+                "win.document.open();",
+                "win.document.write(htmlContent);",
+                "win.document.close();",
+                "setTimeout(function(){ win.focus(); win.print(); }, 800);",
+                "\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>",
+                "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)",
+                "</button>",
+                "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Clique para abrir a ficha completa direto na janela de impressão em A4 Paisagem.</p>",
+                "</div>"
+            ])
 
-                        while c_reg < itens_por_pagina:
-                            linhas_ficha_html += (
-                                "<tr>"
-                                "<td style='height: 18px;'></td>"
-                                "<td></td><td></td><td></td><td></td>"
-                                "</tr>"
-                            )
-                            c_reg += 1
+            html_ficha = "".join([
+                "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>",
+                css_estilos_ficha,
+                "</head><body>",
+                trecho_botao_impressao,
+                html_paginas_acumulado,
+                "</body></html>"
+            ])
 
-                        num_pagina_atual = pagina_idx + 1
-                        if total_paginas > 1:
-                            indicador_pagina = f"<b>Página {num_pagina_atual} de {total_paginas}</b>"
-                        else:
-                            indicador_pagina = ""
-
-                        html_paginas_acumulado += "".join([
-                            "<div class='sheet'>",
-                            "<div style='display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding: 4px 8px;'>",
-                            f"<div>{logo_ficha_html}</div>",
-                            f"<div style='font-size: 9px; font-weight: bold;'>{indicador_pagina}</div>",
-                            "</div>",
-                            "<div class='cabecalho-principal-ficha'>",
-                            "CONTROLE DE ENTREGA DE EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL - E.P.I.",
-                            "</div>",
-                            "<table class='tabela-ficha'>",
-                            f"<tr><td colspan='3'><b>Empresa:</b> {empresa_selecionada}</td></tr>",
-                            "<tr>",
-                            f"<td style='width: 52%;'><b>Nome:</b> {func_escolhido}</td>",
-                            f"<td style='width: 24%;'><b>Data de admissão:</b> {admissao_func}</td>",
-                            "</tr>",
-                            "<tr>",
-                            f"<td><b>Função:</b> {cargo_func}</td>",
-                            f"<td colspan='2'><b>Armário nº:</b> {armario_num}</td>",
-                            "</tr>",
-                            "<tr>",
-                            f"<td><b>Setor:</b> {setor_func}</td>",
-                            f"<td colspan='2'><b>Calçado nº:</b> {calcado_num}</td>",
-                            "</tr>",
-                            "</table>",
-                            "<table class='tabela-itens'>",
-                            "<thead>",
-                            "<tr>",
-                            "<th style='width: 44%;'>Tipo de E.P.I.</th>",
-                            "<th style='width: 8%;'>Quant.</th>",
-                            "<th style='width: 18%;'>Data / Hora da Entrega</th>",
-                            "<th style='width: 20%;'>Assinatura do Funcionário</th>",
-                            "<th style='width: 10%;'>C.A.</th>",
-                            "</tr>",
-                            "</thead>",
-                            "<tbody>",
-                            linhas_ficha_html,
-                            "</tbody>",
-                            "</table>",
-                            "<div class='termo-legal'>",
-                            "Declaro, para os devidos fins, que recebi os E.P.I.s acima descritos e me comprometo:<br>",
-                            "&nbsp;&nbsp;&bull; Usá-los apenas para a finalidade a que se destinam;<br>",
-                            "&nbsp;&nbsp;&bull; Responsabilizar-me por sua guarda e conservação;<br>",
-                            "&nbsp;&nbsp;&bull; Comunicar ao empregador qualquer modificação que os tornem impróprios para o uso;<br>",
-                            "&nbsp;&nbsp;&bull; Responsabilizar-me pela danificação do E.P.I. devido ao uso inadequado ou fora das atividades a que se destina, bem como pelo seu extravio.<br>",
-                            "Declaro ainda estar ciente de que o uso é obrigatório. Sob pena de ser punido conforme Lei nº 6.514, de 22/12/77, artigo 158.<br>",
-                            "Declaro, ainda, que recebi treinamento referente ao uso do E.P.I. e as Normas de Segurança do Trabalho.",
-                            "</div>",
-                            "<div class='assinatura-area' style='padding: 10px 10px; border: 1px solid #000; border-top: none;'>",
-                            "<div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;'>",
-                            "<div style='font-size: 9px; color: #333; text-align: left;'>",
-                            "<i>Confirmo os termos acima e o recebimento dos equipamentos listados.</i>",
-                            "</div>",
-                            "<div style='font-size: 9px; text-align: right;'>",
-                            "___________, _____ de _________________________ de 20_____",
-                            "</div>",
-                            "</div>",
-                            "<div style='text-align: center; padding-top: 5px;'>",
-                            "<div style='display: inline-block; border-top: 1px solid #000; width: 350px; padding-top: 2px; text-align: center;'>",
-                            f"<b>{func_escolhido}</b><br>Assinatura do Funcionário",
-                            "</div>",
-                            "</div>",
-                            "</div>",
-                            "</div>"
-                        ])
-
-                    css_estilos_ficha = "".join([
-                        "<style>",
-                        "@page { size: A4 landscape !important; margin: 5mm !important; }",
-                        "body { font-family: Arial, sans-serif; font-size: 9px; color: #000; margin: 0; padding: 0; background-color: #fff; }",
-                        ".sheet { width: 100% !important; max-width: 100% !important; margin: 0 auto 15px auto; box-sizing: border-box; border: 2px solid #000; padding: 4px; background-color: #fff; page-break-after: always; }",
-                        ".tabela-ficha { width: 100%; border-collapse: collapse; }",
-                        ".tabela-ficha td { border: 1px solid #000; padding: 3px 6px; vertical-align: middle; font-size: 9px; }",
-                        ".cabecalho-principal-ficha { text-align: center; font-weight: bold; font-size: 10px; padding: 4px; border-bottom: 2px solid #000; }",
-                        ".tabela-itens { width: 100%; border-collapse: collapse; margin-top: -1px; }",
-                        ".tabela-itens th, .tabela-itens td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }",
-                        ".tabela-itens th { background-color: #f2f2f2; text-align: center; font-weight: bold; }",
-                        ".termo-legal { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 7.5px; line-height: 1.15; text-align: justify; }",
-                        ".assinatura-area { border: 1px solid #000; border-top: none; padding: 6px; text-align: center; font-size: 9px; }",
-                        "@media print { body { -webkit-print-color-adjust: exact; } .no-print { display: none !important; } .sheet { border: 2px solid #000 !important; width: 100% !important; margin: 0 auto !important; page-break-after: always; } }",
-                        "</style>"
-                    ])
-
-                    html_conteudo_bruto = "".join([
-                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>",
-                        f"<title>Ficha de EPI - {str(func_escolhido)}</title>",
-                        css_estilos_ficha,
-                        "</head><body>",
-                        html_paginas_acumulado,
-                        "</body></html>"
-                    ])
-
-                    html_b64_seguro = base64.b64encode(html_conteudo_bruto.encode("utf-8")).decode("utf-8")
-
-                    trecho_botao_impressao = "".join([
-                        "<div class='no-print' style='background: #e9ecef; padding: 10px; margin-bottom: 15px; border-radius: 6px; text-align: center;'>",
-                        "<button onclick=\"",
-                        "var win = window.open('', '_blank');",
-                        "var htmlContent = decodeURIComponent(escape(window.atob('" + html_b64_seguro + "')));",
-                        "win.document.open();",
-                        "win.document.write(htmlContent);",
-                        "win.document.close();",
-                        "setTimeout(function(){ win.focus(); win.print(); }, 800);",
-                        "\" style='background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;'>",
-                        "🖨️ IMPRIMIR / SALVAR FICHA DE EPI (A4 PAISAGEM)",
-                        "</button>",
-                        "<p style='margin: 4px 0 0 0; font-size: 11px; color: #555;'>Clique para abrir a ficha completa direto na janela de impressão em A4 Paisagem.</p>",
-                        "</div>"
-                    ])
-
-                    html_ficha = "".join([
-                        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>",
-                        css_estilos_ficha,
-                        "</head><body>",
-                        trecho_botao_impressao,
-                        html_paginas_acumulado,
-                        "</body></html>"
-                    ])
-
-                    components.html(html_ficha, height=850, scrolling=True)
-    
-    
+            components.html(html_ficha, height=850, scrolling=True)
