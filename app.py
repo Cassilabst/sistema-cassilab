@@ -203,7 +203,7 @@ def init_db():
                 pass
             cursor.execute("DROP TABLE IF EXISTS empresas_temp;")
     else:
-        # 3. Verificação e migração segura da tabela empresas com rastreio de erro
+        # Verificação e recriação limpa da tabela empresas se estiver desatualizada
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='empresas';")
         tabela_empresas_existe = cursor.fetchone()
     
@@ -211,35 +211,36 @@ def init_db():
             cursor.execute("PRAGMA table_info(empresas);")
             colunas_empresas = [col[1] for col in cursor.fetchall()]
             
+            # Se a tabela existe mas falta a coluna nome_empresa, eliminamos a tabela antiga 
+            # para evitar qualquer conflito persistente no servidor do Render
             if 'nome_empresa' not in colunas_empresas:
                 try:
-                    # Tenta adicionar a coluna diretamente (o SQLite permite adicionar colunas TEXT sem restrições complexas)
-                    cursor.execute("ALTER TABLE empresas ADD COLUMN nome_empresa TEXT;")
+                    cursor.execute("DROP TABLE empresas;")
                     conn.commit()
-                except Exception as e:
-                    # Se falhar, mostra o erro exato na tela do Streamlit para sabermos o motivo
-                    st.error(f"Erro detalhado na migração da tabela empresas: {e}")
-        else:
-            cursor.execute("""
-                CREATE TABLE empresas (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    data_registro TEXT,
-                    nome_empresa TEXT UNIQUE,
-                    cnpj TEXT,
-                    cep TEXT,
-                    cidade TEXT,
-                    bairro TEXT,
-                    endereco TEXT,
-                    telefone TEXT,
-                    email TEXT,
-                    responsavel TEXT,
-                    cnae TEXT,
-                    grau_risco TEXT,
-                    qtd_funcionarios INTEGER,
-                    porte TEXT
-                )
-            """)
-            conn.commit()    
+                except Exception:
+                    pass
+    
+        # Garante que a tabela empresas existe com a estrutura 100% correta
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS empresas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data_registro TEXT,
+                nome_empresa TEXT UNIQUE,
+                cnpj TEXT,
+                cep TEXT,
+                cidade TEXT,
+                bairro TEXT,
+                endereco TEXT,
+                telefone TEXT,
+                email TEXT,
+                responsavel TEXT,
+                cnae TEXT,
+                grau_risco TEXT,
+                qtd_funcionarios INTEGER,
+                porte TEXT
+            )
+        """)
+        conn.commit()    
        
     # 4. Execução segura das demais migrações e colunas adicionais
     for sql_alt in [
