@@ -433,30 +433,31 @@ def init_db():
     conn.execute("PRAGMA journal_mode=WAL;")
     cursor = conn.cursor()
     
-    # 1. Corrige a tabela de treinamentos para remover a restrição UNIQUE global (com segurança)
+    # 1. Criação e atualização inicial da tabela cad_treinamentos de forma segura
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
     tabela_existe = cursor.fetchone()
-    
+
     if tabela_existe:
-        # Garante que a tabela principal de treinamentos existe antes de qualquer operação
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cad_treinamentos (
+            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
+            SELECT id, empresa, treinamento FROM cad_treinamentos;
+        """)
+        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
+        cursor.execute("""
+            CREATE TABLE cad_treinamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 empresa TEXT,
                 treinamento TEXT,
                 carga_horaria TEXT
             );
         """)
-
-    # Criação segura da tabela temporária verificando se a tabela base já possui os dados/colunas
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS
-        SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos WHERE 1=0;
-    """)
-        cursor.execute("""
-            INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
-            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
-        """)
+        try:
+            cursor.execute("""
+                INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento)
+                SELECT id, empresa, treinamento FROM cad_treinamentos_temp;
+            """)
+        except Exception:
+            pass
         cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
     else:
         cursor.execute("""
@@ -572,10 +573,10 @@ def init_db():
         )
     """)
     
-    # Salva todas as alterações e fecha a conexão APENAS no final de tudo
+    # Salva as tabelas criadas até aqui
     conn.commit()
-    conn.close()
     
+    # 3. Execução segura das migrações e colunas adicionais usando a MESMA conexão ativa
     for sql_alt in [
         "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
         "ALTER TABLE empresas ADD COLUMN cnae TEXT;",
@@ -615,21 +616,22 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, treinamento TEXT, carga_horaria TEXT, UNIQUE(empresa, treinamento));",
     
         "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);",
-       ]:
+    ]:
         try:
             cursor.execute(sql_alt)
             conn.commit()
-        except:
+        except Exception:
             try:
                 conn.rollback()
-            except:
+            except Exception:
                 pass
 
+    # 4. Atualizações de dados padrão dos utilizadores
     try:
         cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
         cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
         conn.commit()
-    except:
+    except Exception:
         pass
 
     try:
@@ -640,9 +642,10 @@ def init_db():
                 VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
             """)
             conn.commit()
-    except:
+    except Exception:
         pass
 
+    # 5. Fechamento único e seguro da conexão no final absolute da função
     conn.close()
 
 init_db()
