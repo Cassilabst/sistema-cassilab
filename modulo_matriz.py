@@ -22,13 +22,13 @@ def renderizar_matriz_treinamentos(DB_NAME, empresas, registrar_log_callback):
   if empresa_matriz_sel != "Nenhuma":
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     
-    # Puxa diretamente do Catálogo Geral de Serviços unificado
+    # Puxa os treinamentos cadastrados especificamente para esta empresa
     try:
         df_cad_tr_all = pd.read_sql(
-            "SELECT DISTINCT servico as treinamento FROM cad_servicos ORDER BY servico ASC",
+            "SELECT DISTINCT treinamento, carga_horaria FROM cad_treinamentos WHERE empresa = ? ORDER BY treinamento ASC",
             conn,
+            params=(empresa_matriz_sel,),
         )
-        df_cad_tr_all["carga_horaria"] = "8 horas"  # Valor padrão
     except:
         df_cad_tr_all = pd.DataFrame(columns=["treinamento", "carga_horaria"])
     df_funcs_mat = pd.read_sql(
