@@ -3432,19 +3432,15 @@ if menu == "Cadastros Gerais":
                 key="sel_emp_treinamento_geral",
             )
             
-            # Puxa os serviços cadastrados especificamente para servirem de base de catálogo
+            # Puxa TODOS os serviços cadastrados no Catálogo Geral de Serviços
             conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
             try:
                 df_serv_base = pd.read_sql(
-                    "SELECT DISTINCT servico FROM cad_servicos WHERE empresa = ? OR empresa = 'Todas' ORDER BY servico ASC", 
-                    conn_base, 
-                    params=(empresa_trein_sel,)
+                    "SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", 
+                    conn_base
                 )
             except:
-                try:
-                    df_serv_base = pd.read_sql("SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", conn_base)
-                except:
-                    df_serv_base = pd.DataFrame()
+                df_serv_base = pd.DataFrame()
             conn_base.close()
             
             lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
