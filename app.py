@@ -3432,23 +3432,24 @@ if menu == "Cadastros Gerais":
                 key="sel_emp_treinamento_geral",
             )
             
-            # Puxa TODOS os serviços cadastrados no Catálogo Geral de Serviços
+            # Puxa APENAS os treinamentos já cadastrados para esta empresa específica
             conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
             try:
                 df_serv_base = pd.read_sql(
-                    "SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", 
-                    conn_base
+                    "SELECT DISTINCT treinamento FROM cad_treinamentos WHERE empresa = ? ORDER BY treinamento ASC", 
+                    conn_base,
+                    params=(empresa_trein_sel,)
                 )
             except:
                 df_serv_base = pd.DataFrame()
             conn_base.close()
             
-            lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
+            lista_base_servicos = df_serv_base["treinamento"].tolist() if not df_serv_base.empty else []
 
             c_tr_1, c_tr_2, c_tr_3 = st.columns([0.4, 0.4, 0.2])
             
             if lista_base_servicos:
-                novo_treinamento_geral = c_tr_1.selectbox("Selecionar do Catálogo de Serviços", ["-- Digitar Novo --"] + lista_base_servicos)
+                novo_treinamento_geral = c_tr_1.selectbox("Selecionar da Base da Empresa", ["-- Digitar Novo --"] + lista_base_servicos)
                 if novo_treinamento_geral == "-- Digitar Novo --":
                     novo_treinamento_geral = c_tr_2.text_input("Nome do Novo Treinamento")
             else:
