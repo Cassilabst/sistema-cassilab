@@ -3320,14 +3320,21 @@ if menu == "Cadastros Gerais":
                                 "Geral",
                                 f"Adicionou serviço ao catálogo: {serv_fmt}",
                             )
-                            st.rerun()
-                        except sqlite3.IntegrityError:
-                            st.warning("⚠️ Este serviço já consta na base de dados.")
+                            salvou_ok = True
                         except Exception as e:
                             st.error(f"Erro ao salvar: {e}")
-                    conn.close()
-                else:
-                    st.warning("⚠️ Preencha o nome do serviço.")
+                            salvou_ok = False
+                        finally:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
+                    else:
+                        st.warning("⚠️ Preencha o nome do serviço.")
+                        salvou_ok = False
+                    
+                    if salvou_ok:
+                        st.rerun()
 
         st.markdown("---")
         st.subheader("📋 Serviços Cadastrados no Catálogo")
