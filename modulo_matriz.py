@@ -244,7 +244,7 @@ def renderizar_matriz_treinamentos(DB_NAME, empresas, registrar_log_callback):
 
           col_config_dict = {
               "Funcionário": st.column_config.TextColumn(
-                  "Funcionário", disabled=True
+                  "Funcionário", disabled=True, pinned=True
               ),
               "Cargo": st.column_config.TextColumn("Cargo", disabled=True),
               "Setor": st.column_config.TextColumn("Setor", disabled=True),
