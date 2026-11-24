@@ -33,7 +33,7 @@ def renderizar_matriz_treinamentos(DB_NAME, empresas, registrar_log_callback):
         df_cad_tr_all = pd.DataFrame(columns=["treinamento", "carga_horaria"])
     df_funcs_mat = pd.read_sql(
         "SELECT funcionario, cargo, setor, status FROM base_funcionarios WHERE"
-        " empresa = ? ORDER BY setor ASC, funcionario ASC",
+        " empresa = ? ORDER BY funcionario ASC",
         conn,
         params=(empresa_matriz_sel,),
     )
