@@ -134,13 +134,15 @@ def renderizar_matriz_treinamentos(DB_NAME, empresas, registrar_log_callback):
       cursos_configurados_atuais = (
           df_cfg_mat["treinamento"].tolist() if not df_cfg_mat.empty else []
       )
+      # Garante que só pré-selecione itens que ainda existem na lista de opções
+      cursos_default_validos = [
+          c for c in cursos_configurados_atuais if c in lista_todos_cursos
+      ]
 
       cursos_selecionados_matriz = st.multiselect(
           "Treinamentos da Empresa (Registrados na aba Treinamentos)",
           options=lista_todos_cursos,
-          default=(
-              cursos_configurados_atuais if cursos_configurados_atuais else []
-          ),
+          default=cursos_default_validos,
           key=f"multiselect_cursos_{empresa_matriz_sel}",
       )
 
