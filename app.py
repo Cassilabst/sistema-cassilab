@@ -3329,12 +3329,9 @@ if menu == "Cadastros Gerais":
                                 conn.close()
                             except Exception:
                                 pass
-                    else:
-                        st.warning("⚠️ Preencha o nome do serviço.")
-                        salvou_ok = False
-                    
-                    if salvou_ok:
-                        st.rerun()
+            
+            if salvou_ok:
+                st.rerun()
 
         st.markdown("---")
         st.subheader("📋 Serviços Cadastrados no Catálogo")
