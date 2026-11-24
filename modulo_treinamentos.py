@@ -410,21 +410,40 @@ def renderizar_aba_treinamentos(*args, **kwargs):
         if empresa_selecionada == "Todas":
             st.info("ℹ️ Selecione uma empresa específica no filtro superior para visualizar os treinamentos faltantes.")
         else:
+            import re
+            import unicodedata
+
+            def normalizar_texto_chave(txt):
+                if txt is None or pd.isna(txt):
+                    return ""
+                s = str(txt).strip().lower()
+                s = unicodedata.normalize("NFKD", s).encode("ASCII", "ignore").decode("utf-8")
+                s = re.sub(r"[-_/]+", " ", s)
+                s = re.sub(r"\s+", " ", s).strip()
+                return s
+
+            emp_norm = str(empresa_selecionada).strip().lower()
+
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
             df_funcs_f = pd.read_sql(
-                "SELECT funcionario, cargo, setor, status FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC",
+                "SELECT funcionario, cargo, setor, status FROM base_funcionarios WHERE LOWER(TRIM(empresa)) = ? ORDER BY funcionario ASC",
                 conn,
-                params=(empresa_selecionada,),
+                params=(emp_norm,),
             )
             df_mat_status = pd.read_sql(
-                "SELECT funcionario, treinamento, obrigatoriedade FROM matriz_treinamentos_status WHERE empresa = ?",
+                "SELECT funcionario, treinamento, obrigatoriedade FROM matriz_treinamentos_status WHERE LOWER(TRIM(empresa)) = ?",
                 conn,
-                params=(empresa_selecionada,),
+                params=(emp_norm,),
+            )
+            df_cfg_f = pd.read_sql(
+                "SELECT treinamento FROM matriz_treinamentos_config WHERE LOWER(TRIM(empresa)) = ?",
+                conn,
+                params=(emp_norm,),
             )
             df_execs = pd.read_sql(
-                "SELECT funcionario, treinamento FROM treinamentos WHERE empresa = ?",
+                "SELECT funcionario, treinamento FROM treinamentos WHERE LOWER(TRIM(empresa)) = ?",
                 conn,
-                params=(empresa_selecionada,),
+                params=(emp_norm,),
             )
             conn.close()
 
@@ -434,27 +453,43 @@ def renderizar_aba_treinamentos(*args, **kwargs):
                     "Configure a matriz na aba '📊 Matriz de Treinamentos' para ativar este relatório de pendências."
                 )
             else:
-                df_obrigatorios = df_mat_status[df_mat_status["obrigatoriedade"] == "Obrigatório"]
+                # Filtra apenas treinamentos que ainda estão ativos na configuração da matriz (se houver config)
+                cursos_ativos_matriz = set()
+                if not df_cfg_f.empty:
+                    cursos_ativos_matriz = {
+                        normalizar_texto_chave(t) for t in df_cfg_f["treinamento"].dropna().tolist()
+                    }
+
+                df_obrigatorios = df_mat_status[
+                    df_mat_status["obrigatoriedade"].astype(str).str.strip().str.lower() == "obrigatório"
+                ]
 
                 execucoes_realizadas = set()
                 if not df_execs.empty:
                     for _, r in df_execs.iterrows():
-                        f_clean = str(r["funcionario"]).strip().lower()
-                        t_clean = str(r["treinamento"]).strip().lower()
-                        execucoes_realizadas.add((f_clean, t_clean))
+                        f_clean = normalizar_texto_chave(r["funcionario"])
+                        t_clean = normalizar_texto_chave(r["treinamento"])
+                        if f_clean and t_clean:
+                            execucoes_realizadas.add((f_clean, t_clean))
 
                 pendencias = []
                 for _, r in df_obrigatorios.iterrows():
                     func = r["funcionario"]
                     trein = r["treinamento"]
-                    f_key = str(func).strip().lower()
-                    t_key = str(trein).strip().lower()
+                    f_key = normalizar_texto_chave(func)
+                    t_key = normalizar_texto_chave(trein)
+
+                    # Ignora lixo antigo da tabela status se o curso não estiver mais na matriz atual
+                    if cursos_ativos_matriz and t_key not in cursos_ativos_matriz:
+                        continue
 
                     if (f_key, t_key) not in execucoes_realizadas:
                         cargo_f = ""
                         setor_f = ""
                         if not df_funcs_f.empty:
-                            match_f = df_funcs_f[df_funcs_f["funcionario"].str.strip().str.lower() == f_key]
+                            match_f = df_funcs_f[
+                                df_funcs_f["funcionario"].apply(normalizar_texto_chave) == f_key
+                            ]
                             if not match_f.empty:
                                 cargo_f = match_f.iloc[0]["cargo"]
                                 setor_f = match_f.iloc[0]["setor"]
