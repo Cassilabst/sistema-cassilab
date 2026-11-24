@@ -3330,7 +3330,7 @@ if menu == "Cadastros Gerais":
                                 conn.close()
                             except Exception:
                                 pass
-        
+        salvou_ok = False
         if salvou_ok:
             st.rerun()
 
