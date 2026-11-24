@@ -3300,7 +3300,7 @@ if menu == "Cadastros Gerais":
                         (serv_fmt,),
                     )
                     existe = cursor.fetchone()
-                    
+                    salvou_ok = False
                     if existe:
                         st.error(f"⚠️ O serviço '{serv_fmt}' já está cadastrado no catálogo.")
                     else:
