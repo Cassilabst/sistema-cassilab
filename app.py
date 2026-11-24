@@ -3304,6 +3304,7 @@ if menu == "Cadastros Gerais":
                     if existe:
                         st.error(f"⚠️ O serviço '{serv_fmt}' já está cadastrado no catálogo.")
                     else:
+                        salvou_ok = False
                         try:
                             # Salva globalmente (definindo 'Geral' ou mantendo padrão para a empresa)
                             cursor.execute(
@@ -3329,9 +3330,9 @@ if menu == "Cadastros Gerais":
                                 conn.close()
                             except Exception:
                                 pass
-            
-            if salvou_ok:
-                st.rerun()
+        
+        if salvou_ok:
+            st.rerun()
 
         st.markdown("---")
         st.subheader("📋 Serviços Cadastrados no Catálogo")
