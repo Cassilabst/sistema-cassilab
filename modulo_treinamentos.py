@@ -403,7 +403,7 @@ def renderizar_aba_treinamentos(*args, **kwargs):
         st.markdown("### ⚠️ Relatório de Treinamentos Faltantes / Pendentes")
         st.markdown(
             "Esta aba cruza os dados da **Matriz de Treinamentos** com o histórico de execuções"
-            " para identificar os colaboradores que possuem treinamentos marcados como **Obrigatórios**"
+            " para identificar os colaboradores ativos que possuem treinamentos marcados como **Obrigatórios**"
             " mas que **nunca os realizaram**."
         )
 
@@ -421,6 +421,13 @@ def renderizar_aba_treinamentos(*args, **kwargs):
                 s = re.sub(r"[-_/]+", " ", s)
                 s = re.sub(r"\s+", " ", s).strip()
                 return s
+
+            def extrair_codigo_nr(txt_norm):
+                # Extrai padrões como "nr 06", "nr 6", "nr 35" -> padroniza como "nr06", "nr35"
+                m = re.search(r"\bnr\s*0*(\d+)\b", txt_norm)
+                if m:
+                    return f"nr{int(m.group(1)):02d}"
+                return ""
 
             emp_norm = str(empresa_selecionada).strip().lower()
 
@@ -453,7 +460,18 @@ def renderizar_aba_treinamentos(*args, **kwargs):
                     "Configure a matriz na aba '📊 Matriz de Treinamentos' para ativar este relatório de pendências."
                 )
             else:
-                # Filtra apenas treinamentos que ainda estão ativos na configuração da matriz (se houver config)
+                # Mapeia dados e status dos funcionários (ignora Desligados/Inativos)
+                mapa_funcs_ativos = {}
+                if not df_funcs_f.empty:
+                    for _, rf in df_funcs_f.iterrows():
+                        fk = normalizar_texto_chave(rf["funcionario"])
+                        st_f = normalizar_texto_chave(rf.get("status", "ativo"))
+                        if st_f not in ["desligado", "inativo", "demitido"]:
+                            mapa_funcs_ativos[fk] = {
+                                "cargo": rf.get("cargo", ""),
+                                "setor": rf.get("setor", ""),
+                            }
+
                 cursos_ativos_matriz = set()
                 if not df_cfg_f.empty:
                     cursos_ativos_matriz = {
@@ -464,13 +482,31 @@ def renderizar_aba_treinamentos(*args, **kwargs):
                     df_mat_status["obrigatoriedade"].astype(str).str.strip().str.lower() == "obrigatório"
                 ]
 
-                execucoes_realizadas = set()
+                # Guarda todos os treinamentos realizados por funcionário
+                execs_por_func = {}
                 if not df_execs.empty:
                     for _, r in df_execs.iterrows():
                         f_clean = normalizar_texto_chave(r["funcionario"])
                         t_clean = normalizar_texto_chave(r["treinamento"])
                         if f_clean and t_clean:
-                            execucoes_realizadas.add((f_clean, t_clean))
+                            execs_por_func.setdefault(f_clean, []).append(t_clean)
+
+                def treinamento_ja_realizado(f_key, t_key):
+                    lista_tr = execs_por_func.get(f_key, [])
+                    if not lista_tr:
+                        return False
+                    nr_alvo = extrair_codigo_nr(t_key)
+                    for t_exec in lista_tr:
+                        # 1. Batimento exato normalizado
+                        if t_key == t_exec:
+                            return True
+                        # 2. Batimento pelo número da NR (ex: "nr 06 epi" == "nr 6 equipamento...")
+                        if nr_alvo and nr_alvo == extrair_codigo_nr(t_exec):
+                            return True
+                        # 3. Um texto contém o outro (ex: "integracao" dentro de "integracao de seguranca")
+                        if len(t_key) >= 5 and (t_key in t_exec or t_exec in t_key):
+                            return True
+                    return False
 
                 pendencias = []
                 for _, r in df_obrigatorios.iterrows():
@@ -479,25 +515,20 @@ def renderizar_aba_treinamentos(*args, **kwargs):
                     f_key = normalizar_texto_chave(func)
                     t_key = normalizar_texto_chave(trein)
 
-                    # Ignora lixo antigo da tabela status se o curso não estiver mais na matriz atual
+                    # Ignora se o funcionário não estiver ativo na base_funcionarios
+                    if mapa_funcs_ativos and f_key not in mapa_funcs_ativos:
+                        continue
+
+                    # Ignora cursos antigos que não estão mais na configuração atual da matriz
                     if cursos_ativos_matriz and t_key not in cursos_ativos_matriz:
                         continue
 
-                    if (f_key, t_key) not in execucoes_realizadas:
-                        cargo_f = ""
-                        setor_f = ""
-                        if not df_funcs_f.empty:
-                            match_f = df_funcs_f[
-                                df_funcs_f["funcionario"].apply(normalizar_texto_chave) == f_key
-                            ]
-                            if not match_f.empty:
-                                cargo_f = match_f.iloc[0]["cargo"]
-                                setor_f = match_f.iloc[0]["setor"]
-
+                    if not treinamento_ja_realizado(f_key, t_key):
+                        info_f = mapa_funcs_ativos.get(f_key, {})
                         pendencias.append({
                             "Funcionário": func,
-                            "Cargo": cargo_f,
-                            "Setor": setor_f,
+                            "Cargo": info_f.get("cargo", ""),
+                            "Setor": info_f.get("setor", ""),
                             "Treinamento Obrigatório": trein,
                             "Situação": "🔴 Nunca Realizado (Pendente)"
                         })
