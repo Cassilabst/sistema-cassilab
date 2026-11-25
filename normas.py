@@ -113,7 +113,7 @@ def _salvar_nrs_empresa(db_name, empresa, selecionadas_set):
 
 def _render_legenda():
     html_legenda = """
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px 24px; background:#ffffff; padding:14px 18px; border-radius:10px; border:1px solid #d5dbdb; margin-top:14px; margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:repeat(2, minmax(200px, 1fr)); gap:10px 24px; background:#ffffff; padding:14px 18px; border-radius:10px; border:1px solid #d5dbdb; margin-top:14px; margin-bottom:16px; max-width:540px;">
         <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
             <span style="display:inline-block; width:16px; height:16px; background:#c62828; border-radius:3px;"></span>
             <span>NRS GERAIS</span>
