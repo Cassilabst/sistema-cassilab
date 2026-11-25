@@ -4433,7 +4433,7 @@ elif menu == "Relatórios Consolidados":
 # ==========================================
 # 12. ELABORAÇÃO DE OS (ORDEM DE SERVIÇO)
 # ==========================================
-elif menu == "Elaboração de OS (Ordem de Serviço)":
+elif menu == "Emissor de Ordem de Serviço":
     renderizar_aba_os(DB_NAME, get_empresas, registrar_log)
 
 # ==========================================
