@@ -110,10 +110,28 @@ def renderizar_matriz_treinamentos(DB_NAME, empresas, registrar_log_callback):
   )
 
   with tab_config:
-    lista_todos_cursos = (
-        df_cad_tr_all["treinamento"].tolist()
-        if not df_cad_tr_all.empty
-        else []
+    nomes_cursos_encontrados = []
+    vistos_cursos = set()
+
+    for df_fonte, col_nome in [
+        (df_cad_tr_all, "treinamento"),
+        (df_tr_exec, "treinamento"),
+        (df_cfg_mat, "treinamento"),
+    ]:
+      if (
+          df_fonte is not None
+          and not df_fonte.empty
+          and col_nome in df_fonte.columns
+      ):
+        for val in df_fonte[col_nome].dropna().tolist():
+          txt = str(val).strip()
+          chave = txt.lower()
+          if txt and chave not in vistos_cursos:
+            vistos_cursos.add(chave)
+            nomes_cursos_encontrados.append(txt)
+
+    lista_todos_cursos = sorted(
+        nomes_cursos_encontrados, key=lambda s: s.lower()
     )
     mapa_cargas_geral = (
         dict(
