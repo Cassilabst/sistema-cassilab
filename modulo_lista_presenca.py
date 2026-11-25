@@ -57,10 +57,18 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
     lista_treinamentos_opcoes = ["-- Digitar ou Selecionar --"] + (df_cad_tr["treinamento"].tolist() if not df_cad_tr.empty else [])
     mapa_carga_horaria = dict(zip(df_cad_tr["treinamento"], df_cad_tr["carga_horaria"])) if not df_cad_tr.empty else {}
 
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
+
+    if is_admin and not emp_global_ativa:
+        st.warning("⚠️ Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral para gerar a Lista de Presença.")
+        return
+
     with st.expander("⚙️ Configurações da Lista de Presença", expanded=True):
         c_p1, c_p2 = st.columns(2)
         if is_admin:
-            empresa_selecionada = c_p1.selectbox("Selecione a Empresa Cliente", empresas, key="lp_empresa")
+            empresa_selecionada = emp_global_ativa
+            c_p1.markdown(f"**🏢 Empresa Cliente:** {empresa_selecionada}")
         else:
             empresa_selecionada = emp_usuario if emp_usuario in empresas else (empresas[0] if empresas else "")
             c_p1.markdown(f"**Empresa Cliente:** {empresa_selecionada}")
