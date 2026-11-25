@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+import html
 import sqlite3
 import pandas as pd
 import streamlit as st
@@ -31,6 +32,33 @@ def _garantir_tabela_os(db_name):
     )
     conn.commit()
     conn.close()
+
+
+def _buscar_logo_empresa_cadastro(db_name, empresa):
+    try:
+        conn = sqlite3.connect(db_name, timeout=10.0)
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(empresas)")
+        colunas = [col[1] for col in cur.fetchall()]
+        if "logo_empresa" not in colunas:
+            conn.close()
+            return ""
+        cur.execute(
+            """
+            SELECT logo_empresa
+            FROM empresas
+            WHERE LOWER(TRIM(nome_empresa)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (empresa,),
+        )
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0] and str(row[0]).strip():
+            return str(row[0]).strip()
+    except Exception:
+        pass
+    return ""
 
 
 def _proxima_revisao_os(db_name, empresa, funcionario):
@@ -167,18 +195,25 @@ def _buscar_os_por_id(db_name, os_id):
 def _renderizar_html_os(d):
     rev_num = int(d.get("revisao", 0))
     rev_label = f"Rev. {rev_num:02d}"
-    tag_logo = (
-        f'<img src="{d["logo"]}" style="max-height: 50px; max-width: 150px; object-fit: contain;">'
-        if d.get("logo")
-        else '<b style="color: #023e8a; font-size: 18px;">CASSILAB SST</b>'
-    )
+    nome_emp_seguro = html.escape(str(d.get("empresa") or "EMPRESA"))
+    nome_func_seguro = html.escape(str(d.get("funcionario") or ""))
+
+    if d.get("logo"):
+        tag_logo = (
+            f'<img src="{d["logo"]}" alt="Logo {nome_emp_seguro}" '
+            'style="max-height: 55px; max-width: 180px; object-fit: contain;">'
+        )
+    else:
+        tag_logo = (
+            f'<b style="color: #023e8a; font-size: 16px;">{nome_emp_seguro}</b>'
+        )
 
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Ordem de Serviço - {d['funcionario']} ({rev_label})</title>
+        <title>Ordem de Serviço - {nome_func_seguro} ({rev_label})</title>
         <style>
             @page {{
                 size: A4;
@@ -259,33 +294,33 @@ def _renderizar_html_os(d):
                 </div>
             </div>
 
-            <p style="font-size: 14px; margin-bottom: 10px;"><b>Empresa:</b> {d['empresa']}</p>
+            <p style="font-size: 14px; margin-bottom: 10px;"><b>Empresa:</b> {nome_emp_seguro}</p>
             
             <table class="header-tabela">
                 <tr>
-                    <td><b>Nome do Colaborador:</b> {d['funcionario']}</td>
-                    <td><b>Cargo:</b> {d['cargo']}</td>
-                    <td><b>Setor:</b> {d['setor']}</td>
+                    <td><b>Nome do Colaborador:</b> {nome_func_seguro}</td>
+                    <td><b>Cargo:</b> {html.escape(str(d.get('cargo') or ''))}</td>
+                    <td><b>Setor:</b> {html.escape(str(d.get('setor') or ''))}</td>
                 </tr>
             </table>
 
             <div class="secao-titulo">1. Descrição da Função / Atividades</div>
-            <div class="secao-texto">{d['descricao']}</div>
+            <div class="secao-texto">{html.escape(str(d.get('descricao') or ''))}</div>
 
             <div class="secao-titulo">2. Agentes Associados às Atividades (Riscos)</div>
-            <div class="secao-texto">{d['riscos']}</div>
+            <div class="secao-texto">{html.escape(str(d.get('riscos') or ''))}</div>
 
             <div class="secao-titulo">3. EPI's de Uso Obrigatório</div>
-            <div class="secao-texto">{d['epis']}</div>
+            <div class="secao-texto">{html.escape(str(d.get('epis') or ''))}</div>
 
             <div class="secao-titulo">4. Recomendações</div>
-            <div class="secao-texto">{d['recomendacoes']}</div>
+            <div class="secao-texto">{html.escape(str(d.get('recomendacoes') or ''))}</div>
 
             <div class="secao-titulo">5. Procedimentos em Caso de Acidentes</div>
-            <div class="secao-texto">{d['acidentes']}</div>
+            <div class="secao-texto">{html.escape(str(d.get('acidentes') or ''))}</div>
 
             <div class="secao-titulo">6. Observações e Disposições</div>
-            <div class="secao-texto" style="margin-bottom: 20px;">{d['observacoes']}</div>
+            <div class="secao-texto" style="margin-bottom: 20px;">{html.escape(str(d.get('observacoes') or ''))}</div>
 
             <div class="assinaturas">
                 <div class="linha-assinatura">
@@ -356,6 +391,8 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
     )
 
     if emp_os_sel != "-- Selecione --":
+        logo_cadastro_emp = _buscar_logo_empresa_cadastro(DB_NAME, emp_os_sel)
+
         conn = sqlite3.connect(DB_NAME, timeout=10.0)
         df_funcs_os = pd.read_sql(
             "SELECT funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC",
@@ -364,7 +401,6 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
         )
         conn.close()
 
-        # Histórico / arquivo geral da empresa selecionada
         df_hist_empresa = _listar_historico_empresa_os(DB_NAME, emp_os_sel)
         _bloco_historico_os(
             df_hist_empresa,
@@ -398,6 +434,11 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                 st.subheader(
                     f"📄 Ordem de Serviço para: {func_os_sel} ({rev_preview_str} — Data atual: {data_hoje})"
                 )
+
+                if logo_cadastro_emp:
+                    st.caption(f"🖼️ Logomarca da empresa **{emp_os_sel}** carregada automaticamente do cadastro.")
+                else:
+                    st.caption(f"ℹ️ Nenhuma logomarca cadastrada para **{emp_os_sel}** na aba de Empresas; será exibido o nome da empresa no cabeçalho (ou envie uma imagem abaixo).")
 
                 if ultima_os:
                     st.caption(
@@ -441,7 +482,7 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
 
                 with st.form(f"form_edicao_os_{emp_os_sel}_{func_os_sel}"):
                     logo_arquivo = st.file_uploader(
-                        "🖼️ Inserir Logo do Cliente (PNG, JPG)",
+                        "🖼️ Substituir Logo apenas nesta OS (opcional — já puxa do cadastro da empresa)",
                         type=["png", "jpg", "jpeg"],
                     )
 
@@ -503,7 +544,10 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                     )
 
                 if btn_gerar_os:
-                    logo_base64 = ultima_os["logo"] if ultima_os else ""
+                    logo_base64 = (
+                        logo_cadastro_emp
+                        or (ultima_os["logo"] if ultima_os else "")
+                    )
                     if logo_arquivo is not None:
                         bytes_logo = logo_arquivo.read()
                         mime = "image/png" if logo_arquivo.type == "image/png" else "image/jpeg"
@@ -559,7 +603,6 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                 "⚠️ Nenhum funcionário cadastrado para esta empresa. Cadastre funcionários na aba 'Gestão de Funcionários' para emitir a OS."
             )
 
-        # Prévia / impressão A4 da OS gerada ou carregada do histórico
         if "os_gerada_data" in st.session_state:
             d = st.session_state["os_gerada_data"]
             if d.get("empresa", "").strip().lower() == emp_os_sel.strip().lower():
