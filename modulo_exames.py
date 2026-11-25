@@ -314,16 +314,7 @@ def renderizar_aba_exames(
           st.session_state["sel_id_ex"] = int(linhas_marcadas[-1])
       else:
           st.session_state["sel_id_ex"] = None
-
-      # Botão opcional para abrir a edição do registo selecionado de forma limpa
-      if st.session_state["sel_id_ex"] is not None and pode_editar:
-        if st.button("✏️ Editar Exame Selecionado", type="secondary", use_container_width=True):
-          id_para_editar = st.session_state["sel_id_ex"]
-          st.session_state["sel_id_ex"] = None
-          if "editor_selecao_exames" in st.session_state:
-            del st.session_state["editor_selecao_exames"]
-          dialog_editar_exame(id_para_editar)
-
+      
   with aba_novo:
     st.markdown("### ➕ Adicionar Novo Exame Ocupacional")
     if not pode_lancar:
