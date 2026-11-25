@@ -121,7 +121,8 @@ def renderizar_aba_absenteismo(
     validar_e_formatar_data_input=lambda x: formatar_data_flexivel(x)
 ):
     garantir_tabela_absenteismo(DB_NAME)
-
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
     col_h1, col_h2 = st.columns([0.7, 0.3])
     with col_h1: st.title("📊 Gestão de Absenteísmo")
     with col_h2:
@@ -273,8 +274,8 @@ def renderizar_aba_absenteismo(
 
         st.subheader("Registros Cadastrados")
         if is_admin:
-            opcoes_filtro = ["Todas as Empresas"] + (empresas if empresas else [])
-            emp_sel = st.selectbox("Filtrar por Empresa", opcoes_filtro, key="filtro_abs_emp_tabela")
+            emp_sel = emp_global_ativa if emp_global_ativa else "Todas as Empresas"
+            st.caption(f"🏢 Visualizando: **{emp_sel}** (definido em Empresa Ativa Global)")
         else:
             emp_sel = emp_usuario
             st.info(f"Empresa Vinculada: **{emp_sel}**")
@@ -555,8 +556,8 @@ def renderizar_aba_absenteismo(
             st.warning("⚠️ Não há dados suficientes cadastrados para gerar o Dashboard Analítico.")
         else:
             if is_admin:
-                opcoes_dash_emp = ["Todas as Empresas"] + (empresas if empresas else [])
-                emp_dash_sel = st.selectbox("Filtrar Dashboard por Empresa", opcoes_dash_emp, key="dash_emp_sel")
+                emp_dash_sel = emp_global_ativa if emp_global_ativa else "Todas as Empresas"
+                st.caption(f"🏢 Dashboard filtrado por: **{emp_dash_sel}** (definido em Empresa Ativa Global)")
                 if emp_dash_sel != "Todas as Empresas":
                     df = df[df["empresa"].astype(str).str.strip().str.lower() == str(emp_dash_sel).strip().lower()]
 
