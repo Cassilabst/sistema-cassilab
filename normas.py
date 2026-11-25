@@ -3,8 +3,8 @@ from datetime import datetime
 import streamlit as st
 
 URL_CATALOGO_MTE = (
-    "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/"
-    "secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras"
+    "https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/inspecao-do-trabalho/"
+    "seguranca-e-saude-no-trabalho/ctpp-nrs/normas-regulamentadoras-nrs"
 )
 
 # Catálogo das Normas Regulamentadoras
