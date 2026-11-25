@@ -455,13 +455,14 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
     st.markdown("Emissor de Ordem de Serviço de Acordo com a NR 1")
 
     data_hoje = datetime.now().strftime("%d/%m/%Y")
-    empresas = get_empresas_func()
-    opcoes_emp = ["-- Selecione --"] + empresas
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
 
-    emp_os_sel = st.selectbox(
-        "Selecione a Empresa", opcoes_emp, key="os_empresa_sel"
-    )
-
+    emp_os_sel = emp_global_ativa if emp_global_ativa else "-- Selecione --"
+    if emp_global_ativa:
+        st.caption(f"🏢 Empresa ativa selecionada no menu: **{emp_os_sel}**")
+    else:
+        st.warning("⚠️ Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral para emitir ou consultar Ordens de Serviço.")
     if emp_os_sel != "-- Selecione --":
         logo_cadastro_emp = _buscar_logo_empresa_cadastro(DB_NAME, emp_os_sel)
 
