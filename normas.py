@@ -201,13 +201,13 @@ def renderizar_aba_normas(
     st.markdown("---")
 
     template_card = """
-    <div style="background:__BG__; border:2px solid __BORDA__; border-radius:10px; padding:10px 8px; min-height:146px; display:flex; flex-direction:column; justify-content:space-between; filter:__FILTRO__; margin-bottom:6px;">
+    <div style="background:__BG__; border:2px solid __BORDA__; border-radius:10px; padding:10px 8px; min-height:146px; display:flex; flex-direction:column; justify-content:space-between; filter:__FILTRO__; margin-bottom:6px; user-select:none;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:10px; font-weight:700; letter-spacing:0.4px; color:__TEXTO__; text-shadow:__SOMBRA__; opacity:0.95;">__TAG__</span>
+            <span style="font-size:10px; font-weight:800 !important; letter-spacing:0.4px; color:__TEXTO__ !important; text-shadow:__SOMBRA__; opacity:0.95;">__TAG__</span>
             <span style="font-size:20px; line-height:1;">__ICONE__</span>
         </div>
-        <div style="font-size:20px; font-weight:900; color:__NR_COR__; text-shadow:__SOMBRA__; margin:3px 0; __DECOR__">__NR__</div>
-        <div style="font-size:11px; font-weight:600; line-height:1.25; color:__TEXTO__; text-shadow:__SOMBRA__; __DECOR__">__TITULO__</div>
+        <div style="font-size:20px; font-weight:900 !important; color:__NR_COR__ !important; text-shadow:__SOMBRA__; margin:3px 0; __DECOR__">__NR__</div>
+        <div style="font-size:11px; font-weight:800 !important; line-height:1.25; color:__TEXTO__ !important; text-shadow:__SOMBRA__; __DECOR__">__TITULO__</div>
     </div>
     """
 
