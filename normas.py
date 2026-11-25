@@ -112,39 +112,27 @@ def _salvar_nrs_empresa(db_name, empresa, selecionadas_set):
 
 
 def _render_legenda():
-    st.markdown(
-        """
-        <div style="
-            display:grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap:10px 24px;
-            background:#ffffff;
-            padding:14px 18px;
-            border-radius:10px;
-            border:1px solid #d5dbdb;
-            margin-top:14px;
-            margin-bottom:16px;
-        ">
-            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-                <span style="display:inline-block; width:16px; height:16px; background:#c62828; border-radius:3px;"></span>
-                <span>NRS GERAIS</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-                <span style="display:inline-block; width:16px; height:16px; background:#f9d600; border-radius:3px; border:1px solid #c4a700;"></span>
-                <span>NRS SETORIAIS</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-                <span style="display:inline-block; width:16px; height:16px; background:#1565c0; border-radius:3px;"></span>
-                <span>NRS ESPECIAIS</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-                <span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #c62828; color:#c62828; font-size:12px; font-weight:900; border-radius:2px;">✕</span>
-                <span>NRS 2 E 27 REVOGADAS</span>
-            </div>
+    html_legenda = """
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px 24px; background:#ffffff; padding:14px 18px; border-radius:10px; border:1px solid #d5dbdb; margin-top:14px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+            <span style="display:inline-block; width:16px; height:16px; background:#c62828; border-radius:3px;"></span>
+            <span>NRS GERAIS</span>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+            <span style="display:inline-block; width:16px; height:16px; background:#f9d600; border-radius:3px; border:1px solid #c4a700;"></span>
+            <span>NRS SETORIAIS</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+            <span style="display:inline-block; width:16px; height:16px; background:#1565c0; border-radius:3px;"></span>
+            <span>NRS ESPECIAIS</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #c62828; color:#c62828; font-size:12px; font-weight:900; border-radius:2px;">&#10005;</span>
+            <span>NRS 2 E 27 REVOGADAS</span>
+        </div>
+    </div>
+    """
+    st.markdown(html_legenda, unsafe_allow_html=True)
 
 
 def renderizar_aba_normas(
@@ -212,6 +200,17 @@ def renderizar_aba_normas(
 
     st.markdown("---")
 
+    template_card = """
+    <div style="background:__BG__; border:2px solid __BORDA__; border-radius:10px; padding:10px 8px; min-height:146px; display:flex; flex-direction:column; justify-content:space-between; filter:__FILTRO__; margin-bottom:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:10px; font-weight:700; letter-spacing:0.4px; color:__TEXTO__; opacity:0.92;">__TAG__</span>
+            <span style="font-size:20px; line-height:1;">__ICONE__</span>
+        </div>
+        <div style="font-size:20px; font-weight:900; color:__NR_COR__; text-shadow:__SOMBRA__; margin:3px 0; __DECOR__">__NR__</div>
+        <div style="font-size:11px; line-height:1.25; color:__TEXTO__; __DECOR__">__TITULO__</div>
+    </div>
+    """
+
     cols_por_linha = 6
     for idx in range(0, len(NRS_CATALOGO), cols_por_linha):
         linha_itens = NRS_CATALOGO[idx : idx + cols_por_linha]
@@ -241,8 +240,8 @@ def renderizar_aba_normas(
                 texto_cor = estilo["texto"]
                 nr_cor = "#ffffff"
                 sombra_nr = "0 1px 3px rgba(0, 0, 0, 0.55)"
-                filtro_css = "none;"
-                decoracao_titulo = "none;"
+                filtro_css = "none"
+                decoracao_titulo = "none"
                 status_tag = "APLICÁVEL"
             else:
                 bg = "#f2f3f4"
@@ -251,23 +250,48 @@ def renderizar_aba_normas(
                 nr_cor = "#4d5656"
                 sombra_nr = "none"
                 filtro_css = "grayscale(100%); opacity: 0.85;"
-                decoracao_titulo = "none;"
+                decoracao_titulo = "none"
                 status_tag = "NÃO MARCADA"
 
+            card_html = (
+                template_card
+                .replace("__BG__", bg)
+                .replace("__BORDA__", borda)
+                .replace("__TEXTO__", texto_cor)
+                .replace("__NR_COR__", nr_cor)
+                .replace("__SOMBRA__", sombra_nr)
+                .replace("__FILTRO__", filtro_css)
+                .replace("__DECOR__", decoracao_titulo)
+                .replace("__TAG__", status_tag)
+                .replace("__ICONE__", icone)
+                .replace("__NR__", nr_cod)
+                .replace("__TITULO__", titulo)
+            )
+
             with col:
+                st.markdown(card_html, unsafe_allow_html=True)
+
+                if revogada:
+                    st.caption("🚫 Revogada")
+                else:
+                    label_btn = "✅ Marcada" if ativo else "Marcar"
+                    if st.button(
+                        label_btn,
+                        key=f"btn_nr_{empresa_alvo}_{nr_cod}",
+                        use_container_width=True,
+                    ):
+                        if ativo:
+                            selecionadas.discard(nr_cod)
+                        else:
+                            selecionadas.add(nr_cod)
+                        st.session_state[state_key] = selecionadas
+                        st.rerun()
+
                 st.markdown(
-                    f"""
-                    <div style="
-                        background:{bg};
-                        border:2px solid {borda};
-                        border-radius:10px;
-                        padding:10px 8px;
-                        min-height:146px;
-                        display:flex;
-                        flex-direction:column;
-                        justify-content:space-between;
-                        filter:{filtro_css};
-                        margin-bottom:6px;
-                    ">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-size:10px; font-weight:700; letter-spacing:0.4px;
+                    f"<div style='text-align:center; font-size:11px; margin-bottom:10px;'>"
+                    f"<a href='{url_mte}' target='_blank' style='text-decoration:none;'>🔗 Catálogo MTE</a>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    _render_legenda()
