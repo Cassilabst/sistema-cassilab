@@ -223,50 +223,85 @@ def renderizar_aba_normas(
             revogada = bool(item.get("revogada"))
             url_mte = item["url"]
             ativo = (nr_cod in selecionadas) and (not revogada)
+            card_id = f"nr-card-{empresa_alvo}-{nr_cod}".replace(" ", "-").replace(".", "")
 
             if revogada:
                 bg = "#eceff1"
                 borda = "#90a4ae"
-                texto_cor = "#546e7a"
-                nr_cor = "#546e7a"
-                sombra_nr = "none"
+                cor_txt = "#546e7a"
                 filtro_css = "grayscale(100%); opacity: 0.78;"
-                decoracao_titulo = "text-decoration: line-through;"
+                decor_css = "text-decoration: line-through;"
                 status_tag = "REVOGADA"
             elif ativo:
                 estilo = CORES_CATEGORIA.get(cat, CORES_CATEGORIA["geral"])
                 bg = estilo["bg"]
                 borda = estilo["borda"]
-                texto_cor = "#ffffff"
-                nr_cor = "#ffffff"
-                sombra_nr = "0 1px 3px rgba(0, 0, 0, 0.65)"
-                filtro_css = "none"
-                decoracao_titulo = "none"
+                cor_txt = "#ffffff"
+                filtro_css = "none;"
+                decor_css = "none;"
                 status_tag = "APLICÁVEL"
             else:
                 bg = "#f2f3f4"
                 borda = "#bdc3c7"
-                texto_cor = "#4d5656"
-                nr_cor = "#4d5656"
-                sombra_nr = "none"
+                cor_txt = "#4d5656"
                 filtro_css = "grayscale(100%); opacity: 0.85;"
-                decoracao_titulo = "none"
+                decor_css = "none;"
                 status_tag = "NÃO MARCADA"
 
-            card_html = (
-                template_card
-                .replace("__BG__", bg)
-                .replace("__BORDA__", borda)
-                .replace("__TEXTO__", texto_cor)
-                .replace("__NR_COR__", nr_cor)
-                .replace("__SOMBRA__", sombra_nr)
-                .replace("__FILTRO__", filtro_css)
-                .replace("__DECOR__", decoracao_titulo)
-                .replace("__TAG__", status_tag)
-                .replace("__ICONE__", icone)
-                .replace("__NR__", nr_cod)
-                .replace("__TITULO__", titulo)
-            )
+            card_html = f"""
+            <style>
+                #{card_id} {{
+                    background-color: {bg};
+                    border: 2px solid {borda};
+                    border-radius: 10px;
+                    padding: 10px 8px;
+                    min-height: 146px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    filter: {filtro_css};
+                    margin-bottom: 6px;
+                    user-select: none;
+                }}
+                #{card_id} .nr-topo {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }}
+                #{card_id} .nr-tag {{
+                    font-size: 10px;
+                    font-weight: 800;
+                    letter-spacing: 0.4px;
+                    color: {cor_txt};
+                }}
+                #{card_id} .nr-icone {{
+                    font-size: 20px;
+                    line-height: 1;
+                }}
+                #{card_id} .nr-codigo {{
+                    font-size: 20px;
+                    font-weight: 900;
+                    color: {cor_txt};
+                    margin: 3px 0;
+                    {decor_css}
+                }}
+                #{card_id} .nr-titulo {{
+                    font-size: 11px;
+                    font-weight: 700;
+                    line-height: 1.25;
+                    color: {cor_txt};
+                    {decor_css}
+                }}
+            </style>
+            <div id="{card_id}">
+                <div class="nr-topo">
+                    <span class="nr-tag">{status_tag}</span>
+                    <span class="nr-icone">{icone}</span>
+                </div>
+                <div class="nr-codigo">{nr_cod}</div>
+                <div class="nr-titulo">{titulo}</div>
+            </div>
+            """
 
             with col:
                 st.markdown(card_html, unsafe_allow_html=True)
@@ -293,5 +328,3 @@ def renderizar_aba_normas(
                     f"</div>",
                     unsafe_allow_html=True,
                 )
-
-    _render_legenda()
