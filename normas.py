@@ -53,7 +53,7 @@ NRS_CATALOGO = [
 CORES_CATEGORIA = {
     "geral": {"bg": "#c62828", "borda": "#8e0000", "texto": "#ffffff", "nr_cor": "#ffffff"},
     "especial": {"bg": "#1565c0", "borda": "#003c8f", "texto": "#ffffff", "nr_cor": "#ffffff"},
-    "setorial": {"bg": "#f9d600", "borda": "#c4a700", "texto": "#1b2631", "nr_cor": "#ffffff"},
+    "setorial": {"bg": "#f9d600", "borda": "#c4a700", "texto": "#ffffff", "nr_cor": "#ffffff"},
     "revogada": {"bg": "#eceff1", "borda": "#90a4ae", "texto": "#546e7a", "nr_cor": "#546e7a"},
 }
 
@@ -203,11 +203,11 @@ def renderizar_aba_normas(
     template_card = """
     <div style="background:__BG__; border:2px solid __BORDA__; border-radius:10px; padding:10px 8px; min-height:146px; display:flex; flex-direction:column; justify-content:space-between; filter:__FILTRO__; margin-bottom:6px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:10px; font-weight:700; letter-spacing:0.4px; color:__TEXTO__; opacity:0.92;">__TAG__</span>
+            <span style="font-size:10px; font-weight:700; letter-spacing:0.4px; color:__TEXTO__; text-shadow:__SOMBRA__; opacity:0.95;">__TAG__</span>
             <span style="font-size:20px; line-height:1;">__ICONE__</span>
         </div>
         <div style="font-size:20px; font-weight:900; color:__NR_COR__; text-shadow:__SOMBRA__; margin:3px 0; __DECOR__">__NR__</div>
-        <div style="font-size:11px; line-height:1.25; color:__TEXTO__; __DECOR__">__TITULO__</div>
+        <div style="font-size:11px; font-weight:600; line-height:1.25; color:__TEXTO__; text-shadow:__SOMBRA__; __DECOR__">__TITULO__</div>
     </div>
     """
 
@@ -237,9 +237,9 @@ def renderizar_aba_normas(
                 estilo = CORES_CATEGORIA.get(cat, CORES_CATEGORIA["geral"])
                 bg = estilo["bg"]
                 borda = estilo["borda"]
-                texto_cor = estilo["texto"]
+                texto_cor = "#ffffff"
                 nr_cor = "#ffffff"
-                sombra_nr = "0 1px 3px rgba(0, 0, 0, 0.55)"
+                sombra_nr = "0 1px 3px rgba(0, 0, 0, 0.65)"
                 filtro_css = "none"
                 decoracao_titulo = "none"
                 status_tag = "APLICÁVEL"
