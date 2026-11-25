@@ -36,13 +36,19 @@ def renderizar_aba_documentos(
             st.rerun()
 
     empresas = get_empresas_func()
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
+
     if pode_lancar:
         with st.expander("➕ Adicionar Novo Documento", expanded=False):
-            empresa_sel = (
-                st.selectbox("Selecione a Empresa", empresas, key="emp_doc_form")
-                if is_admin
-                else emp_usuario
-            )
+            if is_admin:
+                empresa_sel = emp_global_ativa
+                if empresa_sel:
+                    st.caption(f"🏢 Empresa ativa selecionada no menu: **{empresa_sel}**")
+                else:
+                    st.warning("⚠️ Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral para cadastrar documento.")
+            else:
+                empresa_sel = emp_usuario
             conn = sqlite3.connect(DB_NAME, timeout=10.0)
             df_cad_serv_doc = pd.read_sql(
                 "SELECT servico FROM cad_servicos ORDER BY servico ASC", conn
@@ -76,7 +82,9 @@ def renderizar_aba_documentos(
                 st.info(f"Status calculado automaticamente: **{status_calc_form}**")
 
                 if st.form_submit_button("Salvar Documento"):
-                    if nome_doc and str(nome_doc).strip():
+                    if not empresa_sel:
+                        st.error("Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral.")
+                    elif nome_doc and str(nome_doc).strip():
                         proxima_renovacao_final = (
                             calcular_proxima_renovacao_func(dt_emissao, vigencia_doc)
                             if not proxima_renovacao_input
@@ -119,16 +127,11 @@ def renderizar_aba_documentos(
                         st.error("Preencha o nome do documento.")
 
     st.subheader("Documentos Cadastrados")
-    filtro_doc = (
-        st.selectbox(
-            "Filtrar por Empresa",
-            ["Todas as Empresas"] + empresas,
-            key="filtro_doc_emp",
-            on_change=reset_doc_selection_func,
-        )
-        if is_admin
-        else emp_usuario
-    )
+    if is_admin:
+        filtro_doc = emp_global_ativa if emp_global_ativa else "Todas as Empresas"
+        st.caption(f"🏢 Visualizando: **{filtro_doc}** (definido em Empresa Ativa Global)")
+    else:
+        filtro_doc = emp_usuario
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     df_doc = pd.read_sql("SELECT * FROM documentos ORDER BY documento ASC", conn)
     conn.close()
