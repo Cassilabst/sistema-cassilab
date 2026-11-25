@@ -415,8 +415,6 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name, registrar_lo
                 os_editar = _buscar_os_por_id(db_name, ids_marcados[0])
                 if os_editar:
                     st.session_state["os_em_edicao"] = os_editar
-                    st.session_state["os_empresa_sel"] = os_editar["empresa"]
-                    st.session_state["os_func_sel"] = os_editar["funcionario"]
                     st.rerun()
             elif len(ids_marcados) == 0:
                 st.warning("Marque o quadradinho de uma OS para editar.")
@@ -458,8 +456,10 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
 
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     empresas = get_empresas_func()
+    opcoes_emp = ["-- Selecione --"] + empresas
+
     emp_os_sel = st.selectbox(
-        "Selecione a Empresa", ["-- Selecione --"] + empresas, key="os_empresa_sel"
+        "Selecione a Empresa", opcoes_emp, key="os_empresa_sel"
     )
 
     if emp_os_sel != "-- Selecione --":
@@ -484,10 +484,20 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
 
         if not df_funcs_os.empty:
             lista_funcs_os = df_funcs_os["funcionario"].tolist()
+            opcoes_func = ["-- Selecione o Funcionário --"] + lista_funcs_os
+
+            os_edicao_ativa = st.session_state.get("os_em_edicao")
+            idx_func_padrao = 0
+            if os_edicao_ativa and os_edicao_ativa.get("empresa", "").strip().lower() == emp_os_sel.strip().lower():
+                func_edicao = os_edicao_ativa.get("funcionario", "")
+                if func_edicao in lista_funcs_os:
+                    idx_func_padrao = opcoes_func.index(func_edicao)
+
             func_os_sel = st.selectbox(
                 "Selecione o Funcionário",
-                ["-- Selecione o Funcionário --"] + lista_funcs_os,
-                key="os_func_sel",
+                opcoes_func,
+                index=idx_func_padrao,
+                key=f"os_func_sel_{emp_os_sel}",
             )
 
             if func_os_sel != "-- Selecione o Funcionário --":
@@ -583,7 +593,9 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                     else "Mantenha em dia seus treinamentos obrigatórios (Nrs).\nNão executar qualquer atividade sem treinamento e pleno conhecimento dos riscos.\nO não cumprimento ao disposto nesta Ordem de Serviço sujeita o trabalhador às penalidades cabíveis previstas na legislação trabalhista e normas da empresa."
                 )
 
-                with st.form(f"form_edicao_os_{emp_os_sel}_{func_os_sel}"):
+                id_ref_form = os_edicao["id"] if os_edicao else (ultima_os["id"] if ultima_os else "novo")
+
+                with st.form(f"form_edicao_os_{emp_os_sel}_{func_os_sel}_{id_ref_form}"):
                     logo_arquivo = st.file_uploader(
                         "🖼️ Substituir Logo apenas nesta OS (opcional — já puxa do cadastro da empresa)",
                         type=["png", "jpg", "jpeg"],
