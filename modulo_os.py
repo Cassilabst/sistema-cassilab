@@ -386,15 +386,16 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name, registrar_lo
     st.dataframe(df_exibir, use_container_width=True, hide_index=True)
 
     opcoes_hist = {
-        f"{row['funcionario']} — Rev. {int(row['revisao']):02d} | Revisão: {row['dt_rev']} ({row['data_registro']}) [ID {int(row['id'])}]": int(row["id"])
+        f"ID {int(row['id'])} — {row['funcionario']} | Rev. {int(row['revisao']):02d} | Revisão: {row['dt_rev']} ({row['data_registro']})": int(row["id"])
         for _, row in df_hist.iterrows()
     }
     escolha_hist = st.selectbox(
-        "Escolha uma Ordem de Serviço salva",
+        "Selecione exatamente qual Ordem de Serviço deseja visualizar, editar ou excluir",
         list(opcoes_hist.keys()),
         key=f"sel_hist_{key_prefix}",
     )
-    os_id_sel = opcoes_hist[escolha_hist]
+    os_id_sel = int(opcoes_hist[escolha_hist])
+    st.caption(f"Registro selecionado para ação: **{escolha_hist}**")
 
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b1:
@@ -415,7 +416,7 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name, registrar_lo
 
     with col_b3:
         conf_exc = st.checkbox(
-            "Confirmar exclusão",
+            f"Confirmar exclusão do ID {os_id_sel}",
             key=f"chk_exc_hist_{key_prefix}_{os_id_sel}",
         )
         if st.button("🗑️ Excluir", key=f"btn_exc_hist_{key_prefix}", use_container_width=True):
@@ -432,10 +433,10 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name, registrar_lo
                         os_alvo.get("empresa", ""),
                         f"Excluiu OS ID {os_id_sel} (Rev. {int(os_alvo.get('revisao', 0)):02d}) de {os_alvo.get('funcionario', '')}",
                     )
-                st.success("✅ Ordem de Serviço excluída com sucesso!")
+                st.success(f"✅ Ordem de Serviço ID {os_id_sel} excluída com sucesso!")
                 st.rerun()
             else:
-                st.warning("Marque 'Confirmar exclusão' antes de clicar em Excluir.")
+                st.warning(f"Marque 'Confirmar exclusão do ID {os_id_sel}' antes de clicar em Excluir.")
 
 
 def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
