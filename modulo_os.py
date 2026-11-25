@@ -368,75 +368,87 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name, registrar_lo
         st.caption("Nenhuma Ordem de Serviço emitida e salva ainda para este filtro.")
         return
 
-    df_exibir = df_hist.copy()
-    df_exibir["Revisão"] = df_exibir["revisao"].apply(lambda r: f"Rev. {int(r):02d}")
-    df_exibir = df_exibir[
-        ["id", "funcionario", "Revisão", "dt_elab", "dt_rev", "data_registro", "cargo", "setor"]
-    ].rename(
-        columns={
-            "id": "ID",
-            "funcionario": "Colaborador",
-            "dt_elab": "Elaboração",
-            "dt_rev": "Data Revisão",
-            "data_registro": "Salvo em (Data/Hora)",
-            "cargo": "Cargo",
-            "setor": "Setor",
-        }
-    )
-    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+    st.caption("Marque o quadradinho da Ordem de Serviço que deseja visualizar, editar ou excluir:")
 
-    opcoes_hist = {
-        f"ID {int(row['id'])} — {row['funcionario']} | Rev. {int(row['revisao']):02d} | Revisão: {row['dt_rev']} ({row['data_registro']})": int(row["id"])
-        for _, row in df_hist.iterrows()
-    }
-    escolha_hist = st.selectbox(
-        "Selecione exatamente qual Ordem de Serviço deseja visualizar, editar ou excluir",
-        list(opcoes_hist.keys()),
-        key=f"sel_hist_{key_prefix}",
-    )
-    os_id_sel = int(opcoes_hist[escolha_hist])
-    st.caption(f"Registro selecionado para ação: **{escolha_hist}**")
+    ids_marcados = []
+    for _, row in df_hist.iterrows():
+        os_id = int(row["id"])
+        rev_str = f"Rev. {int(row['revisao']):02d}"
+        func_str = str(row["funcionario"] or "")
+        cargo_str = str(row["cargo"] or "-")
+        setor_str = str(row["setor"] or "-")
+        elab_str = str(row["dt_elab"] or "-")
+        rev_dt_str = str(row["dt_rev"] or "-")
+        reg_str = str(row["data_registro"] or "-")
 
+        label_linha = (
+            f"**ID {os_id}** | **{func_str}** | **{rev_str}** | "
+            f"Cargo: {cargo_str} | Setor: {setor_str} | "
+            f"Elab: {elab_str} | Rev: {rev_dt_str} | Salvo: {reg_str}"
+        )
+        marcado = st.checkbox(
+            label_linha,
+            value=False,
+            key=f"chk_os_item_{key_prefix}_{os_id}",
+        )
+        if marcado:
+            ids_marcados.append(os_id)
+
+    st.markdown("")
     col_b1, col_b2, col_b3 = st.columns(3)
+
     with col_b1:
-        if st.button("👁️ Visualizar / Imprimir", key=f"btn_ver_hist_{key_prefix}", use_container_width=True):
-            os_carregada = _buscar_os_por_id(db_name, os_id_sel)
-            if os_carregada:
-                st.session_state["os_gerada_data"] = os_carregada
-                st.rerun()
+        if st.button("👁️ Visualizar / Imprimir", key=f"btn_ver_marc_{key_prefix}", use_container_width=True):
+            if len(ids_marcados) == 1:
+                os_carregada = _buscar_os_por_id(db_name, ids_marcados[0])
+                if os_carregada:
+                    st.session_state["os_gerada_data"] = os_carregada
+                    st.rerun()
+            elif len(ids_marcados) == 0:
+                st.warning("Marque o quadradinho de uma OS para visualizar.")
+            else:
+                st.warning("Marque apenas 1 quadradinho para visualizar.")
 
     with col_b2:
-        if st.button("✏️ Editar", key=f"btn_edit_hist_{key_prefix}", use_container_width=True):
-            os_editar = _buscar_os_por_id(db_name, os_id_sel)
-            if os_editar:
-                st.session_state["os_em_edicao"] = os_editar
-                st.session_state["os_empresa_sel"] = os_editar["empresa"]
-                st.session_state["os_func_sel"] = os_editar["funcionario"]
-                st.rerun()
+        if st.button("✏️ Editar", key=f"btn_edit_marc_{key_prefix}", use_container_width=True):
+            if len(ids_marcados) == 1:
+                os_editar = _buscar_os_por_id(db_name, ids_marcados[0])
+                if os_editar:
+                    st.session_state["os_em_edicao"] = os_editar
+                    st.session_state["os_empresa_sel"] = os_editar["empresa"]
+                    st.session_state["os_func_sel"] = os_editar["funcionario"]
+                    st.rerun()
+            elif len(ids_marcados) == 0:
+                st.warning("Marque o quadradinho de uma OS para editar.")
+            else:
+                st.warning("Marque apenas 1 quadradinho para editar.")
 
     with col_b3:
         conf_exc = st.checkbox(
-            f"Confirmar exclusão do ID {os_id_sel}",
-            key=f"chk_exc_hist_{key_prefix}_{os_id_sel}",
+            "Confirmar exclusão dos marcados",
+            key=f"chk_conf_exc_{key_prefix}",
         )
-        if st.button("🗑️ Excluir", key=f"btn_exc_hist_{key_prefix}", use_container_width=True):
-            if conf_exc:
-                os_alvo = _buscar_os_por_id(db_name, os_id_sel)
-                _excluir_os_por_id(db_name, os_id_sel)
-                if "os_gerada_data" in st.session_state and st.session_state["os_gerada_data"].get("id") == os_id_sel:
-                    del st.session_state["os_gerada_data"]
-                if "os_em_edicao" in st.session_state and st.session_state["os_em_edicao"].get("id") == os_id_sel:
-                    del st.session_state["os_em_edicao"]
-                if callable(registrar_log_callback) and os_alvo:
-                    registrar_log_callback(
-                        st.session_state.get("nome_usuario", "Desconhecido"),
-                        os_alvo.get("empresa", ""),
-                        f"Excluiu OS ID {os_id_sel} (Rev. {int(os_alvo.get('revisao', 0)):02d}) de {os_alvo.get('funcionario', '')}",
-                    )
-                st.success(f"✅ Ordem de Serviço ID {os_id_sel} excluída com sucesso!")
-                st.rerun()
+        if st.button("🗑️ Excluir", key=f"btn_exc_marc_{key_prefix}", use_container_width=True):
+            if not ids_marcados:
+                st.warning("Marque o quadradinho da OS que deseja excluir.")
+            elif not conf_exc:
+                st.warning("Marque 'Confirmar exclusão dos marcados' antes de clicar em Excluir.")
             else:
-                st.warning(f"Marque 'Confirmar exclusão do ID {os_id_sel}' antes de clicar em Excluir.")
+                for alvo_id in ids_marcados:
+                    os_alvo = _buscar_os_por_id(db_name, alvo_id)
+                    _excluir_os_por_id(db_name, alvo_id)
+                    if "os_gerada_data" in st.session_state and st.session_state["os_gerada_data"].get("id") == alvo_id:
+                        del st.session_state["os_gerada_data"]
+                    if "os_em_edicao" in st.session_state and st.session_state["os_em_edicao"].get("id") == alvo_id:
+                        del st.session_state["os_em_edicao"]
+                    if callable(registrar_log_callback) and os_alvo:
+                        registrar_log_callback(
+                            st.session_state.get("nome_usuario", "Desconhecido"),
+                            os_alvo.get("empresa", ""),
+                            f"Excluiu OS ID {alvo_id} (Rev. {int(os_alvo.get('revisao', 0)):02d}) de {os_alvo.get('funcionario', '')}",
+                        )
+                st.success(f"✅ OS(s) excluída(s) com sucesso: IDs {ids_marcados}")
+                st.rerun()
 
 
 def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
