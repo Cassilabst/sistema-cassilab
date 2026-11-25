@@ -8,7 +8,8 @@ import streamlit as st
 
 def _garantir_tabela_os(db_name):
     conn = sqlite3.connect(db_name, timeout=10.0)
-    conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         """
         CREATE TABLE IF NOT EXISTS ordens_servico (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +24,7 @@ def _garantir_tabela_os(db_name):
             descricao TEXT,
             riscos TEXT,
             epis TEXT,
+            orientacoes_gerais TEXT,
             recomendacoes TEXT,
             acidentes TEXT,
             observacoes TEXT,
@@ -30,6 +32,11 @@ def _garantir_tabela_os(db_name):
         )
         """
     )
+    cur.execute("PRAGMA table_info(ordens_servico)")
+    colunas = [col[1] for col in cur.fetchall()]
+    if "orientacoes_gerais" not in colunas:
+        cur.execute("ALTER TABLE ordens_servico ADD COLUMN orientacoes_gerais TEXT")
+
     conn.commit()
     conn.close()
 
@@ -94,10 +101,11 @@ def _salvar_nova_revisao_os(db_name, dados_os):
         INSERT INTO ordens_servico (
             empresa, funcionario, cargo, setor, revisao,
             dt_elab, dt_rev, data_registro,
-            descricao, riscos, epis, recomendacoes, acidentes, observacoes,
+            descricao, riscos, epis, orientacoes_gerais,
+            recomendacoes, acidentes, observacoes,
             logo_base64
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             dados_os["empresa"],
@@ -111,6 +119,7 @@ def _salvar_nova_revisao_os(db_name, dados_os):
             dados_os["descricao"],
             dados_os["riscos"],
             dados_os["epis"],
+            dados_os["orientacoes_gerais"],
             dados_os["recomendacoes"],
             dados_os["acidentes"],
             dados_os["observacoes"],
@@ -161,7 +170,8 @@ def _buscar_os_por_id(db_name, os_id):
         """
         SELECT id, empresa, funcionario, cargo, setor, revisao,
                dt_elab, dt_rev, data_registro,
-               descricao, riscos, epis, recomendacoes, acidentes, observacoes,
+               descricao, riscos, epis, orientacoes_gerais,
+               recomendacoes, acidentes, observacoes,
                logo_base64
         FROM ordens_servico
         WHERE id = ?
@@ -185,10 +195,11 @@ def _buscar_os_por_id(db_name, os_id):
         "descricao": row[9] or "",
         "riscos": row[10] or "",
         "epis": row[11] or "",
-        "recomendacoes": row[12] or "",
-        "acidentes": row[13] or "",
-        "observacoes": row[14] or "",
-        "logo": row[15] or "",
+        "orientacoes_gerais": row[12] or "",
+        "recomendacoes": row[13] or "",
+        "acidentes": row[14] or "",
+        "observacoes": row[15] or "",
+        "logo": row[16] or "",
     }
 
 
@@ -207,6 +218,8 @@ def _renderizar_html_os(d):
         tag_logo = (
             f'<b style="color: #023e8a; font-size: 16px;">{nome_emp_seguro}</b>'
         )
+
+    orientacoes_txt = str(d.get("orientacoes_gerais") or "").strip()
 
     return f"""
     <!DOCTYPE html>
@@ -313,13 +326,16 @@ def _renderizar_html_os(d):
             <div class="secao-titulo">3. EPI's de Uso Obrigatório</div>
             <div class="secao-texto">{html.escape(str(d.get('epis') or ''))}</div>
 
-            <div class="secao-titulo">4. Recomendações</div>
+            <div class="secao-titulo">4. Orientações Gerais e Medidas Preventivas</div>
+            <div class="secao-texto">{html.escape(orientacoes_txt)}</div>
+
+            <div class="secao-titulo">5. Recomendações</div>
             <div class="secao-texto">{html.escape(str(d.get('recomendacoes') or ''))}</div>
 
-            <div class="secao-titulo">5. Procedimentos em Caso de Acidentes</div>
+            <div class="secao-titulo">6. Procedimentos em Caso de Acidentes</div>
             <div class="secao-texto">{html.escape(str(d.get('acidentes') or ''))}</div>
 
-            <div class="secao-titulo">6. Observações e Disposições</div>
+            <div class="secao-titulo">7. Observações e Disposições</div>
             <div class="secao-texto" style="margin-bottom: 20px;">{html.escape(str(d.get('observacoes') or ''))}</div>
 
             <div class="assinaturas">
@@ -378,11 +394,8 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name):
 
 def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
     _garantir_tabela_os(DB_NAME)
-    st.title("📝 Elaboração de Ordem de Serviço (OS) - Conforme NR")
-    st.markdown(
-        "Selecione a empresa e o funcionário abaixo. Cada emissão ou atualização salva uma **nova revisão no histórico** "
-        "(sem sobrescrever versões anteriores) com a **data do calendário atual**, pronta para visualizar e imprimir em A4."
-    )
+    st.title("📝 Emissor de Ordem de Serviço")
+    st.markdown("Emissor de Ordem de Serviço de Acordo com a NR 1")
 
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     empresas = get_empresas_func()
@@ -446,6 +459,14 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                         f"Ao gerar agora, será criada a **{rev_preview_str}** com data **{data_hoje}**, mantendo as anteriores intactas."
                     )
 
+                texto_padrao_orientacoes = (
+                    "- Cumprir rigorosamente as disposições legais e regulamentares sobre Segurança e Saúde no Trabalho (SST), inclusive as Ordens de Serviço expedidas pelo empregador;\n"
+                    "- Realizar inspeção visual prévia nas ferramentas, máquinas, equipamentos e no local de trabalho antes de iniciar qualquer atividade;\n"
+                    "- Não operar máquinas, veículos ou equipamentos sem habilitação, capacitação específica e autorização formal da empresa;\n"
+                    "- Manter a organização, limpeza e sinalização da área de trabalho, respeitando as rotas de fuga e extintores de incêndio;\n"
+                    "- Submeter-se aos exames médicos ocupacionais previstos no PCMSO e participar dos treinamentos obrigatórios."
+                )
+
                 val_cargo = ultima_os["cargo"] if ultima_os else cargo_auto
                 val_setor = ultima_os["setor"] if ultima_os else setor_auto
                 val_dt_elab = ultima_os["dt_elab"] if ultima_os else data_hoje
@@ -463,6 +484,11 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                     ultima_os["epis"]
                     if ultima_os
                     else "Uso geral: Calçado de Segurança, luvas de proteção, proteção auditiva, óculos de segurança.\nTrabalho em altura (quando aplicável): Cinto de segurança tipo paraquedista, talabarte, capacete com jugular."
+                )
+                val_orientacoes_gerais = (
+                    ultima_os["orientacoes_gerais"]
+                    if (ultima_os and ultima_os.get("orientacoes_gerais"))
+                    else texto_padrao_orientacoes
                 )
                 val_recomendacoes = (
                     ultima_os["recomendacoes"]
@@ -517,21 +543,28 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                         height=100,
                     )
 
-                    st.markdown("### 4. Recomendações de Segurança")
+                    st.markdown("### 4. Orientações Gerais e Medidas Preventivas")
+                    os_orientacoes_gerais = st.text_area(
+                        "Medidas de prevenção, normas internas e condutas preventivas obrigatórias",
+                        value=val_orientacoes_gerais,
+                        height=120,
+                    )
+
+                    st.markdown("### 5. Recomendações de Segurança")
                     os_recomendacoes = st.text_area(
                         "Orientações e cuidados gerais para prevenção de acidentes",
                         value=val_recomendacoes,
                         height=100,
                     )
 
-                    st.markdown("### 5. Procedimentos em Caso de Acidentes")
+                    st.markdown("### 6. Procedimentos em Caso de Acidentes")
                     os_acidentes = st.text_area(
                         "Condutas em caso de ocorrências ou incidentes",
                         value=val_acidentes,
                         height=100,
                     )
 
-                    st.markdown("### 6. Observações e Disposições Legais")
+                    st.markdown("### 7. Observações e Disposições Legais")
                     os_observacoes = st.text_area(
                         "Advertências, treinamentos e penalidades",
                         value=val_observacoes,
@@ -563,6 +596,7 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                         "descricao": os_descricao,
                         "riscos": os_riscos,
                         "epis": os_epis,
+                        "orientacoes_gerais": os_orientacoes_gerais,
                         "recomendacoes": os_recomendacoes,
                         "acidentes": os_acidentes,
                         "observacoes": os_observacoes,
