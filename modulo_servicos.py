@@ -106,17 +106,18 @@ def renderizar_aba_servicos(*args, **kwargs):
         st.warning("🔒 Área restrita ao Administrador.")
         return
 
-    empresas = get_empresas_func() if callable(get_empresas_func) else []
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
 
     # --- SEÇÃO DE CADASTRO PADRONIZADA (IGUAL À ABA DE SETORES) ---
     st.markdown("### Gerenciar Serviços por Empresa")
     st.markdown("---")
 
-    empresa_sel = st.selectbox(
-        "Selecione a Empresa",
-        empresas if empresas else ["Nenhuma"],
-        key="serv_emp_form",
-    )
+    empresa_sel = emp_global_ativa if emp_global_ativa else "Nenhuma"
+    if emp_global_ativa:
+        st.caption(f"🏢 Empresa ativa selecionada no menu: **{empresa_sel}**")
+    else:
+        st.warning("⚠️ Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral para lançar um serviço.")
 
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     try:
@@ -224,19 +225,8 @@ def renderizar_aba_servicos(*args, **kwargs):
 
     st.subheader("Serviços Registrados")
 
-    empresa_global_atual = st.session_state.get("empresa_global", "Todas")
-    opcoes_filtro_emp = ["Todas as Empresas"] + empresas
-    idx_filtro_inicial = 0
-    if empresa_global_atual in opcoes_filtro_emp and empresa_global_atual != "Todas":
-        idx_filtro_inicial = opcoes_filtro_emp.index(empresa_global_atual)
-
-    filtro_serv = st.selectbox(
-        "Filtrar por Empresa",
-        opcoes_filtro_emp,
-        index=idx_filtro_inicial,
-        key="filtro_servicos_empresa_local",
-        on_change=safe_reset_serv,
-    )
+    filtro_serv = emp_global_ativa if emp_global_ativa else "Todas as Empresas"
+    st.caption(f"🏢 Visualizando: **{filtro_serv}** (definido em Empresa Ativa Global)")
 
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     try:
