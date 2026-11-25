@@ -2425,7 +2425,7 @@ if st.session_state.get("is_admin", False):
         "Serviços Realizados",
         "Administração",
         "Relatórios Consolidados",
-        "Elaboração de OS (Ordem de Serviço)",
+        "Emissor de Ordem de Serviço",
         "Lista de Presença",
         "Consulta de CAs",
         "Normas Regulamentadoras",
@@ -2441,6 +2441,7 @@ else:
         "Controle de Documentos",
         "Alterar Senha",
         "Relatórios Consolidados",
+        "Emissor de Ordem de Serviço",
         "Consulta de CAs",
         "Normas Regulamentadoras",
     ]
