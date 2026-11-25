@@ -2,55 +2,59 @@ import sqlite3
 from datetime import datetime
 import streamlit as st
 
+URL_CATALOGO_MTE = (
+    "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/"
+    "secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras"
+)
 
 # Catálogo das Normas Regulamentadoras
 # Categoria: "geral" (vermelho), "especial" (azul), "setorial" (amarelo), "revogada" (cinza/riscada)
 NRS_CATALOGO = [
-    {"nr": "NR-01", "icone": "📋", "titulo": "Disposições Gerais e GRO", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-01-atualizada-2024.pdf"},
-    {"nr": "NR-02", "icone": "🚫", "titulo": "Inspeção Prévia (Revogada)", "cat": "revogada", "revogada": True, "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras"},
-    {"nr": "NR-03", "icone": "🛑", "titulo": "Embargo e Interdição", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-03-atualizada-2020.pdf"},
-    {"nr": "NR-04", "icone": "🏥", "titulo": "SESMT", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-04-atualizada-2022.pdf"},
-    {"nr": "NR-05", "icone": "🛡️", "titulo": "CIPA", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-05-atualizada-2023.pdf"},
-    {"nr": "NR-06", "icone": "🦺", "titulo": "EPI", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-06-atualizada-2022.pdf"},
-    {"nr": "NR-07", "icone": "🩺", "titulo": "PCMSO", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-07-atualizada-2022.pdf"},
-    {"nr": "NR-08", "icone": "🏢", "titulo": "Edificações", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-08-atualizada.pdf"},
-    {"nr": "NR-09", "icone": "🌡️", "titulo": "Avaliação e Controle Exposições Ocupacionais", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-09-atualizada-2021.pdf"},
-    {"nr": "NR-10", "icone": "⚡", "titulo": "Segurança em Instalações e Serviços em Eletricidade", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-10-atualizada-2020.pdf"},
-    {"nr": "NR-11", "icone": "🚜", "titulo": "Transporte, Movimentação e Armazenagem de Materiais", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-11-atualizada-2020.pdf"},
-    {"nr": "NR-12", "icone": "⚙️", "titulo": "Segurança no Trabalho em Máquinas e Equipamentos", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-12-atualizada-2024.pdf"},
-    {"nr": "NR-13", "icone": "🛢️", "titulo": "Caldeiras, Vasos de Pressão, Tubulações e Tanques", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-13-atualizada-2022.pdf"},
-    {"nr": "NR-14", "icone": "🔥", "titulo": "Fornos", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-14-atualizada.pdf"},
-    {"nr": "NR-15", "icone": "☣️", "titulo": "Atividades e Operações Insalubres", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-15-atualizada.pdf"},
-    {"nr": "NR-16", "icone": "💣", "titulo": "Atividades e Operações Perigosas", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-16-atualizada-2020.pdf"},
-    {"nr": "NR-17", "icone": "🪑", "titulo": "Ergonomia", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-17-atualizada-2022.pdf"},
-    {"nr": "NR-18", "icone": "🏗️", "titulo": "Indústria da Construção", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-18-atualizada-2024.pdf"},
-    {"nr": "NR-19", "icone": "🧨", "titulo": "Explosivos", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-19-atualizada-2020.pdf"},
-    {"nr": "NR-20", "icone": "⛽", "titulo": "Inflamáveis e Combustíveis", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-20-atualizada-2024.pdf"},
-    {"nr": "NR-21", "icone": "☀️", "titulo": "Trabalhos a Céu Aberto", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-21-atualizada.pdf"},
-    {"nr": "NR-22", "icone": "⛏️", "titulo": "Mineração", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-22-atualizada-2022.pdf"},
-    {"nr": "NR-23", "icone": "🧯", "titulo": "Proteção Contra Incêndios", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-23-atualizada.pdf"},
-    {"nr": "NR-24", "icone": "🚿", "titulo": "Condições Sanitárias e de Conforto", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-24-atualizada-2022.pdf"},
-    {"nr": "NR-25", "icone": "♻️", "titulo": "Resíduos Industriais", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-25-atualizada.pdf"},
-    {"nr": "NR-26", "icone": "🚧", "titulo": "Sinalização de Segurança", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-26-atualizada.pdf"},
-    {"nr": "NR-27", "icone": "🚫", "titulo": "Registro Profissional (Revogada)", "cat": "revogada", "revogada": True, "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras"},
-    {"nr": "NR-28", "icone": "⚖️", "titulo": "Fiscalização e Penalidades", "cat": "geral", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-28-atualizada-2020.pdf"},
-    {"nr": "NR-29", "icone": "⚓", "titulo": "Trabalho Portuário", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-29-atualizada-2024.pdf"},
-    {"nr": "NR-30", "icone": "🚢", "titulo": "Segurança e Saúde no Trabalho Aquaviário", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-30-atualizada-2020.pdf"},
-    {"nr": "NR-31", "icone": "🌾", "titulo": "Agricultura, Pecuária, Silvicultura e Aquicultura", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-31-atualizada-2022.pdf"},
-    {"nr": "NR-32", "icone": "🏥", "titulo": "Segurança e Saúde no Trabalho em Serviços de Saúde", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-32-atualizada-2022.pdf"},
-    {"nr": "NR-33", "icone": "🕳️", "titulo": "Segurança e Saúde em Espaços Confinados", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-33-atualizada-2022.pdf"},
-    {"nr": "NR-34", "icone": "🛳️", "titulo": "Construção, Reparação e Desmonte Naval", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-34-atualizada-2024.pdf"},
-    {"nr": "NR-35", "icone": "🪜", "titulo": "Trabalho em Altura", "cat": "especial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-35-atualizada-2024.pdf"},
-    {"nr": "NR-36", "icone": "🥩", "titulo": "Abate e Processamento de Carnes e Derivados", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-36-atualizada.pdf"},
-    {"nr": "NR-37", "icone": "🛢️", "titulo": "Segurança e Saúde em Plataformas de Petróleo", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-37-atualizada-2022.pdf"},
-    {"nr": "NR-38", "icone": "🧹", "titulo": "Segurança e Saúde nas Atividades de Limpeza Urbana", "cat": "setorial", "url": "https://www.gov.br/trabalho-e-emprego/pt-br/composicao/orgaos-especificos/secretaria-de-trabalho/inspecao/seguranca-e-saude-no-trabalho/normas-regulamentadoras/nr-38-atualizada-2024.pdf"},
+    {"nr": "NR-01", "icone": "📋", "titulo": "Disposições Gerais e GRO", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-02", "icone": "🚫", "titulo": "Inspeção Prévia (Revogada)", "cat": "revogada", "revogada": True, "url": URL_CATALOGO_MTE},
+    {"nr": "NR-03", "icone": "🛑", "titulo": "Embargo e Interdição", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-04", "icone": "🏥", "titulo": "SESMT", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-05", "icone": "🛡️", "titulo": "CIPA", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-06", "icone": "🦺", "titulo": "EPI", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-07", "icone": "🩺", "titulo": "PCMSO", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-08", "icone": "🏢", "titulo": "Edificações", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-09", "icone": "🌡️", "titulo": "Avaliação e Controle Exposições Ocupacionais", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-10", "icone": "⚡", "titulo": "Segurança em Instalações e Serviços em Eletricidade", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-11", "icone": "🚜", "titulo": "Transporte, Movimentação e Armazenagem de Materiais", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-12", "icone": "⚙️", "titulo": "Segurança no Trabalho em Máquinas e Equipamentos", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-13", "icone": "🛢️", "titulo": "Caldeiras, Vasos de Pressão, Tubulações e Tanques", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-14", "icone": "🔥", "titulo": "Fornos", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-15", "icone": "☣️", "titulo": "Atividades e Operações Insalubres", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-16", "icone": "💣", "titulo": "Atividades e Operações Perigosas", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-17", "icone": "🪑", "titulo": "Ergonomia", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-18", "icone": "🏗️", "titulo": "Indústria da Construção", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-19", "icone": "🧨", "titulo": "Explosivos", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-20", "icone": "⛽", "titulo": "Inflamáveis e Combustíveis", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-21", "icone": "☀️", "titulo": "Trabalhos a Céu Aberto", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-22", "icone": "⛏️", "titulo": "Mineração", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-23", "icone": "🧯", "titulo": "Proteção Contra Incêndios", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-24", "icone": "🚿", "titulo": "Condições Sanitárias e de Conforto", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-25", "icone": "♻️", "titulo": "Resíduos Industriais", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-26", "icone": "🚧", "titulo": "Sinalização de Segurança", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-27", "icone": "🚫", "titulo": "Registro Profissional (Revogada)", "cat": "revogada", "revogada": True, "url": URL_CATALOGO_MTE},
+    {"nr": "NR-28", "icone": "⚖️", "titulo": "Fiscalização e Penalidades", "cat": "geral", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-29", "icone": "⚓", "titulo": "Trabalho Portuário", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-30", "icone": "🚢", "titulo": "Segurança e Saúde no Trabalho Aquaviário", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-31", "icone": "🌾", "titulo": "Agricultura, Pecuária, Silvicultura e Aquicultura", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-32", "icone": "🏥", "titulo": "Segurança e Saúde no Trabalho em Serviços de Saúde", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-33", "icone": "🕳️", "titulo": "Segurança e Saúde em Espaços Confinados", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-34", "icone": "🛳️", "titulo": "Construção, Reparação e Desmonte Naval", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-35", "icone": "🪜", "titulo": "Trabalho em Altura", "cat": "especial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-36", "icone": "🥩", "titulo": "Abate e Processamento de Carnes e Derivados", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-37", "icone": "🛢️", "titulo": "Segurança e Saúde em Plataformas de Petróleo", "cat": "setorial", "url": URL_CATALOGO_MTE},
+    {"nr": "NR-38", "icone": "🧹", "titulo": "Segurança e Saúde nas Atividades de Limpeza Urbana", "cat": "setorial", "url": URL_CATALOGO_MTE},
 ]
 
 CORES_CATEGORIA = {
-    "geral": {"bg": "#c0392b", "borda": "#922b21", "texto": "#ffffff"},
-    "especial": {"bg": "#1f618d", "borda": "#154360", "texto": "#ffffff"},
-    "setorial": {"bg": "#d4ac0d", "borda": "#9a7d0a", "texto": "#1b2631"},
-    "revogada": {"bg": "#eceff1", "borda": "#90a4ae", "texto": "#546e7a"},
+    "geral": {"bg": "#c62828", "borda": "#8e0000", "texto": "#ffffff", "nr_cor": "#ffffff"},
+    "especial": {"bg": "#1565c0", "borda": "#003c8f", "texto": "#ffffff", "nr_cor": "#ffffff"},
+    "setorial": {"bg": "#f9d600", "borda": "#c4a700", "texto": "#1b2631", "nr_cor": "#ffffff"},
+    "revogada": {"bg": "#eceff1", "borda": "#90a4ae", "texto": "#546e7a", "nr_cor": "#546e7a"},
 }
 
 
@@ -110,14 +114,33 @@ def _salvar_nrs_empresa(db_name, empresa, selecionadas_set):
 def _render_legenda():
     st.markdown(
         """
-        <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center;
-                    background:#f8f9fa; padding:10px 14px; border-radius:8px;
-                    border:1px solid #e0e0e0; margin-bottom:14px; font-size:13px;">
-            <span><strong style="color:#c0392b;">■ Vermelho:</strong> NRs Gerais</span>
-            <span><strong style="color:#1f618d;">■ Azul:</strong> NRs Especiais</span>
-            <span><strong style="color:#b7950b;">■ Amarelo:</strong> NRs Setoriais</span>
-            <span><strong style="color:#566573;">■ Cinza / Riscado:</strong> NR-02 e NR-27 Revogadas</span>
-            <span style="color:#666;">| <em>Colorido = Aplicável à empresa | Preto e branco = Não aplicável</em></span>
+        <div style="
+            display:grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap:10px 24px;
+            background:#ffffff;
+            padding:14px 18px;
+            border-radius:10px;
+            border:1px solid #d5dbdb;
+            margin-top:14px;
+            margin-bottom:16px;
+        ">
+            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+                <span style="display:inline-block; width:16px; height:16px; background:#c62828; border-radius:3px;"></span>
+                <span>NRS GERAIS</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+                <span style="display:inline-block; width:16px; height:16px; background:#f9d600; border-radius:3px; border:1px solid #c4a700;"></span>
+                <span>NRS SETORIAIS</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+                <span style="display:inline-block; width:16px; height:16px; background:#1565c0; border-radius:3px;"></span>
+                <span>NRS ESPECIAIS</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
+                <span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #c62828; color:#c62828; font-size:12px; font-weight:900; border-radius:2px;">✕</span>
+                <span>NRS 2 E 27 REVOGADAS</span>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -158,7 +181,6 @@ def renderizar_aba_normas(
         f"<h4 style='color:#2980b9; margin-top:-8px;'>🏢 Empresa: <b>{empresa_alvo}</b></h4>",
         unsafe_allow_html=True,
     )
-    _render_legenda()
 
     state_key = f"nrs_selecionadas_{empresa_alvo}"
     if state_key not in st.session_state:
@@ -207,6 +229,8 @@ def renderizar_aba_normas(
                 bg = "#eceff1"
                 borda = "#90a4ae"
                 texto_cor = "#546e7a"
+                nr_cor = "#546e7a"
+                sombra_nr = "none"
                 filtro_css = "grayscale(100%); opacity: 0.78;"
                 decoracao_titulo = "text-decoration: line-through;"
                 status_tag = "REVOGADA"
@@ -215,6 +239,8 @@ def renderizar_aba_normas(
                 bg = estilo["bg"]
                 borda = estilo["borda"]
                 texto_cor = estilo["texto"]
+                nr_cor = "#ffffff"
+                sombra_nr = "0 1px 3px rgba(0, 0, 0, 0.55)"
                 filtro_css = "none;"
                 decoracao_titulo = "none;"
                 status_tag = "APLICÁVEL"
@@ -222,6 +248,8 @@ def renderizar_aba_normas(
                 bg = "#f2f3f4"
                 borda = "#bdc3c7"
                 texto_cor = "#4d5656"
+                nr_cor = "#4d5656"
+                sombra_nr = "none"
                 filtro_css = "grayscale(100%); opacity: 0.85;"
                 decoracao_titulo = "none;"
                 status_tag = "NÃO MARCADA"
@@ -234,7 +262,7 @@ def renderizar_aba_normas(
                         border:2px solid {borda};
                         border-radius:10px;
                         padding:10px 8px;
-                        min-height:142px;
+                        min-height:146px;
                         display:flex;
                         flex-direction:column;
                         justify-content:space-between;
@@ -243,43 +271,3 @@ def renderizar_aba_normas(
                     ">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span style="font-size:10px; font-weight:700; letter-spacing:0.4px;
-                                         color:{texto_cor}; opacity:0.9;">
-                                {status_tag}
-                            </span>
-                            <span style="font-size:20px; line-height:1;">{icone}</span>
-                        </div>
-                        <div style="font-size:15px; font-weight:800; color:{texto_cor};
-                                    margin:2px 0; {decoracao_titulo}">
-                            {nr_cod}
-                        </div>
-                        <div style="font-size:11px; line-height:1.25; color:{texto_cor};
-                                    {decoracao_titulo}">
-                            {titulo}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                if revogada:
-                    st.caption("🚫 Revogada")
-                else:
-                    label_btn = "✅ Marcada" if ativo else "Marcar"
-                    if st.button(
-                        label_btn,
-                        key=f"btn_nr_{empresa_alvo}_{nr_cod}",
-                        use_container_width=True,
-                    ):
-                        if ativo:
-                            selecionadas.discard(nr_cod)
-                        else:
-                            selecionadas.add(nr_cod)
-                        st.session_state[state_key] = selecionadas
-                        st.rerun()
-
-                st.markdown(
-                    f"<div style='text-align:center; font-size:11px; margin-bottom:10px;'>"
-                    f"<a href='{url_mte}' target='_blank' style='text-decoration:none;'>🔗 Norma MTE</a>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
