@@ -164,12 +164,12 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
     show_abs = c_chk4.checkbox("Absenteísmo", value=True)
     show_aniv = c_chk4.checkbox("🎂 Aniversariantes do Mês", value=True)
 
-    empresas = get_empresas_func()
-    opcoes_filtro = ["Todas as Empresas"] + (empresas if empresas else [])
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
 
     if is_admin:
-        st.markdown('<p style="margin-bottom: 0px; font-size:14px;" class="print-hide">Filtrar por Empresa</p>', unsafe_allow_html=True)
-        empresa_filtro = st.selectbox("", opcoes_filtro, key="filtro_rel_emp", label_visibility="collapsed")
+        empresa_filtro = emp_global_ativa if emp_global_ativa else "Todas as Empresas"
+        st.caption(f"🏢 Relatório exibindo: **{empresa_filtro}** (definido em Empresa Ativa Global)")
     else:
         empresa_filtro = emp_usuario
 
