@@ -112,27 +112,42 @@ def _salvar_nrs_empresa(db_name, empresa, selecionadas_set):
 
 
 def _render_legenda():
-    html_legenda = """
-    <div style="display:grid; grid-template-columns:repeat(2, minmax(200px, 1fr)); gap:10px 24px; background:#ffffff; padding:14px 18px; border-radius:10px; border:1px solid #d5dbdb; margin-top:14px; margin-bottom:16px; max-width:540px;">
-        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-            <span style="display:inline-block; width:16px; height:16px; background:#c62828; border-radius:3px;"></span>
-            <span>NRS GERAIS</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-            <span style="display:inline-block; width:16px; height:16px; background:#f9d600; border-radius:3px; border:1px solid #c4a700;"></span>
-            <span>NRS SETORIAIS</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-            <span style="display:inline-block; width:16px; height:16px; background:#1565c0; border-radius:3px;"></span>
-            <span>NRS ESPECIAIS</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:#1b2631;">
-            <span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #c62828; color:#c62828; font-size:12px; font-weight:900; border-radius:2px;">&#10005;</span>
-            <span>NRS 2 E 27 REVOGADAS</span>
-        </div>
-    </div>
-    """
-    st.markdown(html_legenda, unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("**Legenda:**")
+
+    col_esq, col_dir = st.columns(2)
+
+    with col_esq:
+        st.markdown(
+            "<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; margin-bottom:8px;'>"
+            "<span style='display:inline-block; width:16px; height:16px; background:#c62828; border-radius:3px;'></span>"
+            "<span>NRS GERAIS</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px;'>"
+            "<span style='display:inline-block; width:16px; height:16px; background:#1565c0; border-radius:3px;'></span>"
+            "<span>NRS ESPECIAIS</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    with col_dir:
+        st.markdown(
+            "<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; margin-bottom:8px;'>"
+            "<span style='display:inline-block; width:16px; height:16px; background:#f9d600; border-radius:3px; border:1px solid #c4a700;'></span>"
+            "<span>NRS SETORIAIS</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px;'>"
+            "<span style='display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #c62828; color:#c62828; font-size:12px; font-weight:900; border-radius:2px;'>&#10005;</span>"
+            "<span>NRS 2 E 27 REVOGADAS</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def renderizar_aba_normas(
@@ -199,17 +214,6 @@ def renderizar_aba_normas(
             st.rerun()
 
     st.markdown("---")
-
-    template_card = """
-    <div style="background:__BG__; border:2px solid __BORDA__; border-radius:10px; padding:10px 8px; min-height:146px; display:flex; flex-direction:column; justify-content:space-between; filter:__FILTRO__; margin-bottom:6px; user-select:none;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:10px; font-weight:800 !important; letter-spacing:0.4px; color:__TEXTO__ !important; text-shadow:__SOMBRA__; opacity:0.95;">__TAG__</span>
-            <span style="font-size:20px; line-height:1;">__ICONE__</span>
-        </div>
-        <div style="font-size:20px; font-weight:900 !important; color:__NR_COR__ !important; text-shadow:__SOMBRA__; margin:3px 0; __DECOR__">__NR__</div>
-        <div style="font-size:11px; font-weight:800 !important; line-height:1.25; color:__TEXTO__ !important; text-shadow:__SOMBRA__; __DECOR__">__TITULO__</div>
-    </div>
-    """
 
     cols_por_linha = 6
     for idx in range(0, len(NRS_CATALOGO), cols_por_linha):
@@ -328,3 +332,5 @@ def renderizar_aba_normas(
                     f"</div>",
                     unsafe_allow_html=True,
                 )
+
+    _render_legenda()
