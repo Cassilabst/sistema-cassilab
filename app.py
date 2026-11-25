@@ -15,6 +15,7 @@ from modulo_ca import renderizar_modulo_ca, consultar_dados_ca
 import base64
 import os
 import shutil
+from normas import renderizar_aba_normas
 
 # --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
 if os.path.exists("/data"):
@@ -2427,6 +2428,7 @@ if st.session_state.get("is_admin", False):
         "Elaboração de OS (Ordem de Serviço)",
         "Lista de Presença",
         "Consulta de CAs",
+        "Normas Regulamentadoras",
     ]
 else:
     opcoes_menu = [
@@ -2440,6 +2442,7 @@ else:
         "Alterar Senha",
         "Relatórios Consolidados",
         "Consulta de CAs",
+        "Normas Regulamentadoras",
     ]
 
 idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
@@ -4437,3 +4440,15 @@ elif menu == "Elaboração de OS (Ordem de Serviço)":
 # ==========================================
 elif menu == "Lista de Presença":
     renderizar_aba_lista_presenca(DB_NAME, is_admin, emp_usuario, get_empresas, registrar_log)
+
+# ==========================================
+# 14. NORMAS REGULAMENTADORAS (NRs)
+# ==========================================
+elif menu == "Normas Regulamentadoras":
+    renderizar_aba_normas(
+        DB_NAME=DB_NAME,
+        is_admin=is_admin,
+        emp_usuario=emp_usuario,
+        get_empresas=get_empresas,
+        registrar_log=registrar_log,
+    )
