@@ -3187,24 +3187,74 @@ if menu == "Cadastros Gerais":
                 st.rerun()
                 
             linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
+
+            descritivo_edicao_valor = None
+            cargo_id_edicao = None
+
+            if len(linhas_sel_cargo) == 1:
+                cargo_id_edicao = int(linhas_sel_cargo.iloc[0]["_id_banco"])
+                nome_cargo_sel = str(linhas_sel_cargo.iloc[0].get("Cargo", linhas_sel_cargo.iloc[0].get("cargo", "")))
+
+                conn_desc = sqlite_original.connect(DB_NAME, timeout=10.0)
+                cur_desc = conn_desc.cursor()
+                cur_desc.execute("PRAGMA table_info(cad_cargos)")
+                cols_desc = [c[1].lower() for c in cur_desc.fetchall()]
+                desc_atual = ""
+                if "descritivo_funcao" in cols_desc:
+                    cur_desc.execute(
+                        "SELECT descritivo_funcao FROM cad_cargos WHERE id = ?",
+                        (cargo_id_edicao,),
+                    )
+                    row_desc = cur_desc.fetchone()
+                    if row_desc and row_desc[0] is not None:
+                        desc_atual = str(row_desc[0])
+                conn_desc.close()
+
+                st.markdown("---")
+                st.markdown(f"**Descritivo de função — {nome_cargo_sel}**")
+                descritivo_edicao_valor = st.text_area(
+                    "Descritivo de função",
+                    value=desc_atual,
+                    height=120,
+                    key=f"txt_desc_cargo_sel_{cargo_id_edicao}",
+                )
+
             col_cg_1, col_cg_2 = st.columns(2)
-            
+
             # BOTÕES FORA DO FORMULÁRIO (FUNCIONAM PERFEITAMENTE)
             if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True, key="btn_salvar_cargos_global"):
                 conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                 cursor = conn.cursor()
+                cursor.execute("PRAGMA table_info(cad_cargos)")
+                cols_cad_cargos = [c[1].lower() for c in cursor.fetchall()]
+                if "descritivo_funcao" not in cols_cad_cargos:
+                    cursor.execute("ALTER TABLE cad_cargos ADD COLUMN descritivo_funcao TEXT")
+
                 for _, row in edit_cargos_geral.iterrows():
                     c_id = row.get("_id_banco", row.get("id"))
                     e_val = row.get("Empresa", row.get("empresa"))
                     c_val = row.get("Cargo", row.get("cargo"))
                     if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
                         if pd.notna(c_id) and str(c_id).strip() not in ("", "nan", "None"):
-                            cursor.execute(
-                                "UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?",
-                                (str(e_val).strip(), formatar_titulo(c_val), int(c_id)),
-                            )
+                            id_num = int(c_id)
+                            if cargo_id_edicao is not None and id_num == cargo_id_edicao and descritivo_edicao_valor is not None:
+                                cursor.execute(
+                                    "UPDATE cad_cargos SET empresa=?, cargo=?, descritivo_funcao=? WHERE id=?",
+                                    (str(e_val).strip(), formatar_titulo(c_val), descritivo_edicao_valor.strip(), id_num),
+                                )
+                            else:
+                                cursor.execute(
+                                    "UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?",
+                                    (str(e_val).strip(), formatar_titulo(c_val), id_num),
+                                )
                 conn.commit()
                 conn.close()
+                if "edit_cargos_gerais_tbl_global" in st.session_state:
+                    del st.session_state["edit_cargos_gerais_tbl_global"]
+                st.session_state["sel_id_cargo_geral"] = None
+                st.cache_data.clear()
+                st.session_state["msg_sucesso"] = "✅ Cargos e descritivos atualizados com sucesso!"
+                st.rerun()
                 if "edit_cargos_gerais_tbl_global" in st.session_state:
                     del st.session_state["edit_cargos_gerais_tbl_global"]
                 st.session_state["sel_id_cargo_geral"] = None
