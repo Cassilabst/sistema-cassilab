@@ -41,23 +41,26 @@ def _garantir_tabela_os(db_name):
     conn.close()
 
 
-def _buscar_logo_empresa_cadastro(db_name, empresa):
+def _buscar_descritivo_cargo_cadastro(db_name, empresa, cargo):
+    if not empresa or not cargo:
+        return ""
     try:
         conn = sqlite3.connect(db_name, timeout=10.0)
         cur = conn.cursor()
-        cur.execute("PRAGMA table_info(empresas)")
-        colunas = [col[1] for col in cur.fetchall()]
-        if "logo_empresa" not in colunas:
+        cur.execute("PRAGMA table_info(cad_cargos)")
+        colunas = [col[1].lower() for col in cur.fetchall()]
+        if "descritivo_funcao" not in colunas:
             conn.close()
             return ""
         cur.execute(
             """
-            SELECT logo_empresa
-            FROM empresas
-            WHERE LOWER(TRIM(nome_empresa)) = LOWER(TRIM(?))
+            SELECT descritivo_funcao
+            FROM cad_cargos
+            WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?))
+              AND LOWER(TRIM(cargo)) = LOWER(TRIM(?))
             LIMIT 1
             """,
-            (empresa,),
+            (empresa, cargo),
         )
         row = cur.fetchone()
         conn.close()
@@ -558,11 +561,20 @@ def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
                 val_cargo = base_form["cargo"] if base_form else cargo_auto
                 val_setor = base_form["setor"] if base_form else setor_auto
                 val_dt_elab = base_form["dt_elab"] if base_form else data_hoje
-                val_descricao = (
-                    base_form["descricao"]
-                    if base_form
-                    else "Manutenção preventiva e corretiva, inspeção e execução de rotinas operacionais inerentes ao cargo, seguindo rigorosamente os procedimentos de segurança da empresa e normas regulamentadoras aplicáveis."
+
+                descritivo_cargo_bd = _buscar_descritivo_cargo_cadastro(
+                    DB_NAME, emp_os_sel, val_cargo or cargo_auto
                 )
+                texto_padrao_descricao = (
+                    "Manutenção preventiva e corretiva, inspeção e execução de rotinas operacionais inerentes ao cargo, seguindo rigorosamente os procedimentos de segurança da empresa e normas regulamentadoras aplicáveis."
+                )
+
+                if descritivo_cargo_bd and not os_edicao:
+                    val_descricao = descritivo_cargo_bd
+                elif base_form and base_form.get("descricao"):
+                    val_descricao = base_form["descricao"]
+                else:
+                    val_descricao = texto_padrao_descricao
                 val_riscos = (
                     base_form["riscos"]
                     if base_form
