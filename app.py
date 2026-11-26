@@ -2408,35 +2408,7 @@ else:
     empresa_global_escolhida = st.session_state["empresa_global"]
 
 
-def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
-    emp_nome = str(nome_empresa or "").strip()
-    if not emp_nome or emp_nome == "Todas":
-        return
-
-    logo_val = ""
-    cnpj_val = ""
-    risco_val = ""
-
-    try:
-        conn = sqlite3.connect(db_name, timeout=10.0)
-        cur = conn.cursor()
-        for tabela in ["empresas", "clientes", "cad_empresas", "base_empresas"]:
-            try:
-                cur.execute(f"PRAGMA table_info({tabela})")
-                cols_info = cur.fetchall()
-                if not cols_info:
-                    continue
-                col_names = [c[1] for c in cols_info]
-                col_lower = [c.lower() for c in col_names]
-
-                idx_nome = next((i for i, c in enumerate(col_lower) if any(k in c for k in ["nome", "razao", "empresa"])), None)
-                if idx_nome is None:
-                    continue
-
-                idx_logo = col_names.index("logo_empresa") if "logo_empresa" in col_names else next((i for i, c in enumerate(col_lower) if "logo" in c), None)
-                idx_cnpj = col_names.index("cnpj") if "cnpj" in col_names else next((i for i, c in enumerate(col_lower) if "cnpj" in c), None)
-                idx_risco = col_names.index("grau_risco") if "grau_risco" in col_names else next((i for i, c in enumerate(col_lower) if "risco" in c or "grau" in c), None)
-
+_exibir_faixa_empresa_ativa
                 cur.execute(f"SELECT * FROM {tabela}")
                 for row in cur.fetchall():
                     if str(row[idx_nome] or "").strip().lower() == emp_nome.lower():
@@ -2447,13 +2419,37 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
                         if idx_risco is not None and row[idx_risco]:
                             risco_val = str(row[idx_risco]).strip()
                         break
-                if cnpj_val or logo_val or risco_val:
+                if logo_val:
                     break
             except Exception:
                 continue
         conn.close()
     except Exception:
         pass
+
+    detalhes = []
+    if cnpj_val:
+        detalhes.append(f"CNPJ: {cnpj_val}")
+    if risco_val:
+        detalhes.append(f"Grau de Risco: {risco_val}")
+    meta_txt = "  •  ".join(detalhes) if detalhes else "Empresa Ativa"
+
+    with st.container(border=True):
+        c_logo, c_info = st.columns([0.16, 0.84], vertical_alignment="center")
+        with c_logo:
+            mostrou_logo = False
+            if logo_val:
+                try:
+                    b64_limpo = logo_val.split(",", 1)[1] if "," in logo_val and logo_val.startswith("data:") else logo_val
+                    st.image(base64.b64decode(b64_limpo), width=90)
+                    mostrou_logo = True
+                except Exception as e:
+                    st.caption(f"Erro logo: {e}")
+            if not mostrou_logo:
+                st.markdown("🏢")
+        with c_info:
+            st.markdown(f"**{emp_nome}**")
+            st.caption(meta_txt)
 
     detalhes = []
     if cnpj_val:
