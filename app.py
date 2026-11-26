@@ -2403,12 +2403,40 @@ if st.session_state.get("is_admin", False):
         atualizar_filtro_empresa(
             empresa_global_escolhida if empresa_global_escolhida != "Todas" else ""
         )
-else:
-    st.session_state["empresa_global"] = st.session_state.get("empresa_usuario", "")
-    empresa_global_escolhida = st.session_state["empresa_global"]
+    else:
+        st.session_state["empresa_global"] = st.session_state.get("empresa_usuario", "")
+        empresa_global_escolhida = st.session_state["empresa_global"]
 
 
-_exibir_faixa_empresa_ativa
+def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
+    emp_nome = str(nome_empresa or "").strip()
+    if not emp_nome or emp_nome == "Todas":
+        return
+
+    logo_val = ""
+    cnpj_val = ""
+    risco_val = ""
+
+    try:
+        conn = sqlite3.connect(db_name, timeout=10.0)
+        cur = conn.cursor()
+        for tabela in ["empresas", "clientes", "cad_empresas", "base_empresas"]:
+            try:
+                cur.execute(f"PRAGMA table_info({tabela})")
+                cols_info = cur.fetchall()
+                if not cols_info:
+                    continue
+                col_names = [c[1] for c in cols_info]
+                col_lower = [c.lower() for c in col_names]
+
+                idx_nome = next((i for i, c in enumerate(col_lower) if any(k in c for k in ["nome", "razao", "empresa"])), None)
+                if idx_nome is None:
+                    continue
+
+                idx_logo = col_names.index("logo_empresa") if "logo_empresa" in col_names else next((i for i, c in enumerate(col_lower) if "logo" in c), None)
+                idx_cnpj = col_names.index("cnpj") if "cnpj" in col_names else next((i for i, c in enumerate(col_lower) if "cnpj" in c), None)
+                idx_risco = col_names.index("grau_risco") if "grau_risco" in col_names else next((i for i, c in enumerate(col_lower) if "risco" in c or "grau" in c), None)
+
                 cur.execute(f"SELECT * FROM {tabela}")
                 for row in cur.fetchall():
                     if str(row[idx_nome] or "").strip().lower() == emp_nome.lower():
