@@ -3081,12 +3081,23 @@ if menu == "Cadastros Gerais":
                 key="sel_emp_cargo_geral",
             )
             novo_cargo = st.text_input("Novo Cargo")
+            descritivo_funcao_novo = st.text_area(
+                "Descritivo de função",
+                placeholder="Descreva as atividades e atribuições do cargo...",
+                height=100,
+            )
             btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
             if btn_add_salvar_cargo:
                 if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
+                    cursor.execute("PRAGMA table_info(cad_cargos)")
+                    cols_cad_cargos = [c[1].lower() for c in cursor.fetchall()]
+                    if "descritivo_funcao" not in cols_cad_cargos:
+                        cursor.execute("ALTER TABLE cad_cargos ADD COLUMN descritivo_funcao TEXT")
+
                     cargo_fmt = formatar_titulo(novo_cargo)
+                    descritivo_fmt = descritivo_funcao_novo.strip()
                     cursor.execute(
                         "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
                         (empresa_cargo_sel, cargo_fmt),
@@ -3096,8 +3107,8 @@ if menu == "Cadastros Gerais":
                         st.error(f"Este cargo já está cadastrado para a empresa {empresa_cargo_sel}.")
                     else:
                         cursor.execute(
-                            "INSERT INTO cad_cargos (empresa, cargo) VALUES (?, ?)",
-                            (empresa_cargo_sel, cargo_fmt),
+                            "INSERT INTO cad_cargos (empresa, cargo, descritivo_funcao) VALUES (?, ?, ?)",
+                            (empresa_cargo_sel, cargo_fmt, descritivo_fmt),
                         )
                         conn.commit()
                         if "edit_cargos_gerais_tbl_global" in st.session_state:
