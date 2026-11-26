@@ -3071,15 +3071,21 @@ if menu == "Cadastros Gerais":
     st.markdown("---")
 
     if aba_selecionada == "Cargos":
-        st.subheader("Gerenciar Cargos por Empresa")
-        empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-        
+        empresa_global_cargo = str(st.session_state.get("empresa_global", "")).strip()
+        emp_ativa_cargo = (
+            empresa_global_cargo
+            if empresa_global_cargo and empresa_global_cargo.lower() not in ("todas", "todas as empresas")
+            else ""
+        )
+
+        st.subheader("Gerenciar Cargos")
+        if not emp_ativa_cargo:
+            st.warning("⚠️ Selecione uma empresa específica em **Empresa Ativa (Global)** no menu lateral para gerenciar os cargos.")
+            return
+
+        st.caption(f"🏢 Empresa ativa no menu: **{emp_ativa_cargo}**")
+
         with st.form("form_cad_cargo_unico_geral"):
-            empresa_cargo_sel = st.selectbox(
-                "Selecione a Empresa",
-                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                key="sel_emp_cargo_geral",
-            )
             novo_cargo = st.text_input("Novo Cargo")
             descritivo_funcao_novo = st.text_area(
                 "Descritivo de função",
@@ -3088,7 +3094,7 @@ if menu == "Cadastros Gerais":
             )
             btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
             if btn_add_salvar_cargo:
-                if empresa_cargo_sel != "Nenhuma" and novo_cargo.strip():
+                if novo_cargo.strip():
                     conn = sqlite_original.connect(DB_NAME, timeout=10.0)
                     cursor = conn.cursor()
                     cursor.execute("PRAGMA table_info(cad_cargos)")
@@ -3099,16 +3105,16 @@ if menu == "Cadastros Gerais":
                     cargo_fmt = formatar_titulo(novo_cargo)
                     descritivo_fmt = descritivo_funcao_novo.strip()
                     cursor.execute(
-                        "SELECT id FROM cad_cargos WHERE empresa = ? AND cargo = ?",
-                        (empresa_cargo_sel, cargo_fmt),
+                        "SELECT id FROM cad_cargos WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?)) AND LOWER(TRIM(cargo)) = LOWER(TRIM(?))",
+                        (emp_ativa_cargo, cargo_fmt),
                     )
                     existe = cursor.fetchone()
                     if existe:
-                        st.error(f"Este cargo já está cadastrado para a empresa {empresa_cargo_sel}.")
+                        st.error(f"Este cargo já está cadastrado para a empresa {emp_ativa_cargo}.")
                     else:
                         cursor.execute(
                             "INSERT INTO cad_cargos (empresa, cargo, descritivo_funcao) VALUES (?, ?, ?)",
-                            (empresa_cargo_sel, cargo_fmt, descritivo_fmt),
+                            (emp_ativa_cargo, cargo_fmt, descritivo_fmt),
                         )
                         conn.commit()
                         if "edit_cargos_gerais_tbl_global" in st.session_state:
@@ -3117,29 +3123,32 @@ if menu == "Cadastros Gerais":
                         st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
                         registrar_log(
                             st.session_state.get("nome_usuario", "Administrador"),
-                            empresa_cargo_sel,
+                            emp_ativa_cargo,
                             f"Adicionou cargo: {cargo_fmt}",
                         )
                         st.rerun()
                     conn.close()
                 else:
-                    st.error("Selecione a empresa e preencha o nome do cargo.")
-                    
+                    st.error("Preencha o nome do cargo.")
+
         st.markdown("---")
-        filtro_cargo_emp = st.selectbox(
-            "Filtrar por Empresa",
-            ["Todas as Empresas"] + (empresas_cadastradas if "empresas_cadastradas" in locals() else []),
-            key="filtro_cargo_emp_view",
-        )
-        
+
         conn = sqlite_original.connect(DB_NAME, timeout=10.0)
         try:
             df_cargos_geral = pd.read_sql(
-                "SELECT id, empresa, cargo FROM cad_cargos ORDER BY empresa, cargo ASC",
+                "SELECT id, empresa, cargo, descritivo_funcao FROM cad_cargos WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?)) ORDER BY cargo ASC",
                 conn,
+                params=(emp_ativa_cargo,),
             )
         except Exception:
-            df_cargos_geral = pd.DataFrame()
+            try:
+                df_cargos_geral = pd.read_sql(
+                    "SELECT id, empresa, cargo FROM cad_cargos WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?)) ORDER BY cargo ASC",
+                    conn,
+                    params=(emp_ativa_cargo,),
+                )
+            except Exception:
+                df_cargos_geral = pd.DataFrame()
         conn.close()
         
         if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
