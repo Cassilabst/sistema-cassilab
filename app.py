@@ -2465,8 +2465,7 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
     if risco_val:
         detalhes.append(f"Grau de Risco: {risco_val}")
     meta_txt = "  •  ".join(detalhes) if detalhes else "Empresa Ativa"
-    st.caption(f"DB faixa: {db_name} | logo_ok: {bool(logo_val)}")
-
+    
     with st.container(border=True):
         c_logo, c_info = st.columns([0.16, 0.84], vertical_alignment="center")
         with c_logo:
