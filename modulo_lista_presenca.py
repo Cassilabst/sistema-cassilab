@@ -73,7 +73,26 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
             empresa_selecionada = emp_usuario if emp_usuario in empresas else (empresas[0] if empresas else "")
             c_p1.markdown(f"**Empresa Cliente:** {empresa_selecionada}")
 
-        logo_file = c_p2.file_uploader("📂 Inserir Logo da Empresa (Opcional)", type=["png", "jpg", "jpeg"])
+        logo_banco_b64 = ""
+        cnpj_empresa_banco = ""
+        try:
+            conn_emp = sqlite3.connect(DB_NAME, timeout=10.0)
+            cur_emp = conn_emp.cursor()
+            cur_emp.execute("PRAGMA table_info(empresas)")
+            cols_emp = [c[1] for c in cur_emp.fetchall()]
+            col_logo_sel = "logo_empresa" if "logo_empresa" in cols_emp else "NULL"
+            col_cnpj_sel = "cnpj" if "cnpj" in cols_emp else "NULL"
+            cur_emp.execute(
+                f"SELECT {col_logo_sel}, {col_cnpj_sel} FROM empresas WHERE LOWER(TRIM(nome_empresa)) = LOWER(TRIM(?)) LIMIT 1",
+                (empresa_selecionada,)
+            )
+            row_emp = cur_emp.fetchone()
+            if row_emp:
+                logo_banco_b64 = str(row_emp[0] or "").strip()
+                cnpj_empresa_banco = str(row_emp[1] or "").strip()
+            conn_emp.close()
+        except Exception:
+            pass
 
         c_p3, c_p4, c_p5 = st.columns(3)
         
@@ -161,13 +180,13 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
             st.success("✅ Documento gerado com sucesso! Utilize o botão de impressão logo abaixo.")
 
             logo_html = ""
-            if logo_file:
-                bytes_logo = logo_file.getvalue()
-                encoded_logo = base64.b64encode(bytes_logo).decode()
-                tipo_arquivo = logo_file.type.split("/")[-1]
-                logo_html = f'<img src="data:image/{tipo_arquivo};base64,{encoded_logo}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />'
+            if logo_banco_b64:
+                src_logo = logo_banco_b64 if logo_banco_b64.startswith("data:") else f"data:image/png;base64,{logo_banco_b64}"
+                logo_html = f'<img src="{src_logo}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />'
             else:
                 logo_html = '<div style="border: 1px dashed #ccc; padding: 6px; font-size: 10px; color: #666; text-align: center;">[ Logo da Empresa ]</div>'
+
+            linha_cnpj_html = f"<br><b>CNPJ:</b> {cnpj_empresa_banco}" if cnpj_empresa_banco else ""
 
             lista_participantes_rows = list(participantes_selecionados.iterrows())
             total_participantes = len(lista_participantes_rows)
@@ -215,7 +234,7 @@ def renderizar_aba_lista_presenca(*args, **kwargs):
                     '<table class="cabecalho-principal"><tr>'
                     f'<td style="width: 20%; text-align: center;">{logo_html}</td>'
                     '<td style="width: 45%; text-align: center; font-size: 13px; font-weight: bold;">LISTA DE PRESENÇA</td>'
-                    f'<td style="width: 35%; font-size: 9px;"><b>Empresa:</b> {empresa_selecionada}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
+                    f'<td style="width: 35%; font-size: 9px;"><b>Empresa:</b> {empresa_selecionada}{linha_cnpj_html}<br><b>Data Emissão:</b> {data_hoje_str}<br><b>Revisão:</b> _____/_____/_________</td>'
                     '</tr></table>'
                     '<table class="borda-tabela">'
                     f'<tr><td colspan="4"><b>Treinamento:</b> {treinamento_nome}</td><td colspan="2"><b>Carga Horária:</b> {carga_horaria}</td></tr>'
