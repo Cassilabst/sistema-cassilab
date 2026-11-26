@@ -3255,13 +3255,7 @@ if menu == "Cadastros Gerais":
                 st.cache_data.clear()
                 st.session_state["msg_sucesso"] = "✅ Cargos e descritivos atualizados com sucesso!"
                 st.rerun()
-                if "edit_cargos_gerais_tbl_global" in st.session_state:
-                    del st.session_state["edit_cargos_gerais_tbl_global"]
-                st.session_state["sel_id_cargo_geral"] = None
-                st.cache_data.clear()
-                st.session_state["msg_sucesso"] = "✅ Cargos atualizados com sucesso!"
-                st.rerun()
-                
+
             if col_cg_2.button("🗑️ Excluir Cargo Selecionado", use_container_width=True, key="btn_excluir_cargo_global"):
                 if len(linhas_sel_cargo) == 1:
                     cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
