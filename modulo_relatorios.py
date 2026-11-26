@@ -4,11 +4,12 @@ import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
 
-def obter_cnpj_empresa(DB_NAME, empresa_nome):
+def obter_dados_empresa_relatorio(DB_NAME, empresa_nome):
     if not empresa_nome or empresa_nome == "Todas as Empresas":
-        return "Consolidado Geral / Múltiplas Empresas"
+        return "Consolidado Geral / Múltiplas Empresas", ""
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
     cnpj = "Não informado"
+    logo_b64 = ""
     try:
         cursor = conn.cursor()
         for tabela in ["empresas", "clientes", "cad_empresas", "base_empresas"]:
@@ -18,16 +19,24 @@ def obter_cnpj_empresa(DB_NAME, empresa_nome):
                 col_names = [description[0].lower() for description in cursor.description]
                 name_idx = next((i for i, c in enumerate(col_names) if any(k in c for k in ['nome', 'razao', 'empresa'])), None)
                 cnpj_idx = next((i for i, c in enumerate(col_names) if 'cnpj' in c), None)
-                if name_idx is not None and cnpj_idx is not None:
+                logo_idx = next((i for i, c in enumerate(col_names) if 'logo' in c), None)
+                if name_idx is not None:
                     for row in rows:
                         if str(row[name_idx]).strip().lower() == str(empresa_nome).strip().lower():
-                            cnpj = str(row[cnpj_idx])
+                            if cnpj_idx is not None and row[cnpj_idx]:
+                                cnpj = str(row[cnpj_idx]).strip()
+                            if logo_idx is not None and row[logo_idx]:
+                                logo_b64 = str(row[logo_idx]).strip()
                             break
-                if cnpj != "Não informado": break
-            except: continue
-    except: pass
-    finally: conn.close()
-    return cnpj
+                if cnpj != "Não informado" or logo_b64:
+                    break
+            except:
+                continue
+    except:
+        pass
+    finally:
+        conn.close()
+    return cnpj, logo_b64
 
 def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func, formatar_colunas_func, adicionar_numeracao_func):
     st.markdown("""
@@ -175,13 +184,24 @@ def renderizar_aba_relatorios(DB_NAME, is_admin, emp_usuario, get_empresas_func,
 
     st.markdown("---")
 
-    cnpj_empresa_atual = obter_cnpj_empresa(DB_NAME, empresa_filtro)
+    cnpj_empresa_atual, logo_empresa_b64 = obter_dados_empresa_relatorio(DB_NAME, empresa_filtro)
+    if logo_empresa_b64:
+        src_logo_rel = logo_empresa_b64 if logo_empresa_b64.startswith("data:") else f"data:image/png;base64,{logo_empresa_b64}"
+        logo_rel_html = f'<img src="{src_logo_rel}" style="max-height: 60px; max-width: 170px; object-fit: contain;" />'
+    else:
+        logo_rel_html = ""
+
     st.markdown(f"""
         <div class="print-header">
-            <h2 style="margin:0; font-size:18pt; color:#000000;">Cassilab - Gestão em SST</h2>
-            <p style="margin:6px 0 2px 0; font-size:12pt; color:#000000;"><b>Empresa:</b> {empresa_filtro}</p>
-            <p style="margin:0 0 15px 0; font-size:12pt; color:#000000;"><b>CNPJ:</b> {cnpj_empresa_atual}</p>
-            <hr style="border: 1px solid #000000; margin-bottom: 20px;"/>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div>
+                    <h2 style="margin:0; font-size:18pt; color:#000000;">Cassilab - Gestão em SST</h2>
+                    <p style="margin:6px 0 2px 0; font-size:12pt; color:#000000;"><b>Empresa:</b> {empresa_filtro}</p>
+                    <p style="margin:0; font-size:12pt; color:#000000;"><b>CNPJ:</b> {cnpj_empresa_atual}</p>
+                </div>
+                <div>{logo_rel_html}</div>
+            </div>
+            <hr style="border: 1px solid #000000; margin-top: 12px; margin-bottom: 20px;"/>
         </div>
     """, unsafe_allow_html=True)
 
