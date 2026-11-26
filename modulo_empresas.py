@@ -229,7 +229,10 @@ def renderizar_aba_empresas(
 
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE empresas SET logo_empresa = ? WHERE nome_empresa = ?", (logo_b64, emp_global_ativa))
+                        cursor.execute(
+                            "UPDATE empresas SET logo_empresa = ? WHERE LOWER(TRIM(nome_empresa)) = LOWER(TRIM(?))",
+                            (logo_b64, emp_global_ativa)
+                        )
                         conn.commit()
                         conn.close()
                         st.session_state["msg_sucesso"] = f"✅ Logomarca da empresa '{emp_global_ativa}' atualizada com sucesso!"
