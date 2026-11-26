@@ -210,31 +210,32 @@ def renderizar_aba_empresas(
                     else:
                         st.error("O campo 'Nome da Empresa' é obrigatório.")
 
-        # SEÇÃO PARA ATUALIZAR LOGO DE EMPRESAS JÁ CADASTRADAS
-        with st.expander("🖼️ Gerenciar / Atualizar Logotipo de Empresas Existentes", expanded=False):
-            conn = sqlite3.connect(DB_NAME, timeout=10.0)
-            df_empresas_lista = pd.read_sql("SELECT id, nome_empresa FROM empresas ORDER BY nome_empresa ASC", conn)
-            conn.close()
+        empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+        emp_global_ativa = empresa_global if empresa_global and empresa_global != "Todas" else ""
 
-            if not df_empresas_lista.empty:
-                empresa_escolhida_logo = st.selectbox("Selecione a empresa para alterar/adicionar a logo:", df_empresas_lista["nome_empresa"].tolist(), key="sel_emp_logo_up")
+        # SEÇÃO PARA ATUALIZAR LOGO DA EMPRESA ATIVA
+        with st.expander("🖼️ Gerenciar / Atualizar Logotipo da Empresa Ativa", expanded=False):
+            if not emp_global_ativa:
+                st.info("ℹ️ Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral para gerenciar a logomarca.")
+            else:
+                st.caption(f"🏢 Empresa ativa selecionada no menu: **{emp_global_ativa}**")
                 logo_file_existente = st.file_uploader("Enviar nova Logo (PNG, JPG)", type=["png", "jpg", "jpeg"], key="logo_existente_up")
                 
                 if st.button("💾 Salvar Logomarca para esta Empresa", key="btn_salvar_logo_existente"):
-                    if empresa_escolhida_logo and logo_file_existente is not None:
+                    if logo_file_existente is not None:
                         b_logo = logo_file_existente.getvalue()
                         tipo_img = logo_file_existente.type.split("/")[-1]
                         logo_b64 = f"data:image/{tipo_img};base64,{base64.b64encode(b_logo).decode()}"
 
                         conn = sqlite3.connect(DB_NAME, timeout=10.0)
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE empresas SET logo_empresa = ? WHERE nome_empresa = ?", (logo_b64, empresa_escolhida_logo))
+                        cursor.execute("UPDATE empresas SET logo_empresa = ? WHERE nome_empresa = ?", (logo_b64, emp_global_ativa))
                         conn.commit()
                         conn.close()
-                        st.success(f"✅ Logomarca da empresa '{empresa_escolhida_logo}' atualizada com sucesso!")
+                        st.session_state["msg_sucesso"] = f"✅ Logomarca da empresa '{emp_global_ativa}' atualizada com sucesso!"
                         st.rerun()
                     else:
-                        st.warning("Selecione a empresa e envie um arquivo de imagem.")
+                        st.warning("Envie um arquivo de imagem para salvar a logomarca.")
 
     st.subheader("Empresas Cadastradas")
     conn = sqlite3.connect(DB_NAME, timeout=10.0)
@@ -335,8 +336,11 @@ def renderizar_aba_empresas(
             st.markdown("---")
             st.subheader("🗑️ Excluir Empresa Definitivamente")
             with st.form("form_excluir_empresa"):
-                lista_nomes_empresas = sorted(df_emp["nome_empresa"].tolist() if "nome_empresa" in df_emp.columns else df_emp["Nome Empresa"].tolist())
-                empresa_para_excluir = st.selectbox("Selecione a empresa que deseja excluir:", lista_nomes_empresas)
+                empresa_para_excluir = emp_global_ativa
+                if empresa_para_excluir:
+                    st.warning(f"⚠️ Empresa alvo (definida em Empresa Ativa Global): **{empresa_para_excluir}**")
+                else:
+                    st.info("ℹ️ Selecione uma empresa específica em **🏢 Empresa Ativa (Global)** no menu lateral para habilitar a exclusão.")
                 chk_excluir_emp = st.checkbox("⚠️ Confirmo que desejo excluir esta empresa e todos os seus dados vinculados permanentemente")
                 btn_executar_exclusao = st.form_submit_button("🗑️ Excluir Empresa e Dados Relacionados")
                 if btn_executar_exclusao:
