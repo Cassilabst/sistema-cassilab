@@ -2583,7 +2583,6 @@ if st.session_state.get("msg_sucesso"):
     st.session_state["msg_sucesso"] = ""
 
 _exibir_faixa_empresa_ativa(DB_NAME, st.session_state.get("empresa_global", ""))
-st.caption(f"Banco faixa: {DB_NAME}")
 
 if menu == "Alterar Senha":
     renderizar_aba_alterar_senha(DB_NAME, st.session_state.get("nome_usuario", ""))
