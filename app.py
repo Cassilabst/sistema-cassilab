@@ -2418,7 +2418,7 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
     risco_val = ""
 
     try:
-        conn = sqlite3.connect(db_name, timeout=10.0)
+        conn = sqlite_original.connect(db_name, timeout=10.0)
         cur = conn.cursor()
         for tabela in ["empresas", "clientes", "cad_empresas", "base_empresas"]:
             try:
