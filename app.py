@@ -2480,6 +2480,7 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
                     st.caption(f"Erro logo: {e}")
             if not mostrou_logo:
                 st.markdown("🏢")
+                st.caption("Sem logo no banco" if not logo_val else "Logo inválida")
         with c_info:
             st.markdown(f"**{emp_nome}**")
             st.caption(meta_txt)
