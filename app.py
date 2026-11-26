@@ -3081,7 +3081,7 @@ if menu == "Cadastros Gerais":
         st.subheader("Gerenciar Cargos")
         if not emp_ativa_cargo:
             st.warning("⚠️ Selecione uma empresa específica em **Empresa Ativa (Global)** no menu lateral para gerenciar os cargos.")
-            return
+            st.stop()
 
         st.caption(f"🏢 Empresa ativa no menu: **{emp_ativa_cargo}**")
 
