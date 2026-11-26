@@ -452,6 +452,61 @@ def _bloco_historico_os(df_hist, titulo_secao, key_prefix, db_name, registrar_lo
                 st.rerun()
 
 
+def _buscar_logo_empresa_cadastro(db_name, empresa):
+    try:
+        conn = sqlite3.connect(db_name, timeout=10.0)
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(empresas)")
+        colunas = [col[1] for col in cur.fetchall()]
+        if "logo_empresa" not in colunas:
+            conn.close()
+            return ""
+        cur.execute(
+            """
+            SELECT logo_empresa
+            FROM empresas
+            WHERE LOWER(TRIM(nome_empresa)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (empresa,),
+        )
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0] and str(row[0]).strip():
+            return str(row[0]).strip()
+    except Exception:
+        pass
+    return ""
+
+def _buscar_descritivo_cargo_cadastro(db_name, empresa, cargo):
+    if not empresa or not cargo:
+        return ""
+    try:
+        conn = sqlite3.connect(db_name, timeout=10.0)
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(cad_cargos)")
+        colunas = [col[1].lower() for col in cur.fetchall()]
+        if "descritivo_funcao" not in colunas:
+            conn.close()
+            return ""
+        cur.execute(
+            """
+            SELECT descritivo_funcao
+            FROM cad_cargos
+            WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?))
+              AND LOWER(TRIM(cargo)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (empresa, cargo),
+        )
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0] and str(row[0]).strip():
+            return str(row[0]).strip()
+    except Exception:
+        pass
+    return ""
+
 def renderizar_aba_os(DB_NAME, get_empresas_func, registrar_log_callback):
     _garantir_tabela_os(DB_NAME)
     st.title("📝 Emissor de Ordem de Serviço")
