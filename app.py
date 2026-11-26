@@ -3151,12 +3151,6 @@ if menu == "Cadastros Gerais":
                 df_cargos_geral = pd.DataFrame()
         conn.close()
         
-        if filtro_cargo_emp != "Todas as Empresas" and not df_cargos_geral.empty:
-            df_cargos_geral = df_cargos_geral[
-                df_cargos_geral["empresa"].astype(str).str.strip().str.lower()
-                == str(filtro_cargo_emp).strip().lower()
-            ]
-            
         if not df_cargos_geral.empty:
             if "sel_id_cargo_geral" not in st.session_state:
                 st.session_state["sel_id_cargo_geral"] = None
@@ -3173,7 +3167,7 @@ if menu == "Cadastros Gerais":
                 df_cargos_ex,
                 hide_index=True,
                 num_rows="fixed",
-                key=f"edit_cargos_gerais_tbl_{filtro_cargo_emp}",
+                key=f"edit_cargos_gerais_tbl_{emp_ativa_cargo}",
                 width="stretch",
                 column_config={
                     "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
