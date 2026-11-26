@@ -2429,7 +2429,11 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
                 col_names = [c[1] for c in cols_info]
                 col_lower = [c.lower() for c in col_names]
 
-                idx_nome = next((i for i, c in enumerate(col_lower) if any(k in c for k in ["nome", "razao", "empresa"])), None)
+                idx_nome = (
+                    col_lower.index("nome_empresa")
+                    if "nome_empresa" in col_lower
+                    else next((i for i, c in enumerate(col_lower) if any(k in c for k in ["nome", "razao", "empresa"])), None)
+                )
                 if idx_nome is None:
                     continue
 
@@ -2468,34 +2472,13 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
             mostrou_logo = False
             if logo_val:
                 try:
-                    b64_limpo = logo_val.split(",", 1)[1] if "," in logo_val and logo_val.startswith("data:") else logo_val
+                    b64_raw = logo_val.split(",", 1)[1] if "," in logo_val and logo_val.startswith("data:") else logo_val
+                    b64_limpo = re.sub(r"\s+", "", b64_raw)
                     st.image(base64.b64decode(b64_limpo), width=90)
                     mostrou_logo = True
                 except Exception as e:
                     st.caption(f"Erro logo: {e}")
             if not mostrou_logo:
-                st.markdown("🏢")
-        with c_info:
-            st.markdown(f"**{emp_nome}**")
-            st.caption(meta_txt)
-
-    detalhes = []
-    if cnpj_val:
-        detalhes.append(f"CNPJ: {cnpj_val}")
-    if risco_val:
-        detalhes.append(f"Grau de Risco: {risco_val}")
-    meta_txt = "  •  ".join(detalhes) if detalhes else "Empresa Ativa"
-
-    with st.container(border=True):
-        c_logo, c_info = st.columns([0.14, 0.86], vertical_alignment="center")
-        with c_logo:
-            if logo_val:
-                src_img = logo_val if logo_val.startswith("data:image") else f"data:image/png;base64,{logo_val}"
-                st.markdown(
-                    f'<img src="{src_img}" style="max-height: 46px; max-width: 100%; object-fit: contain; display: block; margin: auto;" />',
-                    unsafe_allow_html=True,
-                )
-            else:
                 st.markdown("🏢")
         with c_info:
             st.markdown(f"**{emp_nome}**")
