@@ -2433,9 +2433,9 @@ def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
                 if idx_nome is None:
                     continue
 
-                idx_logo = next((i for i, c in enumerate(col_lower) if "logo" in c), None)
-                idx_cnpj = next((i for i, c in enumerate(col_lower) if "cnpj" in c), None)
-                idx_risco = next((i for i, c in enumerate(col_lower) if "risco" in c or "grau" in c), None)
+                idx_logo = col_names.index("logo_empresa") if "logo_empresa" in col_names else next((i for i, c in enumerate(col_lower) if "logo" in c), None)
+                idx_cnpj = col_names.index("cnpj") if "cnpj" in col_names else next((i for i, c in enumerate(col_lower) if "cnpj" in c), None)
+                idx_risco = col_names.index("grau_risco") if "grau_risco" in col_names else next((i for i, c in enumerate(col_lower) if "risco" in c or "grau" in c), None)
 
                 cur.execute(f"SELECT * FROM {tabela}")
                 for row in cur.fetchall():
