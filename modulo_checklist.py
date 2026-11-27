@@ -59,21 +59,10 @@ def _garantir_tabela_arquivos_checklist(db_name):
 
 
 def _eh_admin():
-    MEUS_LOGINS = {"coloque_seu_login_ou_email_aqui"}
-
-    for chave in ("usuario_logado", "nome_usuario", "usuario", "login", "email_usuario", "email", "user"):
-        valor = str(st.session_state.get(chave, "")).strip().lower()
-        if valor and valor in MEUS_LOGINS:
-            return True
-
-    return False
-
-    for chave in ("perfil_usuario", "perfil", "acesso_usuario", "acesso", "nivel_acesso", "permissao"):
-        valor = str(st.session_state.get(chave, "")).strip().lower()
-        if valor in ("admin", "administrador", "fazer tudo", "master"):
-            return True
-
-    return False
+    perfil = str(st.session_state.get("perfil_usuario", st.session_state.get("perfil", ""))).strip().lower()
+    acesso = str(st.session_state.get("acesso_usuario", st.session_state.get("acesso", ""))).strip().lower()
+    return perfil == "administrador" or acesso == "fazer tudo"
+    
 def _formatar_tamanho(num_bytes):
     if not num_bytes:
         return "—"
