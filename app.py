@@ -4593,7 +4593,7 @@ elif menu == "Normas Regulamentadoras":
         emp_usuario=emp_usuario,
         get_empresas=get_empresas,
         registrar_log=registrar_log,
-    )
+        )
 
     # ==========================================
     # 15. CHECKLISTS
