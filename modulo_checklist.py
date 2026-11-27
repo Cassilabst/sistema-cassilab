@@ -109,6 +109,7 @@ def _eh_admin():
     termos_cliente = ("cliente", "visualizador", "leitura", "somente leitura", "convidado")
     termos_admin = ("administrador", "admin", "fazer tudo", "master", "gestor", "diretor", "total", "gerenciar")
 
+    # 1. Olha primeiro apenas nas chaves de perfil/acesso
     for chave in chaves_perfil:
         val = st.session_state.get(chave)
         if isinstance(val, str):
@@ -126,21 +127,20 @@ def _eh_admin():
                     if any(t in s for t in termos_admin):
                         return True
 
-    for valor in st.session_state.values():
+    # 2. Se nenhuma chave de perfil respondeu, coleta tudo sem dar return no meio do loop
+    textos = []
+    for chave, valor in st.session_state.items():
+        if any(ign in str(chave).lower() for ign in ("empresa", "filtro", "busca", "titulo", "checklist")):
+            continue
         if isinstance(valor, str):
-            v = valor.strip().lower()
-            if any(t in v for t in termos_cliente):
-                return False
-            if any(t in v for t in termos_admin):
-                return True
+            textos.append(valor.strip().lower())
         elif isinstance(valor, dict):
-            for sub in valor.values():
-                if isinstance(sub, str):
-                    s = sub.strip().lower()
-                    if any(t in s for t in termos_cliente):
-                        return False
-                    if any(t in s for t in termos_admin):
-                        return True
+            textos.extend(sub.strip().lower() for sub in valor.values() if isinstance(sub, str))
+
+    if any(any(t in txt for t in termos_cliente) for txt in textos):
+        return False
+    if any(any(t in txt for t in termos_admin) for txt in textos):
+        return True
 
     return False
 
