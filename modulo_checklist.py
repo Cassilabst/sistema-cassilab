@@ -1,26 +1,31 @@
 import base64
 import io
 import os
-import re
 import sqlite3
-import zipfile
-import xml.etree.ElementTree as ET
 from datetime import datetime
 import streamlit as st
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import cm
+    from reportlab.pdfgen import canvas as rl_canvas
     from reportlab.lib.utils import ImageReader
-    from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     TEM_REPORTLAB = True
 except ImportError:
     TEM_REPORTLAB = False
 
+try:
+    from pypdf import PdfReader, PdfWriter
+    TEM_PYPDF = True
+except ImportError:
+    TEM_PYPDF = False
+
 
 EXTENSOES_PERMITIDAS = {"pdf", "docx"}
+
+MIME_POR_EXTENSAO = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 
 def _garantir_tabela_arquivos_checklist(db_name):
@@ -118,7 +123,7 @@ def _listar_empresas_banco(db_name):
 
 
 def _converter_para_image_reader(valor_logo):
-    if valor_logo is None:
+    if not TEM_REPORTLAB or valor_logo is None:
         return None
 
     if isinstance(valor_logo, (bytes, bytearray, memoryview)):
@@ -210,7 +215,6 @@ def _buscar_logo_empresa(db_name, nome_empresa):
             if row and row[0]:
                 return row[0]
 
-            # Busca parcial caso o nome tenha sufixos/prefixos
             where_like = [f'LOWER(COALESCE("{c}", \'\')) LIKE ?' for c in cols_busca]
             params_like = [f"%{alvo}%" for _ in cols_busca]
             cur.execute(
@@ -228,317 +232,98 @@ def _buscar_logo_empresa(db_name, nome_empresa):
     return None
 
 
-def _extrair_itens_docx(blob_bytes):
-    itens = []
-    try:
-        with zipfile.ZipFile(io.BytesIO(blob_bytes)) as zf:
-            if "word/document.xml" not in zf.namelist():
-                return itens
-            xml_bytes = zf.read("word/document.xml")
-            root = ET.fromstring(xml_bytes)
-            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-
-            # Extrai linhas de tabelas
-            for tr in root.findall(".//w:tr", ns):
-                celulas = []
-                for tc in tr.findall(".//w:tc", ns):
-                    textos_tc = ["".join(t.itertext()).strip() for t in tc.findall(".//w:p", ns)]
-                    texto_cel = " ".join([x for x in textos_tc if x]).strip()
-                    celulas.append(texto_cel)
-                linha_unida = " | ".join([c for c in celulas if c]).strip()
-                if linha_unida and linha_unida.lower() not in ("item", "descrição", "descricao", "c", "nc", "n/a", "observações", "observacoes"):
-                    itens.append(linha_unida)
-
-            # Se não houver tabelas ou além delas, extrai parágrafos relevantes
-            for p in root.findall(".//w:p", ns):
-                # Evita duplicar parágrafos já dentro de tabela
-                txt = "".join(p.itertext()).strip()
-                if txt and txt not in itens:
-                    itens.append(txt)
-    except Exception:
-        pass
-    return itens
-
-
-def _extrair_itens_pdf(blob_bytes):
-    itens = []
-
-    # 1) Tenta bibliotecas PDF caso existam no ambiente
-    for mod_name in ("pypdf", "PyPDF2", "pdfplumber", "fitz"):
-        try:
-            if mod_name == "pypdf":
-                import pypdf
-                reader = pypdf.PdfReader(io.BytesIO(blob_bytes))
-                texto_total = "\n".join([(page.extract_text() or "") for page in reader.pages])
-            elif mod_name == "PyPDF2":
-                import PyPDF2
-                reader = PyPDF2.PdfReader(io.BytesIO(blob_bytes))
-                texto_total = "\n".join([(page.extract_text() or "") for page in reader.pages])
-            elif mod_name == "pdfplumber":
-                import pdfplumber
-                with pdfplumber.open(io.BytesIO(blob_bytes)) as pdf:
-                    texto_total = "\n".join([(p.extract_text() or "") for p in pdf.pages])
-            elif mod_name == "fitz":
-                import fitz
-                doc = fitz.open(stream=blob_bytes, filetype="pdf")
-                texto_total = "\n".join([(page.get_text("text") or "") for page in doc])
-
-            for linha in texto_total.splitlines():
-                limpa = re.sub(r"\s+", " ", linha).strip()
-                if len(limpa) >= 3:
-                    itens.append(limpa)
-            if itens:
-                return itens
-        except Exception:
-            continue
-
-    # 2) Fallback nativo para streams de texto de PDF simples
-    try:
-        raw = blob_bytes.decode("latin-1", errors="ignore")
-        for match in re.findall(r"\(([^()]{2,200})\)\s*Tj", raw):
-            limpa = re.sub(r"\\[nr]|[^\x20-\x7E\u00C0-\u00FF]", " ", match)
-            limpa = re.sub(r"\s+", " ", limpa).strip()
-            if len(limpa) >= 3:
-                itens.append(limpa)
-    except Exception:
-        pass
-
-    return itens
-
-
-def _extrair_itens_do_arquivo(nome_arq, blob_dados):
-    ext = _extensao_arquivo(nome_arq)
-    if not blob_dados:
-        return []
-    raw = bytes(blob_dados)
-    if ext == "docx":
-        return _extrair_itens_docx(raw)
-    if ext == "pdf":
-        return _extrair_itens_pdf(raw)
-    return []
-
-
-def _escapar_xml(texto):
-    return (
-        str(texto or "")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
-
-
-def _gerar_pdf_checklist_com_logo(db_name, empresa_especifica, titulo_arq, desc_arq, nome_arq, dt_up, blob_dados):
+def _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura_pag, altura_pag):
     if not TEM_REPORTLAB:
         return None
 
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(largura_pag, altura_pag))
+
     tem_empresa = not _eh_valor_todas(empresa_especifica)
-    empresa_exibicao = empresa_especifica.strip() if tem_empresa else "Todas as Empresas (Modelo Geral)"
-    img_reader = _converter_para_image_reader(_buscar_logo_empresa(db_name, empresa_especifica)) if tem_empresa else None
+    nome_exib = empresa_especifica.strip() if tem_empresa else "Todas as Empresas"
 
-    itens_extraidos = _extrair_itens_do_arquivo(nome_arq, blob_dados)
+    margem_x = 36
+    topo_y = altura_pag - 28
+    altura_faixa = 54
 
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=1.6 * cm,
-        rightMargin=1.6 * cm,
-        topMargin=1.6 * cm,
-        bottomMargin=1.6 * cm,
-    )
+    c.setFillColor(colors.white)
+    c.rect(0, topo_y - altura_faixa, largura_pag, altura_faixa + 28, stroke=0, fill=1)
 
-    styles = getSampleStyleSheet()
-    style_empresa = ParagraphStyle(
-        "EmpresaHeader",
-        parent=styles["Heading2"],
-        fontSize=13,
-        leading=16,
-        textColor=colors.HexColor("#1B365D"),
-        spaceAfter=2,
-    )
-    style_sub = ParagraphStyle(
-        "SubHeader",
-        parent=styles["Normal"],
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor("#555555"),
-    )
-    style_titulo = ParagraphStyle(
-        "TituloChecklist",
-        parent=styles["Heading1"],
-        fontSize=14,
-        leading=18,
-        textColor=colors.HexColor("#111111"),
-        spaceBefore=6,
-        spaceAfter=6,
-    )
-    style_corpo = ParagraphStyle(
-        "CorpoChecklist",
-        parent=styles["Normal"],
-        fontSize=9.5,
-        leading=13,
-        textColor=colors.HexColor("#222222"),
-    )
-    style_item = ParagraphStyle(
-        "ItemChecklist",
-        parent=styles["Normal"],
-        fontSize=8.5,
-        leading=11.5,
-        textColor=colors.HexColor("#1A1A1A"),
-    )
-
-    elementos = []
-
-    info_empresa = [
-        Paragraph(f"<b>{_escapar_xml(empresa_exibicao)}</b>", style_empresa),
-        Paragraph("Checklist para Impressão — SST", style_sub),
-        Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", style_sub),
-    ]
-
+    x_texto = margem_x
     if img_reader is not None:
         try:
             iw, ih = img_reader.getSize()
-            max_w = 4.2 * cm
-            max_h = 2.0 * cm
+            max_w = 95
+            max_h = 44
             escala = min(max_w / float(iw), max_h / float(ih), 1.0)
-            rl_logo = RLImage(img_reader, width=float(iw) * escala, height=float(ih) * escala)
-            tabela_cab = Table([[rl_logo, info_empresa]], colWidths=[4.8 * cm, 13.0 * cm])
+            w_draw = float(iw) * escala
+            h_draw = float(ih) * escala
+            y_logo = topo_y - (altura_faixa + h_draw) / 2.0
+            c.drawImage(img_reader, margem_x, y_logo, width=w_draw, height=h_draw, mask="auto")
+            x_texto = margem_x + w_draw + 12
         except Exception:
-            tabela_cab = Table([[info_empresa]], colWidths=[17.8 * cm])
-    else:
-        tabela_cab = Table([[info_empresa]], colWidths=[17.8 * cm])
+            x_texto = margem_x
 
-    tabela_cab.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LINEBELOW", (0, 0), (-1, -1), 1.2, colors.HexColor("#1B365D")),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
-    elementos.append(tabela_cab)
-    elementos.append(Spacer(1, 0.4 * cm))
+    c.setFillColor(colors.HexColor("#1B365D"))
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x_texto, topo_y - 22, nome_exib[:70])
 
-    elementos.append(Paragraph(f"CHECKLIST: {_escapar_xml(titulo_arq)}", style_titulo))
+    c.setFillColor(colors.HexColor("#555555"))
+    c.setFont("Helvetica", 8)
+    c.drawString(x_texto, topo_y - 36, f"Checklist SST — Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
-    if desc_arq and desc_arq.strip():
-        elementos.append(Paragraph(f"<b>Descrição:</b> {_escapar_xml(desc_arq.strip())}", style_corpo))
-        elementos.append(Spacer(1, 0.25 * cm))
+    c.setStrokeColor(colors.HexColor("#1B365D"))
+    c.setLineWidth(1.0)
+    c.line(margem_x, topo_y - altura_faixa, largura_pag - margem_x, topo_y - altura_faixa)
 
-    elementos.append(
-        Paragraph(
-            f"<b>Arquivo base:</b> {_escapar_xml(nome_arq)} &nbsp;|&nbsp; <b>Data:</b> {_escapar_xml(dt_up or '—')}",
-            style_sub,
-        )
-    )
-    elementos.append(Spacer(1, 0.4 * cm))
+    c.save()
+    buf.seek(0)
+    return buf
 
-    if itens_extraidos:
-        dados_grade = [
-            [
-                Paragraph("<b>#</b>", style_item),
-                Paragraph("<b>Item / Verificação do Checklist</b>", style_item),
-                Paragraph("<b>C</b>", style_item),
-                Paragraph("<b>NC</b>", style_item),
-                Paragraph("<b>N/A</b>", style_item),
-                Paragraph("<b>Observações</b>", style_item),
-            ]
-        ]
-        for idx, texto_item in enumerate(itens_extraidos, start=1):
-            dados_grade.append(
-                [
-                    Paragraph(f"{idx:02d}", style_item),
-                    Paragraph(_escapar_xml(texto_item), style_item),
-                    Paragraph("[  ]", style_item),
-                    Paragraph("[  ]", style_item),
-                    Paragraph("[  ]", style_item),
-                    Paragraph("", style_item),
-                ]
-            )
 
-        tabela_itens = Table(
-            dados_grade,
-            colWidths=[1.0 * cm, 8.6 * cm, 0.9 * cm, 1.0 * cm, 1.0 * cm, 4.3 * cm],
-            repeatRows=1,
-        )
-        tabela_itens.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                    ("ALIGN", (2, 0), (4, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#CCCCCC")),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F9FC")]),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ]
-            )
-        )
-        elementos.append(tabela_itens)
-    else:
-        elementos.append(
-            Paragraph(
-                "Não foi possível extrair itens em texto deste arquivo (por exemplo, PDF escaneado apenas como imagem). "
-                "Preencha os pontos de inspeção abaixo conforme o modelo enviado:",
-                style_corpo,
-            )
-        )
-        elementos.append(Spacer(1, 0.3 * cm))
-        dados_vazios = [[Paragraph("<b>#</b>", style_item), Paragraph("<b>Item de Inspeção</b>", style_item), Paragraph("<b>C / NC / N/A</b>", style_item), Paragraph("<b>Observações</b>", style_item)]]
-        for idx in range(1, 11):
-            dados_vazios.append([Paragraph(f"{idx:02d}", style_item), Paragraph("", style_item), Paragraph("[ ] C  [ ] NC  [ ] N/A", style_item), Paragraph("", style_item)])
-        tab_vazia = Table(dados_vazios, colWidths=[1.0 * cm, 8.2 * cm, 3.6 * cm, 5.0 * cm], repeatRows=1)
-        tab_vazia.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                    ("ALIGN", (2, 0), (2, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#CCCCCC")),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ]
-            )
-        )
-        elementos.append(tab_vazia)
+def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_dados):
+    raw = bytes(blob_dados)
+    ext = _extensao_arquivo(nome_arq)
+    if ext != "pdf" or not (TEM_PYPDF and TEM_REPORTLAB):
+        return raw
 
-    elementos.append(Spacer(1, 0.8 * cm))
+    tem_empresa = not _eh_valor_todas(empresa_especifica)
+    img_reader = _converter_para_image_reader(_buscar_logo_empresa(db_name, empresa_especifica)) if tem_empresa else None
 
-    assinaturas = Table(
-        [
-            ["________________________________________", "________________________________________"],
-            ["Responsável pela Inspeção / Assinatura", "Validação / Supervisor ou SST"],
-        ],
-        colWidths=[8.9 * cm, 8.9 * cm],
-    )
-    assinaturas.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("TOPPADDING", (0, 1), (-1, 1), 4),
-            ]
-        )
-    )
-    elementos.append(assinaturas)
+    if not tem_empresa and img_reader is None:
+        return raw
 
-    doc.build(elementos)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        if len(reader.pages) == 0:
+            return raw
+
+        writer = PdfWriter()
+        primeira_pag = reader.pages[0]
+        largura = float(primeira_pag.mediabox.width)
+        altura = float(primeira_pag.mediabox.height)
+
+        overlay_buf = _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura, altura)
+        if overlay_buf is not None:
+            overlay_reader = PdfReader(overlay_buf)
+            primeira_pag.merge_page(overlay_reader.pages[0])
+
+        writer.add_page(primeira_pag)
+        for pag in reader.pages[1:]:
+            writer.add_page(pag)
+
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except Exception:
+        return raw
 
 
 def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
     _garantir_tabela_arquivos_checklist(db_name)
 
     st.title("Checklists")
-    st.markdown("Modelos de checklist disponíveis para impressão (a partir de arquivos PDF e DOCX)")
+    st.markdown("Checklists cadastrados para download e impressão")
 
     empresa_especifica = _obter_empresa_especifica()
     if empresa_especifica:
@@ -580,6 +365,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                         dados_bytes = arquivo_up.getvalue()
                         empresa_alvo = "" if escopo_empresa.startswith("Todas") else escopo_empresa
                         data_agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        mime_final = MIME_POR_EXTENSAO.get(ext, arquivo_up.type or "application/octet-stream")
 
                         conn = sqlite3.connect(db_name, timeout=10.0)
                         cur = conn.cursor()
@@ -594,7 +380,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                                 titulo.strip(),
                                 descricao.strip(),
                                 arquivo_up.name,
-                                arquivo_up.type or "application/octet-stream",
+                                mime_final,
                                 len(dados_bytes),
                                 sqlite3.Binary(dados_bytes),
                                 data_agora,
@@ -614,7 +400,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                         st.rerun()
 
     st.markdown("---")
-    st.subheader("Checklists para Impressão")
+    st.subheader("Checklists Disponíveis")
 
     conn = sqlite3.connect(db_name, timeout=10.0)
     cur = conn.cursor()
@@ -625,7 +411,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
             FROM checklist_arquivos
             WHERE TRIM(COALESCE(empresa, '')) = ''
                OR LOWER(TRIM(empresa)) = LOWER(TRIM(?))
-            ORDER BY id DESC
+            ORDER BY LOWER(TRIM(titulo)) ASC, id DESC
             """,
             (empresa_especifica,),
         )
@@ -634,7 +420,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
             """
             SELECT id, empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload
             FROM checklist_arquivos
-            ORDER BY id DESC
+            ORDER BY LOWER(TRIM(titulo)) ASC, id DESC
             """
         )
     arquivos = cur.fetchall()
@@ -645,6 +431,10 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
         return
 
     for arq_id, emp_arq, titulo_arq, desc_arq, nome_arq, mime_arq, tam_bytes, blob_dados, dt_up in arquivos:
+        ext_arq = _extensao_arquivo(nome_arq)
+        mime_download = MIME_POR_EXTENSAO.get(ext_arq, mime_arq or "application/octet-stream")
+        arquivo_preparado = _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_dados)
+
         with st.container(border=True):
             col_info, col_acao = st.columns([4, 1.8])
 
@@ -654,33 +444,18 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                 if desc_arq and desc_arq.strip():
                     st.write(desc_arq.strip())
                 st.caption(
-                    f"Arquivo base: `{nome_arq}` • Tamanho: {_formatar_tamanho(tam_bytes)} • Escopo: {escopo_txt} • Enviado em: {dt_up or '—'}"
+                    f"Arquivo: `{nome_arq}` • Tamanho: {_formatar_tamanho(tam_bytes)} • Escopo: {escopo_txt} • Enviado em: {dt_up or '—'}"
                 )
 
             with col_acao:
-                if TEM_REPORTLAB:
-                    pdf_impressao = _gerar_pdf_checklist_com_logo(
-                        db_name=db_name,
-                        empresa_especifica=empresa_especifica,
-                        titulo_arq=titulo_arq,
-                        desc_arq=desc_arq or "",
-                        nome_arq=nome_arq,
-                        dt_up=dt_up or "",
-                        blob_dados=blob_dados,
-                    )
-                    if pdf_impressao:
-                        nome_base = os.path.splitext(nome_arq)[0] or "checklist"
-                        sufixo = "_empresa" if empresa_especifica else "_geral"
-                        st.download_button(
-                            label="🖨️ Baixar / Imprimir",
-                            data=pdf_impressao,
-                            file_name=f"{nome_base}{sufixo}.pdf",
-                            mime="application/pdf",
-                            key=f"print_checklist_{arq_id}",
-                            use_container_width=True,
-                        )
-                    else:
-                        st.warning("ReportLab indisponível para gerar PDF.")
+                st.download_button(
+                    label="⬇️ Baixar / Imprimir",
+                    data=arquivo_preparado,
+                    file_name=nome_arq,
+                    mime=mime_download,
+                    key=f"dl_print_{arq_id}",
+                    use_container_width=True,
+                )
 
                 if admin_mode:
                     if st.button("🗑️ Remover", key=f"del_checklist_{arq_id}", use_container_width=True):
