@@ -59,9 +59,16 @@ def _garantir_tabela_arquivos_checklist(db_name):
 
 
 def _eh_admin():
-    perfil = str(st.session_state.get("perfil_usuario", st.session_state.get("perfil", ""))).strip().lower()
-    acesso = str(st.session_state.get("acesso_usuario", st.session_state.get("acesso", ""))).strip().lower()
-    return perfil == "administrador" or acesso == "fazer tudo"
+    for valor in st.session_state.values():
+        if isinstance(valor, str):
+            v = valor.strip().lower()
+            if v in ("administrador", "fazer tudo"):
+                return True
+        elif isinstance(valor, dict):
+            for sub in valor.values():
+                if isinstance(sub, str) and sub.strip().lower() in ("administrador", "fazer tudo"):
+                    return True
+    return False
     
 def _formatar_tamanho(num_bytes):
     if not num_bytes:
