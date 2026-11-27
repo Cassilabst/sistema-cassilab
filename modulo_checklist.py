@@ -500,3 +500,22 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                 )
 
                 if TEM_REPORTLAB:
+                    pdf_impressao = _gerar_pdf_checklist_com_logo(
+                        db_name=db_name,
+                        empresa_especifica=empresa_especifica,
+                        titulo_arq=titulo_arq,
+                        desc_arq=desc_arq or "",
+                        nome_arq=nome_arq,
+                        dt_up=dt_up or "",
+                    )
+                    if pdf_impressao:
+                        nome_base = os.path.splitext(nome_arq)[0] or "checklist"
+                        sufixo = "_empresa" if empresa_especifica else "_geral"
+                        st.download_button(
+                            label="🖨️ Baixar / Imprimir",
+                            data=pdf_impressao,
+                            file_name=f"{nome_base}{sufixo}.pdf",
+                            mime="application/pdf",
+                            key=f"print_checklist_{arq_id}",
+                            use_container_width=True,
+                        )
