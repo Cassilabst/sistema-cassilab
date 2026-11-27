@@ -131,6 +131,120 @@ def _listar_empresas_banco(db_name):
         conn.close()
     return sorted(empresas, key=lambda x: x.lower())
 
+def _obter_logo_empresa_bytes(db_name, nome_empresa):
+    """Busca e decodifica a logomarca (coluna logo_empresa) da tabela empresas."""
+    if not nome_empresa or _eh_valor_todas(nome_empresa):
+        return None
+
+    try:
+        conn = sqlite3.connect(db_name, timeout=10.0)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT logo_empresa
+            FROM empresas
+            WHERE LOWER(TRIM(nome_empresa)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (str(nome_empresa).strip(),),
+        )
+        row = cur.fetchone()
+        conn.close()
+
+        if not row or not row[0]:
+            return None
+
+        raw_val = str(row[0]).strip()
+        if not raw_val:
+            return None
+
+        if "," in raw_val:
+            raw_val = raw_val.split(",", 1)[1]
+
+        return base64.b64decode(raw_val)
+    except Exception:
+        return None
+
+
+def _aplicar_logo_no_pdf(pdf_bytes, logo_bytes):
+    """Insere a logomarca no canto superior direito do cabeçalho da 1ª página do PDF."""
+    if not logo_bytes or not TEM_REPORTLAB or not TEM_PYPDF:
+        return pdf_bytes
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        if not reader.pages:
+            return pdf_bytes
+
+        primeira_pagina = reader.pages[0]
+        largura_pag = float(primeira_pagina.mediabox.width)
+        altura_pag = float(primeira_pagina.mediabox.height)
+
+        img_reader = ImageReader(io.BytesIO(logo_bytes))
+        img_w, img_h = img_reader.getSize()
+        if not img_w or not img_h:
+            return pdf_bytes
+
+        # Limita tamanho da logo para caber bem no cabeçalho sem estourar o layout
+        max_w = 95.0
+        max_h = 36.0
+        escala = min(max_w / float(img_w), max_h / float(img_h), 1.0)
+        draw_w = float(img_w) * escala
+        draw_h = float(img_h) * escala
+
+        # Posição no topo direito da página
+        x_pos = largura_pag - draw_w - 28.0
+        y_pos = altura_pag - draw_h - 18.0
+
+        packet = io.BytesIO()
+        can = rl_canvas.Canvas(packet, pagesize=(largura_pag, altura_pag))
+        can.drawImage(
+            img_reader,
+            x_pos,
+            y_pos,
+            width=draw_w,
+            height=draw_h,
+            mask="auto",
+            preserveAspectRatio=True,
+        )
+        can.save()
+        packet.seek(0)
+
+        overlay_reader = PdfReader(packet)
+        primeira_pagina.merge_page(overlay_reader.pages[0])
+
+        writer = PdfWriter()
+        for pagina in reader.pages:
+            writer.add_page(pagina)
+
+        saida = io.BytesIO()
+        writer.write(saida)
+        return saida.getvalue()
+    except Exception:
+        return pdf_bytes
+
+
+def _aplicar_logo_no_docx(docx_bytes, logo_bytes):
+    """Insere a logomarca no cabeçalho da primeira seção do arquivo .docx."""
+    if not logo_bytes or not TEM_DOCX:
+        return docx_bytes
+
+    try:
+        from docx.shared import Inches
+
+        doc = python_docx.Document(io.BytesIO(docx_bytes))
+        if doc.sections:
+            header = doc.sections[0].header
+            paragrafo = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+            run = paragrafo.add_run()
+            run.add_picture(io.BytesIO(logo_bytes), width=Inches(1.1))
+
+        saida = io.BytesIO()
+        doc.save(saida)
+        return saida.getvalue()
+    except Exception:
+        return docx_bytes
+
 
 def _converter_para_image_reader(valor_logo):
     if not TEM_REPORTLAB or valor_logo is None:
@@ -351,11 +465,29 @@ def _extrair_texto_docx_html(blob_dados):
         return f"<p>Erro ao ler DOCX: {html.escape(str(e))}</p>"
 
 
-def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, arquivo_preparado):
+def _renderizar_visualizador_direto(db_name, titulo_arq, empresa_especifica, nome_arq, arquivo_preparado):
     ext = _extensao_arquivo(nome_arq)
     titulo_seguro = html.escape(titulo_arq or nome_arq)
-    empresa_segura = html.escape(empresa_especifica) if not _eh_valor_todas(empresa_especifica) else "Todas as empresas"
+    tem_empresa = not _eh_valor_todas(empresa_especifica)
+    empresa_segura = html.escape(empresa_especifica) if tem_empresa else "Todas as empresas"
     data_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # 1. BUSCA A LOGO DA EMPRESA PARA O CABEÇALHO DO DOCX (TELA E IMPRESSÃO)
+    logo_html = ""
+    if tem_empresa:
+        valor_logo = _buscar_logo_empresa(db_name, empresa_especifica)
+        if valor_logo:
+            if isinstance(valor_logo, str) and valor_logo.strip().startswith("data:image"):
+                logo_html = (
+                    f'<img src="{html.escape(valor_logo.strip())}" '
+                    f'alt="Logo {empresa_segura}" style="max-height:52px;max-width:140px;object-fit:contain;" />'
+                )
+            elif isinstance(valor_logo, (bytes, bytearray, memoryview)):
+                b64_logo = base64.b64encode(bytes(valor_logo)).decode("utf-8")
+                logo_html = (
+                    f'<img src="data:image/png;base64,{b64_logo}" '
+                    f'alt="Logo {empresa_segura}" style="max-height:52px;max-width:140px;object-fit:contain;" />'
+                )
 
     with st.container(border=True):
         st.markdown(f"#### 📄 {titulo_seguro}")
@@ -438,6 +570,76 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
             </html>
             """
             components.html(html_doc, height=130, scrolling=False)
+        else:
+            corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
+            html_doc = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <style>
+                body {{ margin: 0; padding: 14px; font-family: Arial, sans-serif; background: #f5f7fa; color: #222; }}
+                .barra-topo {{
+                  display: flex; justify-content: space-between; align-items: center;
+                  background: #1B365D; color: #ffffff; padding: 8px 14px; border-radius: 6px; margin-bottom: 12px;
+                }}
+                .btn-imprimir {{
+                  background: #ffffff; color: #1B365D; border: none; padding: 7px 14px;
+                  border-radius: 5px; font-weight: bold; cursor: pointer;
+                }}
+                .folha {{
+                  background: #ffffff; padding: 24px; border: 1px solid #d0d7de;
+                  border-radius: 6px; max-height: 580px; overflow-y: auto;
+                }}
+                /* 2. ESTILO DO CABEÇALHO COM A LOGO NA TELA */
+                .cabecalho-doc {{
+                  display: flex; justify-content: space-between; align-items: center;
+                  gap: 16px; border-bottom: 2px solid #1B365D; padding-bottom: 12px; margin-bottom: 14px;
+                }}
+                table {{ width: 100%; border-collapse: collapse; margin: 12px 0; }}
+              </style>
+            </head>
+            <body>
+              <div class="barra-topo">
+                <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
+                <button class="btn-imprimir" onclick="imprimirDocx()">🖨️ Imprimir</button>
+              </div>
+              <div class="folha" id="areaImpressao">
+                <!-- 3. LOGO MOSTRADA NO CABEÇALHO DO DOCX -->
+                <div class="cabecalho-doc">
+                  <div>
+                    <h2 style="margin:0 0 4px 0;">{titulo_seguro}</h2>
+                    <small>Empresa: {empresa_segura} • Gerado em: {html.escape(data_str)}</small>
+                  </div>
+                  <div>{logo_html}</div>
+                </div>
+                {corpo_docx}
+              </div>
+              <script>
+                function imprimirDocx() {{
+                  const conteudo = document.getElementById('areaImpressao').innerHTML;
+                  const win = window.open("", "_blank");
+                  if (win) {{
+                    win.document.write(
+                      '<html><head><title>{titulo_seguro}</title><style>' +
+                      'body{{font-family:Arial,sans-serif;padding:24px;color:#222;}}' +
+                      '.cabecalho-doc{{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:2px solid #1B365D;padding-bottom:12px;margin-bottom:14px;}}' +
+                      'table{{width:100%;border-collapse:collapse;margin:12px 0;}}' +
+                      'td,th{{border:1px solid #888;padding:6px;}}' +
+                      '</style></head><body>' + conteudo + '</body></html>'
+                    );
+                    win.document.close();
+                    win.focus();
+                    win.print();
+                  }} else {{
+                    window.print();
+                  }}
+                }}
+              </script>
+            </body>
+            </html>
+            """
+            components.html(html_doc, height=680, scrolling=True)
         else:
             corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
             html_doc = f"""
@@ -657,6 +859,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
 
             if st.session_state[item_aberto_key] == arq_id:
                 _renderizar_visualizador_direto(
+                    db_name=db_name,
                     titulo_arq=titulo_arq,
                     empresa_especifica=empresa_especifica,
                     nome_arq=nome_arq,
