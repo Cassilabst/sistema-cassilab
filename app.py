@@ -16,6 +16,7 @@ import base64
 import os
 import shutil
 from normas import renderizar_aba_normas
+from modulo_checklist import renderizar_modulo_checklist
 
 # --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
 if os.path.exists("/data"):
@@ -2507,6 +2508,7 @@ if st.session_state.get("is_admin", False):
         "Lista de Presença",
         "Consulta de CAs",
         "Normas Regulamentadoras",
+        "Checklists",
     ]
 else:
     opcoes_menu = [
@@ -2522,6 +2524,7 @@ else:
         "Emissor de Ordem de Serviço",
         "Consulta de CAs",
         "Normas Regulamentadoras",
+        "Checklists",
     ]
 
 idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
@@ -4591,3 +4594,12 @@ elif menu == "Normas Regulamentadoras":
         get_empresas=get_empresas,
         registrar_log=registrar_log,
     )
+
+    # ==========================================
+    # 15. CHECKLISTS
+    # ==========================================
+    elif menu == "Checklists":
+        renderizar_modulo_checklist(
+            DB_NAME,
+            registrar_log if "registrar_log" in globals() else None,
+        )
