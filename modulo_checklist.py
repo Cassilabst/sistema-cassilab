@@ -499,4 +499,4 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                     use_container_width=True,
                 )
 
-                if TEM_REPORT
+                if TEM_REPORTLAB:
