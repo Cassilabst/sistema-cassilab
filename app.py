@@ -405,50 +405,51 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                     btn_enviar = st.form_submit_button("Salvar Arquivo")
 
                     if btn_enviar:
-                        ext = _extensao_arquivo(arquivo_up.name) if arquivo_up is not None else ""
                         if not titulo.strip():
                             st.error("Informe o título do checklist.")
                         elif arquivo_up is None:
                             st.error("Selecione um arquivo PDF ou DOCX para enviar.")
-                        elif ext not in EXTENSOES_PERMITIDAS:
-                            st.error("Formato não permitido. Envie apenas arquivos .PDF ou .DOCX.")
                         else:
-                            dados_bytes = arquivo_up.getvalue()
-                            empresa_alvo = "" if escopo_empresa.startswith("Todas") else escopo_empresa
-                            data_agora = datetime.now().strftime("%d/%m/%Y %H:%M")
-                            mime_final = MIME_POR_EXTENSAO.get(ext, arquivo_up.type or "application/octet-stream")
+                            ext = _extensao_arquivo(arquivo_up.name)
+                            if ext not in EXTENSOES_PERMITIDAS:
+                                st.error("Formato não permitido. Envie apenas arquivos .PDF ou .DOCX.")
+                            else:
+                                dados_bytes = arquivo_up.getvalue()
+                                empresa_alvo = "" if escopo_empresa.startswith("Todas") else escopo_empresa
+                                data_agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+                                mime_final = MIME_POR_EXTENSAO.get(ext, arquivo_up.type or "application/octet-stream")
 
-                            conn = sqlite3.connect(db_name, timeout=10.0)
-                            cur = conn.cursor()
-                            cur.execute(
-                                """
-                                INSERT INTO checklist_arquivos
-                                    (empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    empresa_alvo,
-                                    titulo.strip(),
-                                    descricao.strip(),
-                                    arquivo_up.name,
-                                    mime_final,
-                                    len(dados_bytes),
-                                    sqlite3.Binary(dados_bytes),
-                                    data_agora,
-                                ),
-                            )
-                            conn.commit()
-                            conn.close()
-
-                            if callable(registrar_log_callback):
-                                registrar_log_callback(
-                                    st.session_state.get("nome_usuario", "Administrador"),
-                                    empresa_alvo or "Geral",
-                                    f"Adicionou arquivo de checklist: {titulo.strip()} ({arquivo_up.name})",
+                                conn = sqlite3.connect(db_name, timeout=10.0)
+                                cur = conn.cursor()
+                                cur.execute(
+                                    """
+                                    INSERT INTO checklist_arquivos
+                                        (empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    """,
+                                    (
+                                        empresa_alvo,
+                                        titulo.strip(),
+                                        descricao.strip(),
+                                        arquivo_up.name,
+                                        mime_final,
+                                        len(dados_bytes),
+                                        sqlite3.Binary(dados_bytes),
+                                        data_agora,
+                                    ),
                                 )
+                                conn.commit()
+                                conn.close()
 
-                            st.success("Arquivo adicionado com sucesso!")
-                            st.rerun()
+                                if callable(registrar_log_callback):
+                                    registrar_log_callback(
+                                        st.session_state.get("nome_usuario", "Administrador"),
+                                        empresa_alvo or "Geral",
+                                        f"Adicionou arquivo de checklist: {titulo.strip()} ({arquivo_up.name})",
+                                    )
+
+                                st.success("Arquivo adicionado com sucesso!")
+                                st.rerun()
 
         st.markdown("---")
         st.subheader("Checklists Disponíveis")
