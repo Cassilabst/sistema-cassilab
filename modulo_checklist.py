@@ -1,13 +1,15 @@
 import base64
+import html
 import io
 import os
 import sqlite3
 from datetime import datetime
 import streamlit as st
+import streamlit.components.v1 as components
 
 try:
-    from reportlab.lib import colors
     from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib import colors
     from reportlab.lib.utils import ImageReader
     TEM_REPORTLAB = True
 except ImportError:
@@ -18,6 +20,12 @@ try:
     TEM_PYPDF = True
 except ImportError:
     TEM_PYPDF = False
+
+try:
+    import docx as python_docx
+    TEM_DOCX = True
+except ImportError:
+    TEM_DOCX = False
 
 
 EXTENSOES_PERMITIDAS = {"pdf", "docx"}
@@ -319,12 +327,235 @@ def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_da
         return raw
 
 
+def _extrair_texto_docx_html(blob_dados):
+    if not TEM_DOCX:
+        return "<p><em>Instale <code>python-docx</code> para visualizar o conteúdo do arquivo DOCX direto na tela.</em></p>"
+    try:
+        doc = python_docx.Document(io.BytesIO(bytes(blob_dados)))
+        partes = []
+        for p in doc.paragraphs:
+            txt = p.text.strip()
+            if txt:
+                partes.append(f"<p>{html.escape(txt)}</p>")
+        for tab in doc.tables:
+            linhas_html = []
+            for row in tab.rows:
+                celulas = "".join(f"<td>{html.escape(c.text.strip())}</td>" for c in row.cells)
+                linhas_html.append(f"<tr>{celulas}</tr>")
+            if linhas_html:
+                partes.append(f"<table border='1' cellspacing='0' cellpadding='6'>{''.join(linhas_html)}</table>")
+        return "\n".join(partes) if partes else "<p><em>Documento DOCX sem texto extraível.</em></p>"
+    except Exception as e:
+        return f"<p>Erro ao ler DOCX: {html.escape(str(e))}</p>"
+
+
+def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, arquivo_preparado):
+    ext = _extensao_arquivo(nome_arq)
+    titulo_seguro = html.escape(titulo_arq or nome_arq)
+    empresa_segura = html.escape(empresa_especifica) if not _eh_valor_todas(empresa_especifica) else "Todas as empresas"
+    data_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    with st.container(border=True):
+        st.markdown(f"#### 📄 {titulo_seguro}")
+        st.caption(f"Empresa: **{empresa_segura}** • Arquivo: `{html.escape(nome_arq)}`")
+
+        if ext == "pdf":
+            b64_pdf = base64.b64encode(bytes(arquivo_preparado)).decode("utf-8")
+            html_doc = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <style>
+                body {{
+                  margin: 0;
+                  padding: 10px;
+                  font-family: Arial, sans-serif;
+                  background: #f5f7fa;
+                }}
+                .barra-topo {{
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  gap: 8px;
+                  background: #1B365D;
+                  color: #ffffff;
+                  padding: 8px 14px;
+                  border-radius: 6px;
+                  margin-bottom: 10px;
+                }}
+                .acoes {{
+                  display: flex;
+                  gap: 8px;
+                }}
+                .btn-acao {{
+                  background: #ffffff;
+                  color: #1B365D;
+                  border: none;
+                  padding: 7px 14px;
+                  border-radius: 5px;
+                  font-weight: bold;
+                  cursor: pointer;
+                }}
+                .btn-acao:hover {{
+                  background: #e6eef8;
+                }}
+                iframe {{
+                  width: 100%;
+                  height: 620px;
+                  border: 1px solid #d0d7de;
+                  border-radius: 6px;
+                  background: #ffffff;
+                }}
+                @media print {{
+                  .barra-topo {{ display: none; }}
+                  body {{ padding: 0; background: #ffffff; }}
+                  iframe {{ height: 100vh; border: none; }}
+                }}
+              </style>
+            </head>
+            <body>
+              <div class="barra-topo">
+                <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
+                <div class="acoes">
+                  <button class="btn-acao" onclick="abrirJanelaImpressao()">🗗 Abrir / Imprimir</button>
+                </div>
+              </div>
+              <iframe id="framePdf" src="data:application/pdf;base64,{b64_pdf}#toolbar=1&navpanes=0"></iframe>
+              <script>
+                const pdfDataUrl = "data:application/pdf;base64,{b64_pdf}";
+                function abrirJanelaImpressao() {{
+                  const win = window.open("", "_blank");
+                  if (win) {{
+                    win.document.write(
+                      '<html><head><title>{titulo_seguro}</title><style>html,body,iframe{{margin:0;padding:0;width:100%;height:100%;border:0;}}</style></head>' +
+                      '<body><iframe src="' + pdfDataUrl + '"></iframe></body></html>'
+                    );
+                    win.document.close();
+                    win.focus();
+                  }} else {{
+                    window.print();
+                  }}
+                }}
+              </script>
+            </body>
+            </html>
+            """
+            components.html(html_doc, height=700, scrolling=True)
+        else:
+            corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
+            html_doc = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <style>
+                body {{
+                  margin: 0;
+                  padding: 14px;
+                  font-family: Arial, sans-serif;
+                  background: #f5f7fa;
+                  color: #222;
+                }}
+                .barra-topo {{
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  background: #1B365D;
+                  color: #ffffff;
+                  padding: 8px 14px;
+                  border-radius: 6px;
+                  margin-bottom: 12px;
+                }}
+                .btn-imprimir {{
+                  background: #ffffff;
+                  color: #1B365D;
+                  border: none;
+                  padding: 7px 14px;
+                  border-radius: 5px;
+                  font-weight: bold;
+                  cursor: pointer;
+                }}
+                .btn-imprimir:hover {{
+                  background: #e6eef8;
+                }}
+                .folha {{
+                  background: #ffffff;
+                  padding: 24px;
+                  border: 1px solid #d0d7de;
+                  border-radius: 6px;
+                  max-height: 580px;
+                  overflow-y: auto;
+                }}
+                .cabecalho-doc {{
+                  border-bottom: 2px solid #1B365D;
+                  padding-bottom: 10px;
+                  margin-bottom: 16px;
+                }}
+                .cabecalho-doc h2 {{
+                  margin: 0 0 4px 0;
+                  color: #1B365D;
+                  font-size: 18px;
+                }}
+                .cabecalho-doc small {{
+                  color: #555;
+                }}
+                table {{
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin: 12px 0;
+                }}
+                @media print {{
+                  .barra-topo {{ display: none; }}
+                  body {{ padding: 0; background: #ffffff; }}
+                  .folha {{ max-height: none; overflow: visible; border: none; padding: 0; }}
+                }}
+              </style>
+            </head>
+            <body>
+              <div class="barra-topo">
+                <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
+                <button class="btn-imprimir" onclick="imprimirDocx()">🖨️ Imprimir</button>
+              </div>
+              <div class="folha" id="areaImpressao">
+                <div class="cabecalho-doc">
+                  <h2>{titulo_seguro}</h2>
+                  <small>Empresa: {empresa_segura} • Gerado em: {html.escape(data_str)}</small>
+                </div>
+                {corpo_docx}
+              </div>
+              <script>
+                function imprimirDocx() {{
+                  const conteudo = document.getElementById('areaImpressao').innerHTML;
+                  const win = window.open("", "_blank");
+                  if (win) {{
+                    win.document.write(
+                      '<html><head><title>{titulo_seguro}</title><style>' +
+                      'body{{font-family:Arial,sans-serif;padding:24px;color:#222;}}' +
+                      'table{{width:100%;border-collapse:collapse;margin:12px 0;}}' +
+                      'td,th{{border:1px solid #888;padding:6px;}}' +
+                      '</style></head><body>' + conteudo + '</body></html>'
+                    );
+                    win.document.close();
+                    win.focus();
+                    win.print();
+                  }} else {{
+                    window.print();
+                  }}
+                }}
+              </script>
+            </body>
+            </html>
+            """
+            components.html(html_doc, height=680, scrolling=True)
+
+
 def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
     try:
         _garantir_tabela_arquivos_checklist(db_name)
 
         st.title("Checklists")
-        st.markdown("Checklists cadastrados para visualização, download e impressão")
+        st.markdown("Checklists cadastrados para visualização e impressão direta")
 
         empresa_especifica = _obter_empresa_especifica()
         if empresa_especifica:
@@ -432,9 +663,11 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
             st.info("Nenhum arquivo de checklist disponível no momento.")
             return
 
+        item_aberto_key = "checklist_visualizar_id"
+        if item_aberto_key not in st.session_state:
+            st.session_state[item_aberto_key] = None
+
         for arq_id, emp_arq, titulo_arq, desc_arq, nome_arq, mime_arq, tam_bytes, blob_dados, dt_up in arquivos:
-            ext_arq = _extensao_arquivo(nome_arq)
-            mime_download = MIME_POR_EXTENSAO.get(ext_arq, mime_arq or "application/octet-stream")
             arquivo_preparado = _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_dados)
 
             with st.container(border=True):
@@ -450,14 +683,11 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                     )
 
                 with col_acao:
-                    st.download_button(
-                        label="⬇️ Baixar / Imprimir",
-                        data=arquivo_preparado,
-                        file_name=nome_arq,
-                        mime=mime_download,
-                        key=f"dl_print_{arq_id}",
-                        use_container_width=True,
-                    )
+                    esta_aberto = st.session_state[item_aberto_key] == arq_id
+                    btn_txt = "🔼 Fechar" if esta_aberto else "👁️ Visualizar"
+                    if st.button(btn_txt, key=f"btn_vis_{arq_id}", use_container_width=True):
+                        st.session_state[item_aberto_key] = None if esta_aberto else arq_id
+                        st.rerun()
 
                     if admin_mode:
                         if st.button("🗑️ Remover", key=f"del_checklist_{arq_id}", use_container_width=True):
@@ -475,6 +705,14 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
 
                             st.success("Arquivo removido!")
                             st.rerun()
+
+            if st.session_state[item_aberto_key] == arq_id:
+                _renderizar_visualizador_direto(
+                    titulo_arq=titulo_arq,
+                    empresa_especifica=empresa_especifica,
+                    nome_arq=nome_arq,
+                    arquivo_preparado=arquivo_preparado,
+                )
     except Exception as erro_checklist:
         st.error(f"Erro ao renderizar o módulo Checklists: {erro_checklist}")
         st.exception(erro_checklist)
