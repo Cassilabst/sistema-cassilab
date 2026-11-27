@@ -59,22 +59,21 @@ def _garantir_tabela_arquivos_checklist(db_name):
 
 
 def _eh_admin():
-    # Se quiser travar pelo seu usuário/e-mail exato, coloque aqui em minúsculo:
-    # Ex.: MEUS_LOGINS = {"seu_usuario", "seu_email@dominio.com"}
-    MEUS_LOGINS = set()
+    MEUS_LOGINS = {"coloque_seu_login_ou_email_aqui"}
 
-    todos_valores = [
-        str(v).strip().lower()
-        for v in st.session_state.values()
-        if isinstance(v, (str, int)) and str(v).strip()
-    ]
+    for chave in ("usuario_logado", "nome_usuario", "usuario", "login", "email_usuario", "email", "user"):
+        valor = str(st.session_state.get(chave, "")).strip().lower()
+        if valor and valor in MEUS_LOGINS:
+            return True
 
-    if MEUS_LOGINS:
-        return any(val in MEUS_LOGINS for val in todos_valores)
+    return False
 
-    termos_admin = ("admin", "administrador", "fazer tudo", "master")
-    return any(any(termo in val for termo in termos_admin) for val in todos_valores)
+    for chave in ("perfil_usuario", "perfil", "acesso_usuario", "acesso", "nivel_acesso", "permissao"):
+        valor = str(st.session_state.get(chave, "")).strip().lower()
+        if valor in ("admin", "administrador", "fazer tudo", "master"):
+            return True
 
+    return False
 def _formatar_tamanho(num_bytes):
     if not num_bytes:
         return "—"
