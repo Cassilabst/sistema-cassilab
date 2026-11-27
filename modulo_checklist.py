@@ -716,6 +716,11 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
     try:
         _garantir_tabela_arquivos_checklist(db_name)
 
+        # --- DIAGNÓSTICO TEMPORÁRIO (remova depois de testar) ---
+        st.caption(f"Debug _eh_admin(): {_eh_admin()}")
+        st.json({str(k): str(v) for k, v in st.session_state.items()})
+        # --------------------------------------------------------
+
         st.title("Checklists")
         st.markdown("Checklists cadastrados para visualização e impressão direta")
 
