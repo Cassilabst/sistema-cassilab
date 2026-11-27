@@ -59,12 +59,23 @@ def _garantir_tabela_arquivos_checklist(db_name):
 
 
 def _eh_admin():
-    perfil = str(st.session_state.get("perfil_usuario", st.session_state.get("perfil", ""))).strip().lower()
-    acesso = str(st.session_state.get("acesso_usuario", st.session_state.get("acesso", ""))).strip().lower()
-    if "admin" in perfil or "fazer tudo" in acesso:
-        return True
-    if not perfil and not acesso:
-        return True
+    # Coloque aqui o seu usuário ou e-mail exato de login (tudo em minúsculo), se quiser travar só nele:
+    # Ex.: MEUS_LOGINS = {"seu_usuario", "seu_email@dominio.com"}
+    MEUS_LOGINS = set()
+
+    for chave in ("usuario_logado", "nome_usuario", "usuario", "login", "email_usuario", "email", "user"):
+        valor = str(st.session_state.get(chave, "")).strip().lower()
+        if valor and valor in MEUS_LOGINS:
+            return True
+
+    if MEUS_LOGINS:
+        return False
+
+    for chave in ("perfil_usuario", "perfil", "acesso_usuario", "acesso", "nivel_acesso", "permissao"):
+        valor = str(st.session_state.get(chave, "")).strip().lower()
+        if any(termo in valor for termo in ("admin", "administrador", "fazer tudo", "total", "master")):
+            return True
+
     return False
 
 
