@@ -162,3 +162,52 @@ def _converter_para_image_reader(valor_logo):
             except Exception:
                 return None
         try:
+
+def _buscar_logo_empresa(db_name, nome_empresa):
+    if _eh_valor_todas(nome_empresa):
+        return None
+
+    alvo = nome_empresa.strip().lower()
+    candidatos_nome = ["empresa", "nome", "razao_social", "nome_fantasia"]
+    candidatos_logo = ["logo", "logotipo", "logo_empresa", "logo_path", "caminho_logo", "imagem_logo", "img_logo"]
+
+    conn = sqlite3.connect(db_name, timeout=10.0)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tabelas = [r[0] for r in cur.fetchall()]
+
+        for tab in tabelas:
+            if "empresa" not in tab.lower():
+                continue
+
+            cur.execute(f'PRAGMA table_info("{tab}")')
+            cols = [c[1] for c in cur.fetchall()]
+            cols_low = {c.lower(): c for c in cols}
+
+            col_logo = next((cols_low[k] for k in candidatos_logo if k in cols_low), None)
+            if not col_logo:
+                col_logo = next((c for c in cols if "logo" in c.lower()), None)
+            if not col_logo:
+                continue
+
+            cols_busca = [cols_low[k] for k in candidatos_nome if k in cols_low]
+            if not cols_busca:
+                continue
+
+            where_clauses = [f'LOWER(TRIM(COALESCE("{c}", \'\'))) = ?' for c in cols_busca]
+            params = [alvo for _ in cols_busca]
+
+            cur.execute(
+                f'SELECT "{col_logo}" FROM "{tab}" WHERE ' + " OR ".join(where_clauses) + " LIMIT 1",
+                params,
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0]
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    return None
