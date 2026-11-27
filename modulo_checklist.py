@@ -162,6 +162,14 @@ def _converter_para_image_reader(valor_logo):
             except Exception:
                 return None
         try:
+            decoded = base64.b64decode(s, validate=True)
+            if len(decoded) > 100:
+                return ImageReader(io.BytesIO(decoded))
+        except Exception:
+            return None
+
+    return None
+
 
 def _buscar_logo_empresa(db_name, nome_empresa):
     if _eh_valor_todas(nome_empresa):
