@@ -361,6 +361,10 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
 
         if ext == "pdf":
             b64_pdf = base64.b64encode(bytes(arquivo_preparado)).decode("utf-8")
+
+            if hasattr(st, "pdf"):
+                st.pdf(io.BytesIO(bytes(arquivo_preparado)), height=620)
+
             html_doc = f"""
             <!DOCTYPE html>
             <html>
@@ -369,24 +373,18 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
               <style>
                 body {{
                   margin: 0;
-                  padding: 10px;
+                  padding: 8px;
                   font-family: Arial, sans-serif;
                   background: #f5f7fa;
                 }}
-                .barra-topo {{
+                .barra {{
                   display: flex;
                   justify-content: space-between;
                   align-items: center;
-                  gap: 8px;
                   background: #1B365D;
                   color: #ffffff;
                   padding: 8px 14px;
                   border-radius: 6px;
-                  margin-bottom: 10px;
-                }}
-                .acoes {{
-                  display: flex;
-                  gap: 8px;
                 }}
                 .btn-acao {{
                   background: #ffffff;
@@ -400,48 +398,35 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
                 .btn-acao:hover {{
                   background: #e6eef8;
                 }}
-                iframe {{
-                  width: 100%;
-                  height: 620px;
-                  border: 1px solid #d0d7de;
-                  border-radius: 6px;
-                  background: #ffffff;
-                }}
-                @media print {{
-                  .barra-topo {{ display: none; }}
-                  body {{ padding: 0; background: #ffffff; }}
-                  iframe {{ height: 100vh; border: none; }}
-                }}
               </style>
             </head>
             <body>
-              <div class="barra-topo">
+              <div class="barra">
                 <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
-                <div class="acoes">
-                  <button class="btn-acao" onclick="abrirJanelaImpressao()">🗗 Abrir / Imprimir</button>
-                </div>
+                <button class="btn-acao" onclick="abrirPdfNovaAba()">🗗 Abrir PDF para Imprimir</button>
               </div>
-              <iframe id="framePdf" src="data:application/pdf;base64,{b64_pdf}#toolbar=1&navpanes=0"></iframe>
               <script>
-                const pdfDataUrl = "data:application/pdf;base64,{b64_pdf}";
-                function abrirJanelaImpressao() {{
-                  const win = window.open("", "_blank");
-                  if (win) {{
-                    win.document.write(
-                      '<html><head><title>{titulo_seguro}</title><style>html,body,iframe{{margin:0;padding:0;width:100%;height:100%;border:0;}}</style></head>' +
-                      '<body><iframe src="' + pdfDataUrl + '"></iframe></body></html>'
-                    );
-                    win.document.close();
-                    win.focus();
-                  }} else {{
-                    window.print();
+                function abrirPdfNovaAba() {{
+                  const b64 = "{b64_pdf}";
+                  const byteChars = atob(b64);
+                  const byteArrays = [];
+                  for (let offset = 0; offset < byteChars.length; offset += 512) {{
+                    const slice = byteChars.slice(offset, offset + 512);
+                    const byteNumbers = new Array(slice.length);
+                    for (let i = 0; i < slice.length; i++) {{
+                      byteNumbers[i] = slice.charCodeAt(i);
+                    }}
+                    byteArrays.push(new Uint8Array(byteNumbers));
                   }}
+                  const blob = new Blob(byteArrays, {{ type: "application/pdf" }});
+                  const blobUrl = URL.createObjectURL(blob);
+                  window.open(blobUrl, "_blank");
                 }}
               </script>
             </body>
             </html>
             """
-            components.html(html_doc, height=700, scrolling=True)
+            components.html(html_doc, height=62, scrolling=False)
         else:
             corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
             html_doc = f"""
@@ -450,66 +435,20 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
             <head>
               <meta charset="utf-8" />
               <style>
-                body {{
-                  margin: 0;
-                  padding: 14px;
-                  font-family: Arial, sans-serif;
-                  background: #f5f7fa;
-                  color: #222;
-                }}
+                body {{ margin: 0; padding: 14px; font-family: Arial, sans-serif; background: #f5f7fa; color: #222; }}
                 .barra-topo {{
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  background: #1B365D;
-                  color: #ffffff;
-                  padding: 8px 14px;
-                  border-radius: 6px;
-                  margin-bottom: 12px;
+                  display: flex; justify-content: space-between; align-items: center;
+                  background: #1B365D; color: #ffffff; padding: 8px 14px; border-radius: 6px; margin-bottom: 12px;
                 }}
                 .btn-imprimir {{
-                  background: #ffffff;
-                  color: #1B365D;
-                  border: none;
-                  padding: 7px 14px;
-                  border-radius: 5px;
-                  font-weight: bold;
-                  cursor: pointer;
-                }}
-                .btn-imprimir:hover {{
-                  background: #e6eef8;
+                  background: #ffffff; color: #1B365D; border: none; padding: 7px 14px;
+                  border-radius: 5px; font-weight: bold; cursor: pointer;
                 }}
                 .folha {{
-                  background: #ffffff;
-                  padding: 24px;
-                  border: 1px solid #d0d7de;
-                  border-radius: 6px;
-                  max-height: 580px;
-                  overflow-y: auto;
+                  background: #ffffff; padding: 24px; border: 1px solid #d0d7de;
+                  border-radius: 6px; max-height: 580px; overflow-y: auto;
                 }}
-                .cabecalho-doc {{
-                  border-bottom: 2px solid #1B365D;
-                  padding-bottom: 10px;
-                  margin-bottom: 16px;
-                }}
-                .cabecalho-doc h2 {{
-                  margin: 0 0 4px 0;
-                  color: #1B365D;
-                  font-size: 18px;
-                }}
-                .cabecalho-doc small {{
-                  color: #555;
-                }}
-                table {{
-                  width: 100%;
-                  border-collapse: collapse;
-                  margin: 12px 0;
-                }}
-                @media print {{
-                  .barra-topo {{ display: none; }}
-                  body {{ padding: 0; background: #ffffff; }}
-                  .folha {{ max-height: none; overflow: visible; border: none; padding: 0; }}
-                }}
+                table {{ width: 100%; border-collapse: collapse; margin: 12px 0; }}
               </style>
             </head>
             <body>
@@ -518,10 +457,9 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
                 <button class="btn-imprimir" onclick="imprimirDocx()">🖨️ Imprimir</button>
               </div>
               <div class="folha" id="areaImpressao">
-                <div class="cabecalho-doc">
-                  <h2>{titulo_seguro}</h2>
-                  <small>Empresa: {empresa_segura} • Gerado em: {html.escape(data_str)}</small>
-                </div>
+                <h2>{titulo_seguro}</h2>
+                <small>Empresa: {empresa_segura} • Gerado em: {html.escape(data_str)}</small>
+                <hr/>
                 {corpo_docx}
               </div>
               <script>
