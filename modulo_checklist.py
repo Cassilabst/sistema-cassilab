@@ -638,6 +638,7 @@ def _renderizar_visualizador_direto(db_name, titulo_arq, empresa_especifica, nom
             </html>
             """
             components.html(html_doc, height=680, scrolling=True)
+            
         else:
             corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
             html_doc = f"""
