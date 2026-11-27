@@ -3,6 +3,7 @@ import html
 import io
 import os
 import sqlite3
+import zipfile
 from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
@@ -138,7 +139,6 @@ def _eh_admin():
 
 
 def _pode_gerenciar_checklists():
-    """Retorna True apenas para Administrador; bloqueia qualquer usuário comum."""
     return _eh_admin()
 
 
@@ -162,16 +162,18 @@ def _eh_valor_todas(texto):
     return t in ("", "todas", "todas as empresas", "geral", "nenhuma")
 
 
-def _obter_empresa_especifica():
+def _obter_empresa_especifica(empresa_do_arquivo=""):
     empresa_global = str(st.session_state.get("empresa_global", "")).strip()
     if not _eh_valor_todas(empresa_global):
         return empresa_global
 
-    if not _eh_admin():
-        for chave in ("empresa_usuario", "empresa_cliente", "empresa_logada", "empresa"):
-            val = str(st.session_state.get(chave, "")).strip()
-            if not _eh_valor_todas(val):
-                return val
+    for chave in ("empresa_usuario", "empresa_cliente", "empresa_logada", "empresa"):
+        val = str(st.session_state.get(chave, "")).strip()
+        if not _eh_valor_todas(val):
+            return val
+
+    if not _eh_valor_todas(empresa_do_arquivo):
+        return str(empresa_do_arquivo).strip()
 
     return ""
 
@@ -354,65 +356,54 @@ def _buscar_logo_empresa(db_name, nome_empresa):
 
 
 def _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura_pag, altura_pag):
-    if not TEM_REPORTLAB:
+    if not TEM_REPORTLAB or img_reader is None:
         return None
 
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=(largura_pag, altura_pag))
 
     tem_empresa = not _eh_valor_todas(empresa_especifica)
-    nome_exib = empresa_especifica.strip() if tem_empresa else "Todas as Empresas"
+    nome_exib = empresa_especifica.strip() if tem_empresa else ""
 
-    margem_x = 36
-    topo_y = altura_pag - 24
-    altura_faixa = 52
+    margem_x = 32
+    topo_y = altura_pag - 16
+    altura_faixa = 44
 
     c.setFillColor(colors.white)
-    c.rect(0, topo_y - altura_faixa, largura_pag, altura_faixa + 24, stroke=0, fill=1)
+    c.rect(0, topo_y - altura_faixa, largura_pag, altura_faixa + 16, stroke=0, fill=1)
 
-    x_texto = margem_x
-    if img_reader is not None:
-        try:
-            iw, ih = img_reader.getSize()
-            max_w = 95
-            max_h = 42
-            escala = min(max_w / float(iw), max_h / float(ih), 1.0)
-            w_draw = float(iw) * escala
-            h_draw = float(ih) * escala
-            y_logo = topo_y - (altura_faixa + h_draw) / 2.0
-            c.drawImage(
-                img_reader,
-                margem_x,
-                y_logo,
-                width=w_draw,
-                height=h_draw,
-                mask="auto",
-                preserveAspectRatio=True,
-            )
-            x_texto = margem_x + w_draw + 12
-        except Exception:
-            x_texto = margem_x
+    try:
+        iw, ih = img_reader.getSize()
+        max_w = 110
+        max_h = 38
+        escala = min(max_w / float(iw), max_h / float(ih), 1.0)
+        w_draw = float(iw) * escala
+        h_draw = float(ih) * escala
+        x_logo = largura_pag - margem_x - w_draw
+        y_logo = topo_y - (altura_faixa + h_draw) / 2.0
+        c.drawImage(
+            img_reader,
+            x_logo,
+            y_logo,
+            width=w_draw,
+            height=h_draw,
+            mask="auto",
+            preserveAspectRatio=True,
+        )
+    except Exception:
+        pass
 
-    c.setFillColor(colors.HexColor("#1B365D"))
-    c.setFont("Helvetica-Bold", 11.5)
-    c.drawString(x_texto, topo_y - 21, nome_exib[:72])
-
-    c.setFillColor(colors.HexColor("#555555"))
-    c.setFont("Helvetica", 8)
-    c.drawString(
-        x_texto,
-        topo_y - 35,
-        f"Checklist SST — Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
-    )
-
-    c.setStrokeColor(colors.HexColor("#1B365D"))
-    c.setLineWidth(1.0)
-    c.line(
-        margem_x,
-        topo_y - altura_faixa,
-        largura_pag - margem_x,
-        topo_y - altura_faixa,
-    )
+    if nome_exib:
+        c.setFillColor(colors.HexColor("#1B365D"))
+        c.setFont("Helvetica-Bold", 9.5)
+        c.drawString(margem_x, topo_y - 20, nome_exib[:65])
+        c.setFillColor(colors.HexColor("#555555"))
+        c.setFont("Helvetica", 7.5)
+        c.drawString(
+            margem_x,
+            topo_y - 32,
+            f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        )
 
     c.save()
     buf.seek(0)
@@ -426,9 +417,9 @@ def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_da
     valor_logo = _buscar_logo_empresa(db_name, empresa_especifica) if tem_empresa else None
     logo_bytes, _ = _extrair_bytes_e_mime_logo(valor_logo)
 
-    if ext == "pdf" and TEM_PYPDF and TEM_REPORTLAB:
-        img_reader = _converter_para_image_reader(valor_logo) if tem_empresa else None
-        if not tem_empresa and img_reader is None:
+    if ext == "pdf" and TEM_PYPDF and TEM_REPORTLAB and logo_bytes:
+        img_reader = _converter_para_image_reader(valor_logo)
+        if img_reader is None:
             return raw
 
         try:
@@ -477,32 +468,66 @@ def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_da
     return raw
 
 
+def _extrair_imagens_docx_html(blob_dados):
+    imagens_html = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(bytes(blob_dados)), "r") as zf:
+            arquivos_media = sorted(
+                [
+                    n
+                    for n in zf.namelist()
+                    if n.lower().startswith("word/media/")
+                    and os.path.splitext(n)[1].lower()
+                    in (".png", ".jpg", ".jpeg", ".gif", ".webp")
+                ]
+            )
+            for arq_img in arquivos_media:
+                ext = os.path.splitext(arq_img)[1].lstrip(".").lower()
+                mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+                dados_img = zf.read(arq_img)
+                if len(dados_img) > 200:
+                    b64_img = base64.b64encode(dados_img).decode("utf-8")
+                    imagens_html.append(
+                        f'<div style="margin:12px 0;text-align:center;">'
+                        f'<img src="data:{mime};base64,{b64_img}" '
+                        f'style="max-width:100%;max-height:340px;height:auto;border:1px solid #d0d7de;border-radius:4px;padding:4px;" />'
+                        f'</div>'
+                    )
+    except Exception:
+        pass
+    return "\n".join(imagens_html)
+
+
 def _extrair_texto_docx_html(blob_dados):
+    imagens_bloco = _extrair_imagens_docx_html(blob_dados)
     if not TEM_DOCX:
-        return "<p><em>Instale <code>python-docx</code> para visualizar o conteúdo do arquivo DOCX direto na tela.</em></p>"
+        return (
+            imagens_bloco
+            + "<p><em>Instale <code>python-docx</code> para visualizar o texto do DOCX.</em></p>"
+        )
     try:
         doc = python_docx.Document(io.BytesIO(bytes(blob_dados)))
         partes = []
         for p in doc.paragraphs:
             txt = p.text.strip()
             if txt:
-                partes.append(f"<p>{html.escape(txt)}</p>")
+                partes.append(f"<p style='margin:6px 0;'>{html.escape(txt)}</p>")
         for tab in doc.tables:
             linhas_html = []
             for row in tab.rows:
                 celulas = "".join(
-                    f"<td>{html.escape(c.text.strip())}</td>" for c in row.cells
+                    f"<td style='border:1px solid #888;padding:6px;font-size:12px;'>{html.escape(c.text.strip())}</td>"
+                    for c in row.cells
                 )
                 linhas_html.append(f"<tr>{celulas}</tr>")
             if linhas_html:
                 partes.append(
-                    f"<table border='1' cellspacing='0' cellpadding='6'>{''.join(linhas_html)}</table>"
+                    f"<table style='width:100%;border-collapse:collapse;margin:12px 0;'>{''.join(linhas_html)}</table>"
                 )
-        return (
-            "\n".join(partes)
-            if partes
-            else "<p><em>Documento DOCX sem texto extraível.</em></p>"
-        )
+        conteudo = "\n".join(partes) if partes else "<p><em>Documento DOCX sem texto extraível.</em></p>"
+        if imagens_bloco:
+            return f"<div style='display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;'><div>{imagens_bloco}</div><div>{conteudo}</div></div>"
+        return conteudo
     except Exception as e:
         return f"<p>Erro ao ler DOCX: {html.escape(str(e))}</p>"
 
@@ -627,7 +652,7 @@ def _renderizar_visualizador_direto(
                 }}
                 .folha {{
                   background: #ffffff; padding: 24px; border: 1px solid #d0d7de;
-                  border-radius: 6px; max-height: 580px; overflow-y: auto;
+                  border-radius: 6px; max-height: 620px; overflow-y: auto;
                 }}
                 .cabecalho-doc {{
                   display: flex; justify-content: space-between; align-items: center;
@@ -675,7 +700,7 @@ def _renderizar_visualizador_direto(
             </body>
             </html>
             """
-            components.html(html_doc, height=680, scrolling=True)
+            components.html(html_doc, height=700, scrolling=True)
 
 
 def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
@@ -808,8 +833,9 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
             blob_dados,
             dt_up,
         ) in arquivos:
+            empresa_efetiva = _obter_empresa_especifica(emp_arq)
             arquivo_preparado = _preparar_arquivo_para_baixar(
-                db_name, empresa_especifica, nome_arq, blob_dados
+                db_name, empresa_efetiva, nome_arq, blob_dados
             )
 
             with st.container(border=True):
@@ -862,7 +888,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                 _renderizar_visualizador_direto(
                     db_name=db_name,
                     titulo_arq=titulo_arq,
-                    empresa_especifica=empresa_especifica,
+                    empresa_especifica=empresa_efetiva,
                     nome_arq=nome_arq,
                     arquivo_preparado=arquivo_preparado,
                 )
