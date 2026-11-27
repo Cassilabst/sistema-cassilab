@@ -362,9 +362,6 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
         if ext == "pdf":
             b64_pdf = base64.b64encode(bytes(arquivo_preparado)).decode("utf-8")
 
-            if hasattr(st, "pdf"):
-                st.pdf(io.BytesIO(bytes(arquivo_preparado)), height=620)
-
             html_doc = f"""
             <!DOCTYPE html>
             <html>
@@ -373,7 +370,7 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
               <style>
                 body {{
                   margin: 0;
-                  padding: 8px;
+                  padding: 10px;
                   font-family: Arial, sans-serif;
                   background: #f5f7fa;
                 }}
@@ -383,14 +380,14 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
                   align-items: center;
                   background: #1B365D;
                   color: #ffffff;
-                  padding: 8px 14px;
+                  padding: 10px 14px;
                   border-radius: 6px;
                 }}
                 .btn-acao {{
                   background: #ffffff;
                   color: #1B365D;
                   border: none;
-                  padding: 7px 14px;
+                  padding: 8px 16px;
                   border-radius: 5px;
                   font-weight: bold;
                   cursor: pointer;
@@ -398,12 +395,24 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
                 .btn-acao:hover {{
                   background: #e6eef8;
                 }}
+                .aviso {{
+                  margin-top: 10px;
+                  padding: 14px;
+                  background: #ffffff;
+                  border: 1px solid #d0d7de;
+                  border-radius: 6px;
+                  color: #333;
+                  font-size: 14px;
+                }}
               </style>
             </head>
             <body>
               <div class="barra">
                 <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
-                <button class="btn-acao" onclick="abrirPdfNovaAba()">🗗 Abrir PDF para Imprimir</button>
+                <button class="btn-acao" onclick="abrirPdfNovaAba()">🗗 Visualizar / Imprimir PDF</button>
+              </div>
+              <div class="aviso">
+                Clique em <strong>Visualizar / Imprimir PDF</strong> para abrir o documento completo em uma nova aba e imprimir direto pelo navegador.
               </div>
               <script>
                 function abrirPdfNovaAba() {{
@@ -426,7 +435,7 @@ def _renderizar_visualizador_direto(titulo_arq, empresa_especifica, nome_arq, ar
             </body>
             </html>
             """
-            components.html(html_doc, height=62, scrolling=False)
+            components.html(html_doc, height=130, scrolling=False)
         else:
             corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
             html_doc = f"""
