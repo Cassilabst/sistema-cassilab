@@ -470,7 +470,7 @@ def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_da
 def _renderizar_blip_html(part, blip_elem, max_h=260, max_w=240):
     try:
         ns_r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-        r_embed = blip_elem.get(f"{{{ns_r}}}embed")
+        r_embed = blip_elem.get("{" + ns_r + "}embed")
         if not r_embed or r_embed not in part.related_parts:
             return ""
         img_part = part.related_parts[r_embed]
@@ -503,6 +503,13 @@ def _paragrafo_xml_para_html(p_elem, part, em_tabela=False):
     for child in p_elem:
         tag = child.tag.split("}")[-1]
         if tag == "r":
-            r_pr = child.find(f"{{{ns_w}}}rPr")
-            negrito = r_pr is not None and r_pr.find(f"{{{ns_w}}}b") is not None
-            italico = r_pr is not None and r_pr.find(f
+            r_pr = child.find("{" + ns_w + "}rPr")
+            negrito = r_pr is not None and r_pr.find("{" + ns_w + "}b") is not None
+            italico = r_pr is not None and r_pr.find("{" + ns_w + "}i") is not None
+            cor_elem = r_pr.find("{" + ns_w + "}color") if r_pr is not None else None
+            cor_val = cor_elem.get("{" + ns_w + "}val") if cor_elem is not None else None
+
+            texto_run = "".join(t.text or "" for t in child.findall("{" + ns_w + "}t"))
+            for br in child.findall("{" + ns_w + "}br"):
+                texto_run += "\n"
+            for tab_c in child.findall("
