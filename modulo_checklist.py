@@ -90,18 +90,36 @@ def _eh_cliente():
 
 
 def _eh_admin():
-    if _eh_cliente():
-        return False
+    chaves_perfil = (
+        "perfil",
+        "perfil_usuario",
+        "tipo_perfil",
+        "tipo_usuario",
+        "nivel_acesso",
+        "cargo_sistema",
+        "funcao_usuario",
+        "acesso",
+        "acesso_usuario",
+        "permissao",
+    )
 
-    for valor in st.session_state.values():
-        if isinstance(valor, str):
-            v = valor.strip().lower()
-            if v in ("administrador", "fazer tudo"):
+    for chave in chaves_perfil:
+        val = st.session_state.get(chave)
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if "cliente" in v or v in ("visualizador", "leitura", "somente leitura"):
+                return False
+            if v in ("administrador", "admin", "fazer tudo"):
                 return True
-        elif isinstance(valor, dict):
-            for sub in valor.values():
-                if isinstance(sub, str) and sub.strip().lower() in ("administrador", "fazer tudo"):
-                    return True
+        elif isinstance(val, dict):
+            for sub in val.values():
+                if isinstance(sub, str):
+                    s = sub.strip().lower()
+                    if "cliente" in s or s in ("visualizador", "leitura", "somente leitura"):
+                        return False
+                    if s in ("administrador", "admin", "fazer tudo"):
+                        return True
+
     return False
 
 
