@@ -488,8 +488,8 @@ def _renderizar_blip_html(part, blip_elem, max_h=260, max_w=240):
             mime = "image/png"
         b64_img = base64.b64encode(dados_img).decode("utf-8")
         return (
-            f'<img src="data:{mime};base64,{b64_img}" '
-            f'style="max-width:{max_w}px;max-height:{max_h}px;width:auto;height:auto;display:block;margin:6px auto;" />'
+            '<img src="data:' + mime + ";base64," + b64_img + '" '
+            'style="max-width:' + str(max_w) + "px;max-height:" + str(max_h) + 'px;width:auto;height:auto;display:block;margin:6px auto;" />'
         )
     except Exception:
         return ""
@@ -510,6 +510,497 @@ def _paragrafo_xml_para_html(p_elem, part, em_tabela=False):
             cor_val = cor_elem.get("{" + ns_w + "}val") if cor_elem is not None else None
 
             texto_run = "".join(t.text or "" for t in child.findall("{" + ns_w + "}t"))
-            for br in child.findall("{" + ns_w + "}br"):
+            for _ in child.findall("{" + ns_w + "}br"):
                 texto_run += "\n"
-            for tab_c in child.findall("
+            for _ in child.findall("{" + ns_w + "}tab"):
+                texto_run += "    "
+
+            if texto_run:
+                txt_esc = html.escape(texto_run).replace("\n", "<br/>")
+                estilos = []
+                if cor_val and cor_val.lower() not in ("auto", "ffffff"):
+                    estilos.append("color:#" + cor_val)
+                if negrito:
+                    estilos.append("font-weight:700")
+                if italico:
+                    estilos.append("font-style:italic")
+                st_attr = ' style="' + ";".join(estilos) + '"' if estilos else ""
+                pedacos.append("<span" + st_attr + ">" + txt_esc + "</span>")
+
+            for blip in child.findall(".//{" + ns_a + "}blip"):
+                img_tag = _renderizar_blip_html(
+                    part,
+                    blip,
+                    max_h=250 if em_tabela else 340,
+                    max_w=220 if em_tabela else 420,
+                )
+                if img_tag:
+                    pedacos.append(img_tag)
+
+        elif tag == "hyperlink":
+            for r_sub in child.findall("{" + ns_w + "}r"):
+                txt_sub = "".join(t.text or "" for t in r_sub.findall("{" + ns_w + "}t"))
+                if txt_sub:
+                    pedacos.append(html.escape(txt_sub))
+
+    html_interno = "".join(pedacos).strip()
+    if not html_interno:
+        return "<br/>" if not em_tabela else ""
+
+    p_pr = p_elem.find("{" + ns_w + "}pPr")
+    alinhamento = ""
+    if p_pr is not None:
+        jc = p_pr.find("{" + ns_w + "}jc")
+        if jc is not None:
+            val_jc = (jc.get("{" + ns_w + "}val") or "").lower()
+            if val_jc == "center":
+                alinhamento = "text-align:center;"
+            elif val_jc in ("right", "end"):
+                alinhamento = "text-align:right;"
+
+    if em_tabela:
+        return "<div style='line-height:1.3;" + alinhamento + "'>" + html_interno + "</div>"
+    return "<p style='margin:6px 0;line-height:1.35;" + alinhamento + "'>" + html_interno + "</p>"
+
+
+def _tabela_xml_para_html(tbl_elem, part):
+    ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    linhas_html = []
+
+    for tr in tbl_elem.findall("{" + ns_w + "}tr"):
+        celulas_html = []
+        for tc in tr.findall("{" + ns_w + "}tc"):
+            tc_pr = tc.find("{" + ns_w + "}tcPr")
+            colspan = 1
+            bg_css = ""
+            cor_texto_claro = False
+
+            if tc_pr is not None:
+                gs = tc_pr.find("{" + ns_w + "}gridSpan")
+                if gs is not None and gs.get("{" + ns_w + "}val"):
+                    try:
+                        colspan = max(1, int(gs.get("{" + ns_w + "}val")))
+                    except ValueError:
+                        colspan = 1
+
+                shd = tc_pr.find("{" + ns_w + "}shd")
+                if shd is not None:
+                    fill = (shd.get("{" + ns_w + "}fill") or "").strip()
+                    if fill and fill.lower() not in ("auto", "clear", "ffffff"):
+                        bg_css = "background-color:#" + fill + ";"
+                        try:
+                            r_c = int(fill[0:2], 16)
+                            g_c = int(fill[2:4], 16)
+                            b_c = int(fill[4:6], 16)
+                            if (0.299 * r_c + 0.587 * g_c + 0.114 * b_c) < 130:
+                                cor_texto_claro = True
+                        except Exception:
+                            pass
+
+            blocos_celula = []
+            for child in tc:
+                tag = child.tag.split("}")[-1]
+                if tag == "p":
+                    p_h = _paragrafo_xml_para_html(child, part, em_tabela=True)
+                    if p_h:
+                        blocos_celula.append(p_h)
+                elif tag == "tbl":
+                    blocos_celula.append(_tabela_xml_para_html(child, part))
+
+            conteudo_cel = "".join(blocos_celula) if blocos_celula else "&nbsp;"
+            cor_css = "color:#ffffff;" if cor_texto_claro else "color:#1f2937;"
+            span_attr = ' colspan="' + str(colspan) + '"' if colspan > 1 else ""
+            celulas_html.append(
+                "<td"
+                + span_attr
+                + " style='border:1px solid #6b7280;padding:5px 7px;font-size:11px;vertical-align:top;"
+                + bg_css
+                + cor_css
+                + "'>"
+                + conteudo_cel
+                + "</td>"
+            )
+
+        if celulas_html:
+            linhas_html.append("<tr>" + "".join(celulas_html) + "</tr>")
+
+    if not linhas_html:
+        return ""
+    return (
+        "<div style='overflow-x:auto;max-width:100%;margin:8px 0;'>"
+        "<table style='width:100%;border-collapse:collapse;table-layout:auto;'>"
+        + "".join(linhas_html)
+        + "</table></div>"
+    )
+
+
+def _extrair_imagens_docx_html(blob_dados):
+    return ""
+
+
+def _extrair_texto_docx_html(blob_dados):
+    if not TEM_DOCX:
+        return "<p><em>Instale <code>python-docx</code> para visualizar o conteúdo do DOCX.</em></p>"
+    try:
+        doc = python_docx.Document(io.BytesIO(bytes(blob_dados)))
+        part = doc.part
+        blocos = []
+
+        for child in doc.element.body:
+            tag = child.tag.split("}")[-1]
+            if tag == "p":
+                p_html = _paragrafo_xml_para_html(child, part, em_tabela=False)
+                if p_html and p_html != "<br/>":
+                    blocos.append(p_html)
+            elif tag == "tbl":
+                t_html = _tabela_xml_para_html(child, part)
+                if t_html:
+                    blocos.append(t_html)
+
+        return (
+            "\n".join(blocos)
+            if blocos
+            else "<p><em>Documento DOCX sem conteúdo extraível.</em></p>"
+        )
+    except Exception as e:
+        return "<p>Erro ao ler DOCX: " + html.escape(str(e)) + "</p>"
+
+
+def _renderizar_visualizador_direto(
+    db_name, titulo_arq, empresa_especifica, nome_arq, arquivo_preparado
+):
+    ext = _extensao_arquivo(nome_arq)
+    titulo_seguro = html.escape(titulo_arq or nome_arq)
+    tem_empresa = not _eh_valor_todas(empresa_especifica)
+    empresa_segura = html.escape(empresa_especifica) if tem_empresa else "Todas as empresas"
+    data_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    logo_html = ""
+    if tem_empresa:
+        valor_logo = _buscar_logo_empresa(db_name, empresa_especifica)
+        logo_bytes, mime_logo = _extrair_bytes_e_mime_logo(valor_logo)
+        if logo_bytes:
+            b64_logo = base64.b64encode(logo_bytes).decode("utf-8")
+            logo_html = (
+                '<img src="data:'
+                + html.escape(mime_logo)
+                + ";base64,"
+                + b64_logo
+                + '" alt="Logo '
+                + empresa_segura
+                + '" style="max-height:52px;max-width:140px;object-fit:contain;" />'
+            )
+
+    with st.container(border=True):
+        st.markdown(f"#### 📄 {titulo_seguro}")
+        st.caption(f"Empresa: **{empresa_segura}** • Arquivo: `{html.escape(nome_arq)}`")
+
+        if ext == "pdf":
+            b64_pdf = base64.b64encode(bytes(arquivo_preparado)).decode("utf-8")
+
+            html_doc = (
+                "<!DOCTYPE html>"
+                "<html>"
+                "<head>"
+                "<meta charset='utf-8' />"
+                "<style>"
+                "body { margin: 0; padding: 10px; font-family: Arial, sans-serif; background: #f5f7fa; }"
+                ".barra { display: flex; justify-content: space-between; align-items: center; "
+                "background: #1B365D; color: #ffffff; padding: 10px 14px; border-radius: 6px; }"
+                ".btn-acao { background: #ffffff; color: #1B365D; border: none; padding: 8px 16px; "
+                "border-radius: 5px; font-weight: bold; cursor: pointer; }"
+                ".btn-acao:hover { background: #e6eef8; }"
+                ".aviso { margin-top: 10px; padding: 14px; background: #ffffff; border: 1px solid #d0d7de; "
+                "border-radius: 6px; color: #333; font-size: 14px; }"
+                "</style>"
+                "</head>"
+                "<body>"
+                "<div class='barra'><span><strong>"
+                + titulo_seguro
+                + "</strong> — "
+                + empresa_segura
+                + "</span>"
+                "<button class='btn-acao' onclick='abrirPdfNovaAba()'>🗗 Visualizar / Imprimir PDF</button></div>"
+                "<div class='aviso'>Clique em <strong>Visualizar / Imprimir PDF</strong> para abrir o documento completo em uma nova aba e imprimir direto pelo navegador.</div>"
+                "<script>"
+                "function abrirPdfNovaAba() {"
+                'const b64 = "' + b64_pdf + '";'
+                "const byteChars = atob(b64);"
+                "const byteArrays = [];"
+                "for (let offset = 0; offset < byteChars.length; offset += 512) {"
+                "const slice = byteChars.slice(offset, offset + 512);"
+                "const byteNumbers = new Array(slice.length);"
+                "for (let i = 0; i < slice.length; i++) { byteNumbers[i] = slice.charCodeAt(i); }"
+                "byteArrays.push(new Uint8Array(byteNumbers));"
+                "}"
+                'const blob = new Blob(byteArrays, { type: "application/pdf" });'
+                "const blobUrl = URL.createObjectURL(blob);"
+                'window.open(blobUrl, "_blank");'
+                "}"
+                "</script>"
+                "</body>"
+                "</html>"
+            )
+            components.html(html_doc, height=130, scrolling=False)
+        else:
+            corpo_docx = _extrair_texto_docx_html(arquivo_preparado)
+            html_doc = (
+                "<!DOCTYPE html>"
+                "<html>"
+                "<head>"
+                "<meta charset='utf-8' />"
+                "<style>"
+                "body { margin: 0; padding: 14px; font-family: Arial, sans-serif; background: #f5f7fa; color: #222; }"
+                ".barra-topo { display: flex; justify-content: space-between; align-items: center; "
+                "background: #1B365D; color: #ffffff; padding: 8px 14px; border-radius: 6px; margin-bottom: 12px; }"
+                ".btn-imprimir { background: #ffffff; color: #1B365D; border: none; padding: 7px 14px; "
+                "border-radius: 5px; font-weight: bold; cursor: pointer; }"
+                ".folha { background: #ffffff; padding: 24px; border: 1px solid #d0d7de; "
+                "border-radius: 6px; max-height: 620px; overflow-y: auto; }"
+                ".cabecalho-doc { display: flex; justify-content: space-between; align-items: center; "
+                "gap: 16px; border-bottom: 2px solid #1B365D; padding-bottom: 12px; margin-bottom: 14px; }"
+                "table { width: 100%; border-collapse: collapse; margin: 12px 0; }"
+                "</style>"
+                "</head>"
+                "<body>"
+                "<div class='barra-topo'>"
+                "<span><strong>"
+                + titulo_seguro
+                + "</strong> — "
+                + empresa_segura
+                + "</span>"
+                "<button class='btn-imprimir' onclick='imprimirDocx()'>🖨️ Imprimir</button>"
+                "</div>"
+                "<div class='folha' id='areaImpressao'>"
+                "<div class='cabecalho-doc'>"
+                "<div><h2 style='margin:0 0 4px 0;'>"
+                + titulo_seguro
+                + "</h2>"
+                "<small>Empresa: "
+                + empresa_segura
+                + " • Gerado em: "
+                + html.escape(data_str)
+                + "</small></div>"
+                "<div>"
+                + logo_html
+                + "</div>"
+                "</div>"
+                + corpo_docx
+                + "</div>"
+                "<script>"
+                "function imprimirDocx() {"
+                "const conteudo = document.getElementById('areaImpressao').innerHTML;"
+                'const win = window.open("", "_blank");'
+                "if (win) {"
+                "win.document.write('<html><head><title>"
+                + titulo_seguro
+                + "</title><style>' +"
+                "'body{font-family:Arial,sans-serif;padding:24px;color:#222;}' +"
+                "'.cabecalho-doc{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:2px solid #1B365D;padding-bottom:12px;margin-bottom:14px;}' +"
+                "'table{width:100%;border-collapse:collapse;margin:12px 0;}' +"
+                "'td,th{border:1px solid #888;padding:6px;}' +"
+                "'</style></head><body>' + conteudo + '</body></html>');"
+                "win.document.close();"
+                "win.focus();"
+                "win.print();"
+                "} else { window.print(); }"
+                "}"
+                "</script>"
+                "</body>"
+                "</html>"
+            )
+            components.html(html_doc, height=700, scrolling=True)
+
+
+def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
+    try:
+        _garantir_tabela_arquivos_checklist(db_name)
+
+        st.title("Checklists")
+        st.markdown("Checklists cadastrados para visualização e impressão direta")
+
+        empresa_especifica = _obter_empresa_especifica()
+        if empresa_especifica:
+            st.caption(f"Empresa ativa: **{empresa_especifica}**")
+        else:
+            st.caption("Visualização: **Todas as empresas** (impressão sem logo)")
+
+        pode_gerenciar = _pode_gerenciar_checklists()
+
+        if pode_gerenciar:
+            opcoes_escopo = ["Todas as empresas (Geral)"] + _listar_empresas_banco(db_name)
+            with st.expander("➕ Adicionar novo arquivo de checklist (Admin)", expanded=False):
+                with st.form("form_upload_checklist", clear_on_submit=True):
+                    titulo = st.text_input(
+                        "Título do Checklist",
+                        placeholder="Ex.: Checklist Andaimes - Inspeção de Segurança",
+                    )
+                    descricao = st.text_area(
+                        "Descrição (opcional)",
+                        placeholder="Ex.: Orientações gerais ou observações do checklist.",
+                        height=75,
+                    )
+                    escopo_empresa = st.selectbox("Disponível para", opcoes_escopo)
+                    arquivo_up = st.file_uploader(
+                        "Selecione o arquivo (somente PDF ou DOCX)",
+                        type=["pdf", "docx"],
+                    )
+                    btn_enviar = st.form_submit_button("Salvar Arquivo")
+
+                    if btn_enviar:
+                        if not titulo.strip():
+                            st.error("Informe o título do checklist.")
+                        elif arquivo_up is None:
+                            st.error("Selecione um arquivo PDF ou DOCX para enviar.")
+                        else:
+                            ext = _extensao_arquivo(arquivo_up.name)
+                            if ext not in EXTENSOES_PERMITIDAS:
+                                st.error("Formato não permitido. Envie apenas arquivos .PDF ou .DOCX.")
+                            else:
+                                dados_bytes = arquivo_up.getvalue()
+                                empresa_alvo = "" if escopo_empresa.startswith("Todas") else escopo_empresa
+                                data_agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+                                mime_final = MIME_POR_EXTENSAO.get(
+                                    ext, arquivo_up.type or "application/octet-stream"
+                                )
+
+                                conn = sqlite3.connect(db_name, timeout=10.0)
+                                cur = conn.cursor()
+                                cur.execute(
+                                    """
+                                    INSERT INTO checklist_arquivos
+                                        (empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    """,
+                                    (
+                                        empresa_alvo,
+                                        titulo.strip(),
+                                        descricao.strip(),
+                                        arquivo_up.name,
+                                        mime_final,
+                                        len(dados_bytes),
+                                        sqlite3.Binary(dados_bytes),
+                                        data_agora,
+                                    ),
+                                )
+                                conn.commit()
+                                conn.close()
+
+                                if callable(registrar_log_callback):
+                                    registrar_log_callback(
+                                        st.session_state.get("nome_usuario", "Administrador"),
+                                        empresa_alvo or "Geral",
+                                        f"Adicionou arquivo de checklist: {titulo.strip()} ({arquivo_up.name})",
+                                    )
+
+                                st.success("Arquivo adicionado com sucesso!")
+                                st.rerun()
+
+        st.markdown("---")
+        st.subheader("Checklists Disponíveis")
+
+        conn = sqlite3.connect(db_name, timeout=10.0)
+        cur = conn.cursor()
+        if empresa_especifica:
+            cur.execute(
+                """
+                SELECT id, empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload
+                FROM checklist_arquivos
+                WHERE TRIM(COALESCE(empresa, '')) = ''
+                   OR LOWER(TRIM(empresa)) = LOWER(TRIM(?))
+                ORDER BY LOWER(TRIM(titulo)) ASC, id DESC
+                """,
+                (empresa_especifica,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id, empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload
+                FROM checklist_arquivos
+                ORDER BY LOWER(TRIM(titulo)) ASC, id DESC
+                """
+            )
+        arquivos = cur.fetchall()
+        conn.close()
+
+        if not arquivos:
+            st.info("Nenhum arquivo de checklist disponível no momento.")
+            return
+
+        item_aberto_key = "checklist_visualizar_id"
+        if item_aberto_key not in st.session_state:
+            st.session_state[item_aberto_key] = None
+
+        for (
+            arq_id,
+            emp_arq,
+            titulo_arq,
+            desc_arq,
+            nome_arq,
+            mime_arq,
+            tam_bytes,
+            blob_dados,
+            dt_up,
+        ) in arquivos:
+            empresa_efetiva = _obter_empresa_especifica(emp_arq)
+            arquivo_preparado = _preparar_arquivo_para_baixar(
+                db_name, empresa_efetiva, nome_arq, blob_dados
+            )
+
+            with st.container(border=True):
+                col_info, col_acao = st.columns([4, 1.8])
+
+                with col_info:
+                    escopo_txt = (
+                        emp_arq.strip()
+                        if emp_arq and emp_arq.strip()
+                        else "Todas as empresas"
+                    )
+                    st.markdown(f"**{titulo_arq}**")
+                    if desc_arq and desc_arq.strip():
+                        st.write(desc_arq.strip())
+                    st.caption(
+                        f"Arquivo: `{nome_arq}` • Tamanho: {_formatar_tamanho(tam_bytes)} • Escopo: {escopo_txt} • Enviado em: {dt_up or '—'}"
+                    )
+
+                with col_acao:
+                    esta_aberto = st.session_state[item_aberto_key] == arq_id
+                    btn_txt = "🔼 Fechar" if esta_aberto else "👁️ Visualizar"
+                    if st.button(btn_txt, key=f"btn_vis_{arq_id}", use_container_width=True):
+                        st.session_state[item_aberto_key] = None if esta_aberto else arq_id
+                        st.rerun()
+
+                    if pode_gerenciar:
+                        if st.button(
+                            "🗑️ Remover",
+                            key=f"del_checklist_{arq_id}",
+                            use_container_width=True,
+                        ):
+                            conn_del = sqlite3.connect(db_name, timeout=10.0)
+                            conn_del.execute(
+                                "DELETE FROM checklist_arquivos WHERE id = ?", (arq_id,)
+                            )
+                            conn_del.commit()
+                            conn_del.close()
+
+                            if callable(registrar_log_callback):
+                                registrar_log_callback(
+                                    st.session_state.get("nome_usuario", "Administrador"),
+                                    emp_arq or "Geral",
+                                    f"Removeu arquivo de checklist: {titulo_arq} ({nome_arq})",
+                                )
+
+                            st.success("Arquivo removido!")
+                            st.rerun()
+
+            if st.session_state[item_aberto_key] == arq_id:
+                _renderizar_visualizador_direto(
+                    db_name=db_name,
+                    titulo_arq=titulo_arq,
+                    empresa_especifica=empresa_efetiva,
+                    nome_arq=nome_arq,
+                    arquivo_preparado=arquivo_preparado,
+                )
+    except Exception as erro_checklist:
+        st.error(f"Erro ao renderizar o módulo Checklists: {erro_checklist}")
+        st.exception(erro_checklist)
