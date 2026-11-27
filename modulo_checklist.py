@@ -101,23 +101,45 @@ def _eh_admin():
         "acesso",
         "acesso_usuario",
         "permissao",
+        "permissoes",
+        "role",
+        "usuario_perfil",
+        "nivel",
     )
+    termos_cliente = ("cliente", "visualizador", "leitura", "somente leitura", "convidado")
+    termos_admin = ("administrador", "admin", "fazer tudo", "master", "gestor", "diretor", "total", "gerenciar")
 
     for chave in chaves_perfil:
         val = st.session_state.get(chave)
         if isinstance(val, str):
             v = val.strip().lower()
-            if "cliente" in v or v in ("visualizador", "leitura", "somente leitura"):
+            if any(t in v for t in termos_cliente):
                 return False
-            if v in ("administrador", "admin", "fazer tudo"):
+            if any(t in v for t in termos_admin):
                 return True
         elif isinstance(val, dict):
             for sub in val.values():
                 if isinstance(sub, str):
                     s = sub.strip().lower()
-                    if "cliente" in s or s in ("visualizador", "leitura", "somente leitura"):
+                    if any(t in s for t in termos_cliente):
                         return False
-                    if s in ("administrador", "admin", "fazer tudo"):
+                    if any(t in s for t in termos_admin):
+                        return True
+
+    for valor in st.session_state.values():
+        if isinstance(valor, str):
+            v = valor.strip().lower()
+            if any(t in v for t in termos_cliente):
+                return False
+            if any(t in v for t in termos_admin):
+                return True
+        elif isinstance(valor, dict):
+            for sub in valor.values():
+                if isinstance(sub, str):
+                    s = sub.strip().lower()
+                    if any(t in s for t in termos_cliente):
+                        return False
+                    if any(t in s for t in termos_admin):
                         return True
 
     return False
