@@ -59,7 +59,40 @@ def _garantir_tabela_arquivos_checklist(db_name):
     conn.close()
 
 
+def _eh_cliente():
+    chaves_cliente = (
+        "perfil",
+        "perfil_usuario",
+        "tipo_perfil",
+        "tipo_usuario",
+        "nivel_acesso",
+        "cargo_sistema",
+        "funcao_usuario",
+        "acesso",
+        "acesso_usuario",
+        "permissao",
+    )
+    termos_cliente = ("cliente", "empresa_cliente", "portal_cliente", "visualizador", "leitura")
+
+    for chave in chaves_cliente:
+        val = st.session_state.get(chave)
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if v in termos_cliente or v.startswith("cliente"):
+                return True
+        elif isinstance(val, dict):
+            for sub in val.values():
+                if isinstance(sub, str):
+                    s = sub.strip().lower()
+                    if s in termos_cliente or s.startswith("cliente"):
+                        return True
+    return False
+
+
 def _eh_admin():
+    if _eh_cliente():
+        return False
+
     for valor in st.session_state.values():
         if isinstance(valor, str):
             v = valor.strip().lower()
