@@ -69,6 +69,53 @@ def _eh_admin():
                 if isinstance(sub, str) and sub.strip().lower() in ("administrador", "fazer tudo"):
                     return True
     return False
+
+def _eh_usuario_comum():
+    chaves_perfil = (
+        "perfil_usuario",
+        "perfil",
+        "tipo_perfil",
+        "nivel_acesso",
+        "acesso_usuario",
+        "acesso",
+        "tipo_usuario",
+        "cargo_sistema",
+        "funcao_usuario",
+    )
+    perfis_comuns = {
+        "usuario",
+        "usuário",
+        "usuario comum",
+        "usuário comum",
+        "visualizador",
+        "leitura",
+        "somente leitura",
+        "cliente",
+        "empresa",
+        "operador",
+        "convidado",
+    }
+
+    for chave in chaves_perfil:
+        val = st.session_state.get(chave)
+        if isinstance(val, str):
+            txt = val.strip().lower()
+            if txt in perfis_comuns or "usuário" in txt or "usuario" in txt:
+                return True
+        elif isinstance(val, dict):
+            for sub in val.values():
+                if isinstance(sub, str):
+                    txt = sub.strip().lower()
+                    if txt in perfis_comuns or "usuário" in txt or "usuario" in txt:
+                        return True
+    return False
+
+
+def _pode_gerenciar_checklists():
+    """Retorna True apenas para Administrador; bloqueia qualquer usuário comum."""
+    if _eh_usuario_comum():
+        return False
+    return _eh_admin()
     
 def _formatar_tamanho(num_bytes):
     if not num_bytes:
