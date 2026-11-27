@@ -1,4605 +1,545 @@
-from datetime import datetime, date, timedelta
-import re
-import sys
-import calendar
-import requests
-import smtplib
-from email.mime.text import MIMEText
-import streamlit as st
-import json  # <--- ADICIONE ESTA LINHA AQUI
-import sqlalchemy
-from sqlalchemy import create_engine, text
-import sqlite3 as sqlite_original
-import pandas as pd
-from modulo_ca import renderizar_modulo_ca, consultar_dados_ca
 import base64
+import io
 import os
-import shutil
-from normas import renderizar_aba_normas
-from modulo_checklist import renderizar_modulo_checklist
-
-# --- CONFIGURAÇÃO PARA RENDER COM SQLITE LOCAL PERSISTENTE ---
-if os.path.exists("/data"):
-    DB_PATH_PERSISTENT = "/data/cassilab_gestao.db"
-    DB_PATH_LOCAL = "cassilab_gestao.db"
-    
-    # Se o disco persistente ainda estiver vazio, mas o arquivo veio do GitHub, copia para lá automaticamente!
-    if not os.path.exists(DB_PATH_PERSISTENT) and os.path.exists(DB_PATH_LOCAL):
-        shutil.copy(DB_PATH_LOCAL, DB_PATH_PERSISTENT)
-        
-    DB_NAME = DB_PATH_PERSISTENT
-else:
-    DB_NAME = "cassilab_gestao.db"
-    
-DB_URL = f"sqlite:///{DB_NAME}"
+import sqlite3
+from datetime import datetime
+import streamlit as st
+import streamlit.components.v1 as components
 
 try:
-    engine = create_engine(DB_URL, connect_args={"timeout": 30}, pool_pre_ping=True)
-except Exception as e:
-    st.error(f"❌ Erro ao inicializar o motor do SQLite: {e}")
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    TEM_REPORTLAB = True
+except ImportError:
+    TEM_REPORTLAB = False
 
-# --- TRADUTOR PARA O PANDAS ---
-if not hasattr(pd, "_original_read_sql"):
-    pd._original_read_sql = pd.read_sql
+try:
+    from pypdf import PdfReader, PdfWriter
+    TEM_PYPDF = True
+except ImportError:
+    TEM_PYPDF = False
 
-def _patched_read_sql(sql, con, *args, **kwargs):
-    # Se 'con' for string ou sqlite3 connection, usa sqlite nativo para máxima performance local
-    if isinstance(con, (str, sqlite_original.Connection)):
-        return pd._original_read_sql(sql, con, *args, **kwargs)
-    return pd._original_read_sql(sql, engine, *args, **kwargs)
 
-pd.read_sql = _patched_read_sql
+EXTENSOES_PERMITIDAS = {"pdf", "docx"}
 
-# --- IMPORTAÇÃO DOS MÓDULOS SEPARADOS ---
-from modulo_absenteismo import renderizar_aba_absenteismo
-from modulo_admin import renderizar_aba_admin
-from modulo_documentos import renderizar_aba_documentos, renderizar_botao_imprimir_termo
-from modulo_empresas import renderizar_aba_empresas
-from modulo_epis import renderizar_aba_epis
-from modulo_exames import renderizar_aba_exames
-from modulo_funcionarios import renderizar_aba_funcionarios
-from modulo_lista_presenca import renderizar_aba_lista_presenca
-from modulo_matriz import renderizar_matriz_treinamentos
-from modulo_os import renderizar_aba_os
-from modulo_relatorios import renderizar_aba_relatorios
-from modulo_servicos import renderizar_aba_servicos
-from modulo_treinamentos import renderizar_aba_treinamentos
-from modulo_senha import renderizar_aba_alterar_senha
+MIME_POR_EXTENSAO = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="Cassilab - Gestão em SST", page_icon="🛡️", layout="wide"
-)
 
-def criar_backup_automatico():
-    pass
-
-def formatar_titulo(texto):
-    if not texto or pd.isna(texto):
-        return ""
-    excecoes = {"e", "da", "de", "do", "das", "dos", "em", "para", "com", "S.A."}
-    siglas_maiusculas = {
-        "ltda", "nr", "me", "mei", "epp", "epi", "cnae", "pgr", "pcmso",
-        "pgrs", "pca", "ppr", "npt", "ccb", "aet", "aep", "arp", "ltcat",
-        "apr", "ppp", "cipa", "epc", "aso", "sst", "sesmt", "ca", "nfes",
-        "dds", "w", "pemt"
-    }
-    palavras = str(texto).strip().split()
-    palavras_formatadas = []
-    for i, p in enumerate(palavras):
-        p_limpa = re.sub(r"[^a-zA-Z0-9]", "", p).lower()
-        if p_limpa in siglas_maiusculas:
-            palavras_formatadas.append(p.upper())
-        else:
-            p_lower = p.lower()
-            if i > 0 and p_lower in excecoes:
-                palavras_formatadas.append(p_lower)
-            else:
-                if "-" in p:
-                    partes = [
-                        sub.upper() if sub.lower() in siglas_maiusculas else sub.capitalize()
-                        for sub in p.split("-")
-                    ]
-                    palavras_formatadas.append("-".join(partes))
-                else:
-                    palavras_formatadas.append(p.capitalize())
-    return " ".join(palavras_formatadas)
-
-def adicionar_numeracao(df):
-    if df is None or df.empty:
-        return df
-    df = df.copy()
-    if "Nº" in df.columns:
-        df = df.drop(columns=["Nº"])
-    df.insert(0, "Nº", range(1, len(df) + 1))
-    return df
-
-def registrar_log(usuario, empresa, acao):
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        dt_atual = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
-        cursor.execute(
-            "INSERT INTO logs_sistema (data_hora, usuario, empresa, acao) VALUES (?, ?, ?, ?)",
-            (dt_atual, str(usuario), str(empresa), str(acao)),
-        )
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def enviar_email_smtp(destinatario, assunto, corpo):
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        cursor.execute("SELECT email, senha_app FROM configuracoes_email LIMIT 1")
-        cfg = cursor.fetchone()
-        conn.close()
-        if not cfg or not cfg[0] or not cfg[1]:
-            return False, "Configurações de e-mail não encontradas na aba Administração."
-        remetente = cfg[0]
-        senha_app = cfg[1]
-        msg = MIMEMultipart()
-        msg["From"] = remetente
-        msg["To"] = destinatario
-        msg["Subject"] = assunto
-        msg.attach(MIMEText(corpo, "plain", "utf-8"))
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(remetente, senha_app)
-        server.sendmail(remetente, destinatario, msg.as_string())
-        server.quit()
-        return True, "E-mail enviado com sucesso!"
-    except Exception as e:
-        return False, str(e)
-
-def calcular_proximo_exame(data_str, meses_str):
-    if not data_str or not meses_str:
-        return data_str
-    try:
-        meses_digitos = "".join(filter(str.isdigit, str(meses_str)))
-        meses = int(meses_digitos) if meses_digitos else 12
-        dt = None
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(str(data_str).strip(), fmt)
-                break
-            except ValueError:
-                continue
-        if not dt:
-            return data_str
-        mes_novo = dt.month - 1 + meses
-        ano_novo = dt.year + mes_novo // 12
-        mes_novo = mes_novo % 12 + 1
-        ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-        dia_novo = min(dt.day, ultimo_dia_mes)
-        dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-        return dt_futura.strftime("%d/%m/%Y")
-    except:
-        return data_str
-
-def calcular_proximo_treinamento(data_str, validade_str):
-    if not data_str or not validade_str:
-        return data_str
-    
-    # Tenta ler se a validade já é uma data válida formatada
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt_val = datetime.strptime(str(validade_str).strip(), fmt)
-            return dt_val.strftime("%d/%m/%Y")
-        except ValueError:
-            continue
-            
-    try:
-        val_lower = str(validade_str).lower()
-        numeros = "".join(filter(str.isdigit, val_lower))
-        qtd = int(numeros) if numeros else 12
-        dt = None
-        
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(str(data_str).strip(), fmt)
-                break
-            except ValueError:
-                continue
-                
-        if not dt:
-            return data_str
-            
-        if "ano" in val_lower:
-            ano_novo = dt.year + qtd
-            try:
-                dt_futura = dt.replace(year=ano_novo)
-            except ValueError:
-                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-        elif "mes" in val_lower or "mês" in val_lower:
-            mes_novo = dt.month - 1 + qtd
-            ano_novo = dt.year + mes_novo // 12
-            mes_novo = mes_novo % 12 + 1
-            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-            dia_novo = min(dt.day, ultimo_dia_mes)
-            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-        elif "dia" in val_lower:
-            dt_futura = dt + timedelta(days=qtd)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-        else:
-            # Padrão caso venha apenas o número (ex: "12") -> assume meses
-            mes_novo = dt.month - 1 + qtd
-            ano_novo = dt.year + mes_novo // 12
-            mes_novo = mes_novo % 12 + 1
-            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-            dia_novo = min(dt.day, ultimo_dia_mes)
-            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-            
-    except:
-        return data_str
-
-def calcular_proxima_renovacao(data_str, vigencia_str):
-    if not data_str or not vigencia_str:
-        return data_str
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt_vig = datetime.strptime(str(vigencia_str).strip(), fmt)
-            return dt_vig.strftime("%d/%m/%Y")
-        except ValueError:
-            continue
-    try:
-        val_lower = str(vigencia_str).lower()
-        numeros = "".join(filter(str.isdigit, val_lower))
-        qtd = int(numeros) if numeros else 1
-        dt = None
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(str(data_str).strip(), fmt)
-                break
-            except ValueError:
-                continue
-        if not dt:
-            return data_str
-        if "ano" in val_lower:
-            ano_novo = dt.year + qtd
-            try:
-                dt_futura = dt.replace(year=ano_novo)
-            except ValueError:
-                dt_futura = dt.replace(year=ano_novo, month=2, day=28)
-            return dt_futura.strftime("%d/%m/%Y")
-        elif "mes" in val_lower or "mês" in val_lower:
-            mes_novo = dt.month - 1 + qtd
-            ano_novo = dt.year + mes_novo // 12
-            mes_novo = mes_novo % 12 + 1
-            ultimo_dia_mes = calendar.monthrange(ano_novo, mes_novo)[1]
-            dia_novo = min(dt.day, ultimo_dia_mes)
-            dt_futura = dt.replace(year=ano_novo, month=mes_novo, day=dia_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-        elif "dia" in val_lower:
-            dt_futura = dt + timedelta(days=qtd)
-            return dt_futura.strftime("%d/%m/%Y")
-        else:
-            ano_novo = dt.year + qtd
-            dt_futura = dt.replace(year=ano_novo)
-            return dt_futura.strftime("%d/%m/%Y")
-    except:
-        return data_str
-
-def calcular_status_por_data(data_str):
-    if not data_str or pd.isna(data_str):
-        return "Válido"
-    hoje = datetime.today().date()
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(str(data_str).strip(), fmt).date()
-            diff = (dt - hoje).days
-            if diff < 0:
-                return "Vencido"
-            elif diff <= 30:
-                return "A Vencer"
-            else:
-                return "Válido"
-        except ValueError:
-            continue
-    return "Válido"
-
-def calcular_status_exame(data_str):
-    if not data_str or pd.isna(data_str):
-        return "Válido"
-    hoje = datetime.today().date()
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(str(data_str).strip(), fmt).date()
-            diff = (dt - hoje).days
-            if diff < 0:
-                return "Vencido"
-            elif diff <= 15:
-                return "A Vencer"
-            else:
-                return "Válido"
-        except ValueError:
-            continue
-    return "Válido"
-
-def sincronizar_status_exames():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df = pd.read_sql("SELECT id, proximo_exame FROM exames", conn)
-        if not df.empty:
-            cursor = conn.cursor()
-            for _, row in df.iterrows():
-                prox = row["proximo_exame"]
-                novo_st = calcular_status_exame(prox)
-                cursor.execute("UPDATE exames SET status = ? WHERE id = ?", (novo_st, row["id"]))
-            conn.commit()
-        conn.close()
-    except:
-        pass
-
-def sincronizar_status_treinamentos():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df = pd.read_sql("SELECT id, proximo_treinamento FROM treinamentos", conn)
-        if not df.empty:
-            cursor = conn.cursor()
-            hoje = datetime.today().date()
-            for _, row in df.iterrows():
-                prox = row["proximo_treinamento"]
-                novo_st = "em dia"
-                if prox and not pd.isna(prox):
-                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                        try:
-                            dt = datetime.strptime(str(prox).strip(), fmt).date()
-                            diff = (dt - hoje).days
-                            if diff < 0:
-                                novo_st = "vencido"
-                            else:
-                                novo_st = "em dia"
-                            break
-                        except ValueError:
-                            continue
-                cursor.execute("UPDATE treinamentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
-            conn.commit()
-        conn.close()
-    except:
-        pass
-
-def sincronizar_status_documentos():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df = pd.read_sql("SELECT id, proxima_renovacao FROM documentos", conn)
-        if not df.empty:
-            cursor = conn.cursor()
-            hoje = datetime.today().date()
-            for _, row in df.iterrows():
-                prox = row["proxima_renovacao"]
-                novo_st = "Válido"
-                if prox and not pd.isna(prox):
-                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                        try:
-                            dt = datetime.strptime(str(prox).strip(), fmt).date()
-                            diff = (dt - hoje).days
-                            if diff < 0:
-                                novo_st = "Vencido"
-                            elif diff <= 30:
-                                novo_st = "A Vencer"
-                            else:
-                                novo_st = "Válido"
-                            break
-                        except ValueError:
-                            continue
-                cursor.execute("UPDATE documentos SET status = ? WHERE id = ?", (novo_st, row["id"]))
-            conn.commit()
-        conn.close()
-    except:
-        pass
-
-def atualizar_cargo_setor_treinamentos_antigos():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE treinamentos 
-            SET cargo = COALESCE(NULLIF(cargo, ''), (SELECT b.cargo FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1)),
-                setor = COALESCE(NULLIF(setor, ''), (SELECT b.setor FROM base_funcionarios b WHERE b.funcionario = treinamentos.funcionario AND b.empresa = treinamentos.empresa LIMIT 1))
-            WHERE cargo IS NULL OR cargo = '' OR setor IS NULL OR setor = ''
-        """)
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def atualizar_validade_treinamentos_para_meses():
-    try:
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, validade, data_realizacao FROM treinamentos WHERE validade LIKE '%ano%'")
-        rows = cursor.fetchall()
-        for row in rows:
-            rid, val_str, dt_real = row[0], str(row[1]).lower(), row[2]
-            numeros = "".join(filter(str.isdigit, val_str))
-            anos = int(numeros) if numeros else 1
-            meses = anos * 12
-            nova_val = f"{meses} meses"
-            novo_prox = calcular_proximo_treinamento(dt_real, nova_val)
-            cursor.execute("UPDATE treinamentos SET validade = ?, proximo_treinamento = ? WHERE id = ?", (nova_val, novo_prox, rid))
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def init_db():
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    
-    # 1. Corrige a tabela de treinamentos para remover a restrição UNIQUE global (com segurança)
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cad_treinamentos';")
-    tabela_existe = cursor.fetchone()
-    
-    if tabela_existe:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cad_treinamentos_temp AS 
-            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos;
-        """)
-        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos;")
-        cursor.execute("""
-            CREATE TABLE cad_treinamentos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                empresa TEXT,
-                treinamento TEXT,
-                carga_horaria TEXT
-            );
-        """)
-        cursor.execute("""
-            INSERT OR IGNORE INTO cad_treinamentos (id, empresa, treinamento, carga_horaria)
-            SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos_temp;
-        """)
-        cursor.execute("DROP TABLE IF EXISTS cad_treinamentos_temp;")
-    else:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cad_treinamentos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                empresa TEXT,
-                treinamento TEXT,
-                carga_horaria TEXT
-            );
-        """)
-
-    # 2. Criação de TODAS as demais tabelas usando a mesma conexão ativa
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS base_funcionarios (
+def _garantir_tabela_arquivos_checklist(db_name):
+    conn = sqlite3.connect(db_name, timeout=10.0)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS checklist_arquivos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS grau_risco_nr04 (
-            cnae TEXT PRIMARY KEY,
+            empresa TEXT,
+            titulo TEXT NOT NULL,
             descricao TEXT,
-            grau_risco TEXT
+            nome_arquivo TEXT NOT NULL,
+            tipo_mime TEXT,
+            tamanho_bytes INTEGER,
+            conteudo_arquivo BLOB NOT NULL,
+            data_upload TEXT
         )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS configuracoes_email (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT,
-            senha_app TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS alertas_enviados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            tipo_item TEXT,
-            item_id INTEGER,
-            data_vencimento TEXT,
-            data_envio TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS matriz_treinamentos_config (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            treinamento TEXT,
-            carga_horaria TEXT,
-            validade TEXT,
-            modalidade TEXT,
-            disponibilidade TEXT,
-            valor REAL DEFAULT 0,
-            UNIQUE(empresa, treinamento)
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS matriz_treinamentos_status (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            funcionario TEXT,
-            treinamento TEXT,
-            obrigatoriedade TEXT,
-            UNIQUE(empresa, funcionario, treinamento)
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS absenteismo (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            empresa TEXT,
-            nome TEXT,
-            turno TEXT,
-            funcao TEXT,
-            setor TEXT,
-            tipo_atestado TEXT,
-            horas_perdidas REAL,
-            horas_previstas REAL,
-            dias_perdidos REAL,
-            inicio_afastamento TEXT,
-            fim_afastamento TEXT,
-            local_atendimento TEXT,
-            cid TEXT,
-            conselho TEXT,
-            dt_adm TEXT,
-            dt_nasc TEXT,
-            sexo TEXT,
-            mes TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS empresas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data_registro TEXT,
-            nome_empresa TEXT UNIQUE,
-            cnpj TEXT,
-            cep TEXT,
-            cidade TEXT,
-            bairro TEXT,
-            endereco TEXT,
-            telefone TEXT,
-            email TEXT,
-            responsavel TEXT,
-            cnae TEXT,
-            grau_risco TEXT,
-            qtd_funcionarios INTEGER,
-            porte TEXT
-        )
-    """)
-    
-    # Salva todas as alterações e fecha a conexão APENAS no final de tudo
+        """
+    )
     conn.commit()
     conn.close()
-    
-    for sql_alt in [
-        "ALTER TABLE empresas ADD COLUMN data_registro TEXT;",
-        "ALTER TABLE empresas ADD COLUMN cnae TEXT;",
-        "ALTER TABLE empresas ADD COLUMN porte TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS base_funcionarios (id INTEGER PRIMARY KEY AUTOINCREMENT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, cpf TEXT, data_admissao TEXT, status TEXT, empresa TEXT, data_nascimento TEXT);",
-        "ALTER TABLE base_funcionarios ADD COLUMN data_nascimento TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS usuarios_sistema (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, cpf TEXT, empresa TEXT, email TEXT, celular TEXT, senha TEXT, status TEXT DEFAULT 'Pendente', nivel_permissao TEXT DEFAULT 'Somente Visualizar');",
-        "ALTER TABLE usuarios_sistema ADD COLUMN email TEXT;",
-        "ALTER TABLE usuarios_sistema ADD COLUMN celular TEXT;",
-        "ALTER TABLE usuarios_sistema ADD COLUMN status TEXT;",
-        "ALTER TABLE usuarios_sistema ADD COLUMN nivel_permissao TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS exames (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, ultimo_exame TEXT, periodicidade TEXT, tipo_exame TEXT, proximo_exame TEXT, status TEXT);",
-        "ALTER TABLE exames ADD COLUMN periodicidade TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, treinamento TEXT, carga_horaria TEXT, pessoas_treinadas TEXT, data_realizacao TEXT, validade TEXT, proximo_treinamento TEXT, status TEXT);",
-        "ALTER TABLE treinamentos ADD COLUMN pessoas_treinadas TEXT;",
-        "ALTER TABLE treinamentos ADD COLUMN validade TEXT;",
-        "ALTER TABLE treinamentos ADD COLUMN proximo_treinamento TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS epis (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, matricula TEXT, funcionario TEXT, cargo TEXT, setor TEXT, epi TEXT, ca TEXT, data_entrega TEXT, quantidade INTEGER, status TEXT);",
-        
-        "CREATE TABLE IF NOT EXISTS servicos_realizados (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, servico TEXT, data_realizacao TEXT, responsavel TEXT, observacoes TEXT, valor REAL DEFAULT 0, status TEXT, nfes TEXT);",
-        "ALTER TABLE servicos_realizados ADD COLUMN valor REAL DEFAULT 0;",
-        "ALTER TABLE servicos_realizados ADD COLUMN nfes TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS documentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, documento TEXT, data_emissao TEXT, vigencia TEXT, proxima_renovacao TEXT, status TEXT);",
-        "ALTER TABLE documentos ADD COLUMN proxima_renovacao TEXT;",
-        
-        "CREATE TABLE IF NOT EXISTS logs_sistema (id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora TEXT, usuario TEXT, empresa TEXT, acao TEXT);",
-        "CREATE TABLE IF NOT EXISTS cad_cargos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, cargo TEXT);",
-        "CREATE TABLE IF NOT EXISTS cad_setores (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, setor TEXT);",
-        "CREATE TABLE IF NOT EXISTS cad_epis (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, epi TEXT, ca TEXT, UNIQUE(empresa, epi));",
-        "ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;",
-        "CREATE TABLE IF NOT EXISTS cad_treinamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, treinamento TEXT, carga_horaria TEXT, UNIQUE(empresa, treinamento));",
-    
-        "CREATE TABLE IF NOT EXISTS cad_servicos (id INTEGER PRIMARY KEY AUTOINCREMENT, servico TEXT UNIQUE);",
-       ]:
-        try:
-            cursor.execute(sql_alt)
-            conn.commit()
-        except:
-            try:
-                conn.rollback()
-            except:
-                pass
 
-    try:
-        cursor.execute("UPDATE usuarios_sistema SET status = 'Ativo' WHERE status IS NULL OR status = '';")
-        cursor.execute("UPDATE usuarios_sistema SET nivel_permissao = 'Somente Visualizar' WHERE nivel_permissao IS NULL OR nivel_permissao = '';")
-        conn.commit()
-    except:
-        pass
 
-    try:
-        cursor.execute("SELECT COUNT(*) FROM usuarios_sistema WHERE nivel_permissao = 'Fazer Tudo'")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO usuarios_sistema (nome, cpf, empresa, email, celular, senha, status, nivel_permissao)
-                VALUES ('Administrador', '000.000.000-00', 'Todas', 'admin@cassilab.com', '', 'admin123', 'Ativo', 'Fazer Tudo')
-            """)
-            conn.commit()
-    except:
-        pass
+def _eh_admin():
+    perfil = str(st.session_state.get("perfil_usuario", st.session_state.get("perfil", ""))).strip().lower()
+    acesso = str(st.session_state.get("acesso_usuario", st.session_state.get("acesso", ""))).strip().lower()
+    if "admin" in perfil or "fazer tudo" in acesso:
+        return True
+    if not perfil and not acesso:
+        return True
+    return False
 
-    conn.close()
 
-init_db()
-atualizar_cargo_setor_treinamentos_antigos()
-atualizar_validade_treinamentos_para_meses()
-criar_backup_automatico()
-sincronizar_status_exames()
-sincronizar_status_treinamentos()
-sincronizar_status_documentos()
+def _formatar_tamanho(num_bytes):
+    if not num_bytes:
+        return "—"
+    kb = num_bytes / 1024.0
+    if kb < 1024:
+        return f"{kb:.1f} KB"
+    return f"{kb / 1024.0:.2f} MB"
 
-# --- IMPORTAÇÃO DOS MÓDULOS DE INTERFACE ---
-from modulo_absenteismo import renderizar_aba_absenteismo
-from modulo_admin import renderizar_aba_admin
-from modulo_documentos import renderizar_aba_documentos
-from modulo_empresas import renderizar_aba_empresas
-from modulo_epis import renderizar_aba_epis
-from modulo_exames import renderizar_aba_exames
-from modulo_funcionarios import renderizar_aba_funcionarios
-from modulo_lista_presenca import renderizar_aba_lista_presenca
-from modulo_matriz import renderizar_matriz_treinamentos
-from modulo_os import renderizar_aba_os
-from modulo_relatorios import renderizar_aba_relatorios
-from modulo_servicos import renderizar_aba_servicos
-from modulo_treinamentos import renderizar_aba_treinamentos
-from modulo_senha import renderizar_aba_alterar_senha
 
-def atualizar_filtro_empresa(empresa_nome):
-    # Se a empresa_nome for válida e não vazia, atualiza os filtros normais
-    if empresa_nome and str(empresa_nome).strip() != "":
-        st.session_state["sel_emp_cargo"] = empresa_nome
-        st.session_state["filtro_cargo_emp_view"] = empresa_nome
-        st.session_state["sel_emp_epi_geral"] = empresa_nome
-        st.session_state["filtro_epi_geral_emp_view"] = empresa_nome
-        st.session_state["filtro_treinamento_emp_view"] = empresa_nome
-    else:
-        # Se estiver vazia ou for "Todas", define os textos padrão seguros
-        st.session_state["sel_emp_cargo"] = "Nenhuma"
-        st.session_state["filtro_cargo_emp_view"] = "Todas as Empresas"
-        st.session_state["sel_emp_epi_geral"] = "Nenhuma"
-        st.session_state["filtro_epi_geral_emp_view"] = "Todas as Empresas"
-        st.session_state["filtro_treinamento_emp_view"] = "Todas as Empresas"
-    
-    if empresa_nome and empresa_nome != "Todas":
-        st.session_state["sel_emp_cargo"] = empresa_nome
-        st.session_state["filtro_cargo_emp_view"] = empresa_nome
-        st.session_state["sel_emp_epi_geral"] = empresa_nome
-        st.session_state["filtro_epi_geral_emp_view"] = empresa_nome
-    else:
-        st.session_state["sel_emp_cargo"] = "Nenhuma"
-        st.session_state["filtro_cargo_emp_view"] = "Todas as Empresas"
-        st.session_state["sel_emp_epi_geral"] = "Nenhuma"
-        st.session_state["filtro_epi_geral_emp_view"] = "Todas as Empresas"
-
-def reset_func_selection():
-    if "editor_selecao_funcionarios" in st.session_state:
-        del st.session_state["editor_selecao_funcionarios"]
-    st.session_state["sel_id_func"] = None
-    st.session_state["modal_edit_func_id"] = None
-
-def reset_tr_selection():
-    if "editor_selecao_treinamentos" in st.session_state:
-        del st.session_state["editor_selecao_treinamentos"]
-    st.session_state["sel_id_tr"] = None
-    st.session_state["modal_edit_trein_id"] = None
-
-def reset_ex_selection():
-    if "editor_selecao_exames" in st.session_state:
-        del st.session_state["editor_selecao_exames"]
-    st.session_state["sel_id_ex"] = None
-    st.session_state["modal_edit_exame_id"] = None
-
-def reset_epi_selection():
-    if "editor_selecao_epis" in st.session_state:
-        del st.session_state["editor_selecao_epis"]
-    st.session_state["sel_id_epi"] = None
-    st.session_state["modal_edit_epi_id"] = None
-
-def reset_serv_selection():
-    if "editor_selecao_servicos" in st.session_state:
-        del st.session_state["editor_selecao_servicos"]
-    st.session_state["sel_id_serv"] = None
-    st.session_state["modal_edit_serv_id"] = None
-
-def reset_doc_selection():
-    if "editor_selecao_documentos" in st.session_state:
-        del st.session_state["editor_selecao_documentos"]
-    st.session_state["sel_id_doc"] = None
-    st.session_state["modal_edit_doc_id"] = None
-
-@st.dialog("✏️ Editar Funcionário", width="large")
-def dialog_editar_funcionario(id_alvo):
-    def formatar_data_flexivel_local(texto):
-        if not texto:
-            return ""
-        digitos = "".join(filter(str.isdigit, str(texto)))
-        if len(digitos) == 8:
-            return f"{digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
-        return str(texto).strip()
-
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    
-    # Garante compatibilidade caso as colunas novas ainda não existam na tabela
-    try:
-        cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN pin_colaborador TEXT;")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE base_funcionarios ADD COLUMN termo_adesao INTEGER DEFAULT 0;")
-    except:
-        pass
-
-    cursor.execute(
-        "SELECT empresa, matricula, funcionario, cargo, setor, cpf, data_admissao, status, data_nascimento, pin_colaborador, termo_adesao FROM base_funcionarios WHERE id = ?",
-        (id_alvo,),
-    )
-    reg_func = cursor.fetchone()
-    conn.close()
-
-    if reg_func:
-        f_emp, f_mat, f_nome, f_cargo, f_setor, f_cpf, f_dt, f_st, f_nasc, f_pin, f_termo = reg_func
-        with st.form(f"form_edicao_func_modal_{id_alvo}"):
-            st.markdown(f"**Empresa:** {f_emp}")
-            novo_mat = st.text_input("Matrícula", value=str(f_mat) if f_mat else "")
-            novo_nome = st.text_input("Nome do Funcionário", value=str(f_nome))
-            
-            cargos_emp_ed = get_cargos_por_empresa(f_emp)
-            if f_cargo in cargos_emp_ed:
-                idx_c_ed = cargos_emp_ed.index(f_cargo)
-                novo_cargo = st.selectbox("Cargo", cargos_emp_ed, index=idx_c_ed)
-            else:
-                novo_cargo = st.text_input("Cargo", value=str(f_cargo) if f_cargo else "")
-
-            setores_emp_ed = get_setores_por_empresa(f_emp)
-            if f_setor in setores_emp_ed:
-                idx_s_ed = setores_emp_ed.index(f_setor)
-                novo_setor = st.selectbox("Setor", setores_emp_ed, index=idx_s_ed)
-            else:
-                novo_setor = st.text_input("Setor", value=str(f_setor) if f_setor else "")
-
-            novo_cpf = st.text_input("CPF", value=str(f_cpf) if f_cpf else "")
-            nova_data_adm = st.text_input("Data Admissão", value=str(f_dt) if f_dt else "")
-            nova_data_nasc = st.text_input("Data de Nascimento", value=str(f_nasc) if f_nasc else "")
-            
-            st_limpo_f = limpar_status_banco(f_st)
-            opcoes_st_f = ["Ativo", "Afastado", "Desligado"]
-            try:
-                idx_st_f = opcoes_st_f.index(st_limpo_f)
-            except:
-                idx_st_f = 0
-            
-            novo_status_f = st.selectbox(
-                "Status",
-                ["🟢 Ativo", "🟠 Afastado", "🔴 Desligado"],
-                index=idx_st_f,
-            )
-
-            # --- CAMPOS DE COMPLIANCE E SEGURANÇA DO PIN ---
-            st.markdown("---")
-            st.markdown("#### 🔑 Assinatura Eletrônica e Termo")
-            if f_pin and str(f_pin).strip() and str(f_pin) != "None":
-                st.info(f"🔒 PIN cadastrado atualmente: **{f_pin}**")
-            else:
-                st.warning("⚠️ Este colaborador ainda não possui PIN de assinatura eletrônica cadastrado.")
-
-            # Campo para cadastrar ou alterar o PIN a qualquer momento
-            novo_pin_input = st.text_input(
-                "Cadastrar / Alterar PIN (4 Dígitos Numéricos)", 
-                value=str(f_pin) if f_pin and str(f_pin) != "None" else "", 
-                max_chars=4, 
-                key=f"input_pin_func_{id_alvo}"
-            )
-
-            novo_termo = st.checkbox("Termo de Adesão ao EPI Eletrônico Assinado", value=bool(f_termo), key=f"chk_termo_{id_alvo}")
-
-            st.markdown("---")
-            # CHAMADA DO BOTÃO DE IMPRESSÃO DO TERMO DENTRO DO MODAL:
-            renderizar_botao_imprimir_termo(
-                empresa=f_emp,
-                nome=f_nome,
-                matricula=f_mat,
-                cargo=f_cargo,
-                setor=f_setor,
-                cpf=f_cpf
-            )
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                dt_adm_fmt = formatar_data_flexivel_local(nova_data_adm)
-                dt_nasc_fmt = formatar_data_flexivel_local(nova_data_nasc)
-                
-                pin_para_salvar = str(novo_pin_input).strip()
-                
-                # Validação do PIN (se preenchido, deve ter 4 dígitos numéricos)
-                if pin_para_salvar and not (len(pin_para_salvar) == 4 and pin_para_salvar.isdigit()):
-                    st.error("⚠️ O PIN deve conter exatamente 4 dígitos numéricos.")
-                else:
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    conn.execute(
-                        """
-                        UPDATE base_funcionarios 
-                        SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?, pin_colaborador = ?, termo_adesao = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            str(novo_mat).strip(),
-                            formatar_titulo(novo_nome),
-                            formatar_titulo(novo_cargo),
-                            formatar_titulo(novo_setor),
-                            formatar_cpf(novo_cpf),
-                            dt_adm_fmt,
-                            limpar_status_banco(novo_status_f),
-                            dt_nasc_fmt,
-                            pin_para_salvar if pin_para_salvar else None,
-                            1 if novo_termo else 0,
-                            id_alvo,
-                        ),
-                    )
-                    conn.commit()
-                    conn.close()
-                    
-                    st.session_state["modal_edit_func_id"] = None
-                    st.session_state["last_sel_func_id"] = None
-                    st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Desconhecido"),
-                        f_emp,
-                        f"Edição do funcionário: {formatar_titulo(novo_nome)}",
-                    )
-                    st.rerun()
-
-                    conn.execute(
-                        """
-                        UPDATE base_funcionarios 
-                        SET matricula = ?, funcionario = ?, cargo = ?, setor = ?, cpf = ?, data_admissao = ?, status = ?, data_nascimento = ?, termo_adesao = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            str(novo_mat).strip(),
-                            formatar_titulo(novo_nome),
-                            formatar_titulo(novo_cargo),
-                            formatar_titulo(novo_setor),
-                            formatar_cpf(novo_cpf),
-                            dt_adm_fmt,
-                            limpar_status_banco(novo_status_f),
-                            dt_nasc_fmt,
-                            1 if novo_termo else 0,
-                            id_alvo,
-                        ),
-                    )
-                    sucesso_ok = True
-
-                if sucesso_ok:
-                    conn.commit()
-                    conn.close()
-                    st.session_state["modal_edit_func_id"] = None
-                    st.session_state["last_sel_func_id"] = None
-                    st.session_state["msg_sucesso"] = "✅ Alterações salvas com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Desconhecido"),
-                        f_emp,
-                        f"Edição do funcionário: {formatar_titulo(novo_nome)}",
-                    )
-                    st.rerun()
-
-@st.dialog("✏️ Editar Treinamento")
-def dialog_editar_treinamento(id_alvo):
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT empresa, funcionario, treinamento, carga_horaria,"
-        " pessoas_treinadas, data_realizacao, validade, proximo_treinamento,"
-        " status, matricula, cargo, setor FROM treinamentos WHERE id = ?",
-        (id_alvo,),
-    )
-    reg_tr = cursor.fetchone()
-    df_cad_tr_ed = pd.read_sql(
-        "SELECT treinamento, carga_horaria FROM cad_treinamentos ORDER BY"
-        " treinamento ASC",
-        conn,
-    )
-    conn.close()
-    if reg_tr:
-        (
-            t_emp,
-            t_func,
-            t_trein,
-            t_carga,
-            t_pessoas,
-            t_data,
-            t_val,
-            t_prox,
-            t_status,
-            t_mat,
-            t_cargo,
-            t_setor,
-        ) = reg_tr
-        with st.form(f"form_edicao_trein_modal_{id_alvo}"):
-            st.markdown(f"**Empresa:** {t_emp}")
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_funcs_emp = pd.read_sql(
-                "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios"
-                " WHERE empresa = ? ORDER BY funcionario ASC",
-                conn,
-                params=(t_emp,),
-            )
-            conn.close()
-            lista_funcs = (
-                df_funcs_emp["funcionario"].tolist()
-                if not df_funcs_emp.empty
-                else [t_func]
-            )
-            if t_func not in lista_funcs:
-                lista_funcs.insert(0, t_func)
-            try:
-                idx_f = lista_funcs.index(t_func)
-            except:
-                idx_f = 0
-            novo_func_sel = st.selectbox("Funcionário", lista_funcs, index=idx_f)
-            lista_tr_ed = (
-                df_cad_tr_ed["treinamento"].tolist()
-                if not df_cad_tr_ed.empty
-                else []
-            )
-            lista_cargas_gerais = (
-                df_cad_tr_ed["carga_horaria"].dropna().unique().tolist()
-            )
-            if not lista_cargas_gerais:
-                lista_cargas_gerais = ["8 horas", "16 horas", "20 horas", "40 horas"]
-            if t_trein in lista_tr_ed:
-                idx_tr_sel = lista_tr_ed.index(t_trein)
-                novo_trein_val = st.selectbox(
-                    "Treinamento", lista_tr_ed, index=idx_tr_sel
-                )
-            else:
-                novo_trein_val = st.text_input("Treinamento", value=str(t_trein))
-            try:
-                idx_carga = lista_cargas_gerais.index(t_carga)
-            except:
-                idx_carga = 0
-            nova_carga_val = st.selectbox(
-                "Carga Horária", lista_cargas_gerais, index=idx_carga
-            )
-            opcoes_modalidade = ["Presencial", "Semi-presencial", "EaD"]
-            try:
-                idx_mod = opcoes_modalidade.index(str(t_pessoas))
-            except:
-                idx_mod = 0
-            nova_modalidade = st.selectbox(
-                "Modalidade", opcoes_modalidade, index=idx_mod
-            )
-            nova_data_real = st.text_input("Data da Realização", value=str(t_data))
-            nova_validade = st.text_input(
-                "Validade (ex: 12 meses)",
-                value=str(t_val) if t_val else "12 meses",
-            )
-            proximo_calc_ed = calcular_proximo_treinamento(
-                nova_data_real, nova_validade
-            )
-            novo_proximo_tr = st.text_input(
-                "Data do Próximo Treinamento",
-                value=str(t_prox) if t_prox else proximo_calc_ed,
-            )
-            st_limpo_tr = limpar_status_banco(t_status)
-            opcoes_st_tr = ["em dia", "vencido"]
-            try:
-                idx_st_tr = opcoes_st_tr.index(st_limpo_tr.lower())
-            except:
-                idx_st_tr = 0
-            novo_status_tr = st.selectbox(
-                "Status", ["🟢 em dia", "🔴 vencido"], index=idx_st_tr
-            )
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                novo_mat = t_mat
-                novo_c = t_cargo
-                novo_s = t_setor
-                if not df_funcs_emp.empty:
-                    match_f = df_funcs_emp[df_funcs_emp["funcionario"] == novo_func_sel]
-                    if not match_f.empty:
-                        novo_mat = match_f.iloc[0]["matricula"]
-                        novo_c = match_f.iloc[0]["cargo"]
-                        novo_s = match_f.iloc[0]["setor"]
-                proximo_final_ed = (
-                    calcular_proximo_treinamento(nova_data_real, nova_validade)
-                    if not novo_proximo_tr
-                    else validar_e_formatar_data_input(novo_proximo_tr)
-                )
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                conn.execute(
-                    """
-                    UPDATE treinamentos 
-                    SET funcionario = ?, matricula = ?, cargo = ?, setor = ?, treinamento = ?, carga_horaria = ?, pessoas_treinadas = ?, data_realizacao = ?, validade = ?, proximo_treinamento = ?, status = ?
-                    WHERE id = ?
-                """,
-                    (
-                        novo_func_sel,
-                        str(novo_mat or ""),
-                        str(novo_c or ""),
-                        str(novo_s or ""),
-                        formatar_titulo(novo_trein_val),
-                        str(nova_carga_val).strip(),
-                        str(nova_modalidade).strip(),
-                        validar_e_formatar_data_input(nova_data_real),
-                        str(nova_validade).strip(),
-                        proximo_final_ed,
-                        limpar_status_banco(novo_status_tr),
-                        id_alvo,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-                sincronizar_status_treinamentos()
-                st.session_state["modal_edit_trein_id"] = None
-                st.session_state["sel_id_tr"] = None
-                if "editor_selecao_treinamentos" in st.session_state:
-                    del st.session_state["editor_selecao_treinamentos"]
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Desconhecido"),
-                    t_emp,
-                    f"Edição de treinamento ({novo_trein_val}) para {novo_func_sel}",
-                )
-                st.rerun()
-
-@st.dialog("✏️ Editar Exame Ocupacional")
-def dialog_editar_exame(id_alvo):
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT empresa, funcionario, tipo_exame, ultimo_exame, periodicidade, proximo_exame, status, matricula, cargo, setor FROM exames WHERE id = ?",
-        (id_alvo,),
-    )
-    reg_ex = cursor.fetchone()
-    conn.close()
-    if reg_ex:
-        (
-            ex_emp,
-            ex_func,
-            ex_tipo,
-            ex_ultimo,
-            ex_period,
-            ex_proximo,
-            ex_status,
-            ex_mat,
-            ex_cargo,
-            ex_setor,
-        ) = reg_ex
-        with st.form(f"form_edicao_exame_modal_{id_alvo}"):
-            st.markdown(f"**Empresa:** {ex_emp}")
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_funcs_emp = pd.read_sql(
-                "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios WHERE empresa = ? ORDER BY funcionario ASC",
-                conn,
-                params=(ex_emp,),
-            )
-            conn.close()
-            lista_funcs = (
-                df_funcs_emp["funcionario"].tolist()
-                if not df_funcs_emp.empty
-                else [ex_func]
-            )
-            if ex_func not in lista_funcs:
-                lista_funcs.insert(0, ex_func)
-            try:
-                idx_f = lista_funcs.index(ex_func)
-            except:
-                idx_f = 0
-            novo_func_sel = st.selectbox("Funcionário", lista_funcs, index=idx_f)
-            opcoes_tipos_ex = [
-                "Admissional",
-                "Periódico",
-                "Retorno ao Trabalho",
-                "Mudança de Riscos",
-                "Demissional",
-            ]
-            try:
-                idx_tipo_ex = opcoes_tipos_ex.index(ex_tipo)
-            except:
-                idx_tipo_ex = 0
-            novo_tipo_ex = st.selectbox(
-                "Tipo de Exame", opcoes_tipos_ex, index=idx_tipo_ex
-            )
-            novo_ultimo_ex = st.text_input(
-                "Data Último Exame", value=str(ex_ultimo) if ex_ultimo else ""
-            )
-            opcoes_periodicidade = [
-                "1 mês",
-                "3 meses",
-                "6 meses",
-                "12 meses",
-                "18 meses",
-                "24 meses",
-            ]
-            try:
-                idx_p = opcoes_periodicidade.index(ex_period)
-            except:
-                idx_p = 3
-            nova_periodicidade = st.selectbox(
-                "Periodicidade", opcoes_periodicidade, index=idx_p
-            )
-
-            proximo_calc_ed = calcular_proximo_exame(novo_ultimo_ex, nova_periodicidade)
-            status_calc_ed = calcular_status_exame(proximo_calc_ed)
-
-            novo_proximo_ex = st.text_input(
-                "Data Próximo Exame",
-                value=proximo_calc_ed,
-            )
-
-            st.info(f"📅 Próximo Exame Calculado: **{proximo_calc_ed}** | Status Automático: **{status_calc_ed}**")
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                novo_mat = ex_mat
-                novo_c = ex_cargo
-                novo_s = ex_setor
-                if not df_funcs_emp.empty:
-                    match_f = df_funcs_emp[df_funcs_emp["funcionario"] == novo_func_sel]
-                    if not match_f.empty:
-                        novo_mat = match_f.iloc[0]["matricula"]
-                        novo_c = match_f.iloc[0]["cargo"]
-                        novo_s = match_f.iloc[0]["setor"]
-
-                proximo_final_ed = validar_e_formatar_data_input(novo_proximo_ex) if novo_proximo_ex else proximo_calc_ed
-                status_final_ed = calcular_status_exame(proximo_final_ed)
-
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                conn.execute(
-                    """
-                    UPDATE exames 
-                    SET funcionario = ?, matricula = ?, cargo = ?, setor = ?, tipo_exame = ?, ultimo_exame = ?, periodicidade = ?, proximo_exame = ?, status = ?
-                    WHERE id = ?
-                """,
-                    (
-                        novo_func_sel,
-                        str(novo_mat or ""),
-                        str(novo_c or ""),
-                        str(novo_s or ""),
-                        novo_tipo_ex,
-                        validar_e_formatar_data_input(novo_ultimo_ex),
-                        nova_periodicidade,
-                        proximo_final_ed,
-                        status_final_ed,
-                        id_alvo,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-                sincronizar_status_exames()
-                st.session_state["modal_edit_exame_id"] = None
-                st.session_state["sel_id_ex"] = None
-                if "editor_selecao_exames" in st.session_state:
-                    del st.session_state["editor_selecao_exames"]
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Desconhecido"),
-                    ex_emp,
-                    f"Edição de exame ({novo_tipo_ex}) para {novo_func_sel}",
-                )
-                st.rerun()
-
-@st.dialog("✏️ Editar Registro de EPI")
-def dialog_editar_epi(id_alvo):
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT empresa, funcionario, epi, ca, data_entrega, quantidade, status,"
-        " matricula, cargo, setor FROM epis WHERE id = ?",
-        (id_alvo,),
-    )
-    reg_ep = cursor.fetchone()
-    conn.close()
-    if reg_ep:
-        ep_emp, ep_func, ep_epi, ep_ca, ep_dt, ep_qtd, ep_st, ep_mat, ep_cargo, ep_setor = reg_ep
-        with st.form(f"form_edicao_epi_modal_{id_alvo}"):
-            st.markdown(f"**Empresa:** {ep_emp}")
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_funcs_emp = pd.read_sql(
-                "SELECT matricula, funcionario, cargo, setor FROM base_funcionarios"
-                " WHERE empresa = ? ORDER BY funcionario ASC",
-                conn,
-                params=(ep_emp,),
-            )
-            conn.close()
-            lista_funcs = (
-                df_funcs_emp["funcionario"].tolist()
-                if not df_funcs_emp.empty
-                else [ep_func]
-            )
-            if ep_func not in lista_funcs:
-                lista_funcs.insert(0, ep_func)
-            try:
-                idx_f = lista_funcs.index(ep_func)
-            except:
-                idx_f = 0
-            novo_func_sel = st.selectbox("Funcionário", lista_funcs, index=idx_f)
-            novo_epi_nome = st.text_input("EPI", value=str(ep_epi))
-            novo_ca = st.text_input("Número do CA", value=str(ep_ca) if ep_ca else "")
-            nova_data_ent = st.text_input("Data Entrega", value=str(ep_dt))
-            try:
-                qtd_val = int(ep_qtd)
-            except:
-                qtd_val = 1
-            nova_qtd = st.number_input("Quantidade", min_value=1, value=qtd_val)
-            st_limpo_ep = limpar_status_banco(ep_st)
-            opcoes_st_ep = ["Entregue", "Devolvido", "Substituído"]
-            try:
-                idx_st_ep = opcoes_st_ep.index(st_limpo_ep)
-            except:
-                idx_st_ep = 0
-            novo_status_ep = st.selectbox(
-                "Status",
-                ["🟢 Entregue", "🟠 Devolvido", "🟡 Substituído"],
-                index=idx_st_ep,
-            )
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                novo_mat = ep_mat
-                novo_c = ep_cargo
-                novo_s = ep_setor
-                if not df_funcs_emp.empty:
-                    match_f = df_funcs_emp[df_funcs_emp["funcionario"] == novo_func_sel]
-                    if not match_f.empty:
-                        novo_mat = match_f.iloc[0]["matricula"]
-                        novo_c = match_f.iloc[0]["cargo"]
-                        novo_s = match_f.iloc[0]["setor"]
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                conn.execute(
-                    """
-                    UPDATE epis 
-                    SET funcionario = ?, matricula = ?, cargo = ?, setor = ?, epi = ?, ca = ?, data_entrega = ?, quantidade = ?, status = ?
-                    WHERE id = ?
-                """,
-                    (
-                        novo_func_sel,
-                        str(novo_mat or ""),
-                        str(novo_c or ""),
-                        str(novo_s or ""),
-                        formatar_titulo(novo_epi_nome),
-                        str(novo_ca).strip(),
-                        validar_e_formatar_data_input(nova_data_ent),
-                        int(nova_qtd),
-                        limpar_status_banco(novo_status_ep),
-                        id_alvo,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-                st.session_state["modal_edit_epi_id"] = None
-                st.session_state["sel_id_epi"] = None
-                if "editor_selecao_epis" in st.session_state:
-                    del st.session_state["editor_selecao_epis"]
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Desconhecido"),
-                    ep_emp,
-                    f"Edição de EPI ({novo_epi_nome}) para {novo_func_sel}",
-                )
-                st.rerun()
-
-@st.dialog("✏️ Editar Documento")
-def dialog_editar_documento(id_alvo):
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT empresa, documento, data_emissao, vigencia, proxima_renovacao,"
-        " status FROM documentos WHERE id = ?",
-        (id_alvo,),
-    )
-    reg = cursor.fetchone()
-    df_cad_serv_ed_doc = pd.read_sql(
-        "SELECT servico FROM cad_servicos ORDER BY servico ASC", conn
-    )
-    conn.close()
-    lista_serv_ed_doc = (
-        df_cad_serv_ed_doc["servico"].tolist()
-        if not df_cad_serv_ed_doc.empty
-        else []
-    )
-    if reg:
-        d_emp, d_doc, d_emissao, d_vig, d_prox, d_st = reg
-        with st.form(f"form_edicao_doc_modal_{id_alvo}"):
-            st.markdown(f"**Empresa:** {d_emp}")
-            if lista_serv_ed_doc:
-                if d_doc in lista_serv_ed_doc:
-                    idx_doc = lista_serv_ed_doc.index(d_doc)
-                    novo_doc = st.selectbox(
-                        "Documento", lista_serv_ed_doc, index=idx_doc
-                    )
-                else:
-                    lista_serv_ed_doc_opt = [d_doc] + lista_serv_ed_doc
-                    novo_doc = st.selectbox(
-                        "Documento", lista_serv_ed_doc_opt, index=0
-                    )
-            else:
-                novo_doc = st.text_input("Documento", value=str(d_doc))
-            nova_emissao = st.text_input(
-                "Data Emissão",
-                value=str(d_emissao)
-                if d_emissao
-                else datetime.today().strftime("%d/%m/%Y"),
-            )
-            nova_vigencia = st.text_input(
-                "Vigência", value=str(d_vig) if d_vig else "1 ano"
-            )
-            prox_calc_ed = calcular_proxima_renovacao(nova_emissao, nova_vigencia)
-            nova_proxima_renovacao = st.text_input(
-                "Data da Próxima Renovação/Atualização",
-                value=str(d_prox) if d_prox else prox_calc_ed,
-            )
-
-            status_calculado_ed = calcular_status_por_data(
-                nova_proxima_renovacao
-                if nova_proxima_renovacao
-                else prox_calc_ed
-            )
-            st.info(
-                f"Status calculado automaticamente: **{status_calculado_ed}**"
-            )
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                proxima_final_ed = (
-                    calcular_proxima_renovacao(nova_emissao, nova_vigencia)
-                    if not nova_proxima_renovacao
-                    else validar_e_formatar_data_input(nova_proxima_renovacao)
-                )
-                status_final_ed = calcular_status_por_data(proxima_final_ed)
-
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                conn.execute(
-                    """
-                    UPDATE documentos 
-                    SET documento = ?, data_emissao = ?, vigencia = ?, proxima_renovacao = ?, status = ?
-                    WHERE id = ?
-                """,
-                    (
-                        formatar_titulo(novo_doc),
-                        validar_e_formatar_data_input(nova_emissao),
-                        str(nova_vigencia).strip(),
-                        proxima_final_ed,
-                        status_final_ed,
-                        id_alvo,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-                sincronizar_status_documentos()
-                st.session_state["modal_edit_doc_id"] = None
-                st.session_state["sel_id_doc"] = None
-                if "editor_selecao_documentos" in st.session_state:
-                    del st.session_state["editor_selecao_documentos"]
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Desconhecido"),
-                    d_emp,
-                    f"Edição de documento ({novo_doc})",
-                )
-                st.rerun()
-
-@st.dialog("✏️ Editar Serviço Realizado")
-def dialog_editar_servico(id_alvo):
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT empresa, servico, data_realizacao, responsavel, observacoes,"
-        " valor, status, nfes FROM servicos_realizados WHERE id = ?",
-        (id_alvo,),
-    )
-    reg_alvo = cursor.fetchone()
-    conn.close()
-    if reg_alvo:
-        e_emp, e_serv, e_data, e_resp, e_obs, e_val, e_status, e_nfes = reg_alvo
-        with st.form(f"form_edicao_servico_modal_{id_alvo}"):
-            empresas_cad = get_empresas()
-            try:
-                idx_emp = empresas_cad.index(e_emp)
-            except:
-                idx_emp = 0
-            nova_empresa = st.selectbox(
-                "Empresa Cliente", empresas_cad, index=idx_emp
-            )
-            nova_data = st.text_input(
-                "Data da Realização (DD/MM/AAAA)", value=str(e_data)
-            )
-            conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-            df_cad_serv_ed = pd.read_sql(
-                "SELECT servico FROM cad_servicos ORDER BY servico ASC", conn
-            )
-            conn.close()
-            lista_serv_ed = (
-                df_cad_serv_ed["servico"].tolist()
-                if not df_cad_serv_ed.empty
-                else []
-            )
-            if e_serv in lista_serv_ed:
-                idx_serv = lista_serv_ed.index(e_serv)
-                novo_servico = st.selectbox(
-                    "Serviço Executado", lista_serv_ed, index=idx_serv
-                )
-            else:
-                novo_servico = st.text_input("Serviço Executado", value=str(e_serv))
-            try:
-                float_val = float(e_val)
-            except:
-                float_val = 0.0
-            novo_valor = st.number_input(
-                "Valor do Serviço (R$)",
-                min_value=0.0,
-                value=float_val,
-                step=50.0,
-                format="%.2f",
-            )
-            novo_resp = st.text_input("Responsável Técnico", value=str(e_resp))
-            status_limpo_atual = limpar_status_banco(e_status)
-            opcoes_status = ["Concluído", "Em Andamento", "Agendado", "Cancelado"]
-            try:
-                idx_st = opcoes_status.index(status_limpo_atual)
-            except:
-                idx_st = 0
-            novo_status_sel = st.selectbox(
-                "Status",
-                ["🟢 Concluído", "🟠 Em Andamento", "🟡 Agendado", "🔴 Cancelado"],
-                index=idx_st,
-            )
-            nova_nfes = st.text_input(
-                "NFES / Nº da Nota", value=str(e_nfes) if e_nfes else ""
-            )
-            novas_obs = st.text_input(
-                "Observações", value=str(e_obs) if e_obs else ""
-            )
-
-            if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                conn.execute(
-                    """
-                    UPDATE servicos_realizados 
-                    SET empresa = ?, servico = ?, data_realizacao = ?, responsavel = ?, observacoes = ?, valor = ?, status = ?, nfes = ?
-                    WHERE id = ?
-                """,
-                    (
-                        nova_empresa,
-                        formatar_titulo(novo_servico),
-                        validar_e_formatar_data_input(nova_data),
-                        formatar_titulo(novo_resp),
-                        novas_obs,
-                        float(novo_valor),
-                        limpar_status_banco(novo_status_sel),
-                        str(nova_nfes).strip(),
-                        id_alvo,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-                st.session_state["modal_edit_serv_id"] = None
-                st.session_state["sel_id_serv"] = None
-                if "editor_selecao_servicos" in st.session_state:
-                    del st.session_state["editor_selecao_servicos"]
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Desconhecido"),
-                    nova_empresa,
-                    f"Edição de serviço ({novo_servico})",
-                )
-                st.rerun()
-
-def formatar_colunas_tabela(df):
-    if df is None or df.empty:
-        return df
-    colunas_texto = [
-        "funcionario",
-        "cargo",
-        "setor",
-        "treinamento",
-        "epi",
-        "servico",
-        "observacoes",
-        "responsavel",
-        "nome_empresa",
-        "cidade",
-        "bairro",
-        "endereco",
-        "empresa",
-        "cnae",
-        "documento",
-        "Funcionário",
-        "Cargo",
-        "Setor",
-        "Treinamento",
-        "EPI",
-        "Serviço Executado",
-        "Observações",
-        "Responsável",
-        "Nome Empresa",
-        "Cidade",
-        "Bairro",
-        "Endereço",
-        "Empresa",
-        "CNAE",
-        "Documento",
-    ]
-    for col in colunas_texto:
-        if col in df.columns:
-            df[col] = df[col].apply(
-                lambda x: formatar_titulo(x) if isinstance(x, str) else x
-            )
-    rename_dict = {
-        "id": "ID",
-        "data_registro": "Data Registro",
-        "nome_empresa": "Nome Empresa",
-        "cnpj": "CNPJ",
-        "cep": "CEP",
-        "cidade": "Cidade",
-        "bairro": "Bairro",
-        "endereco": "Endereço",
-        "telefone": "Telefone",
-        "email": "E-mail",
-        "responsavel": "Responsável",
-        "cnae": "CNAE",
-        "qtd_funcionarios": "Qtd Funcionários",
-        "grau_risco": "Grau Risco",
-        "matricula": "Matrícula",
-        "funcionario": "Funcionário",
-        "cargo": "Cargo",
-        "setor": "Setor",
-        "cpf": "CPF",
-        "data_admissao": "Data Admissão",
-        "status": "Status",
-        "empresa": "Empresa",
-        "treinamento": "Treinamento",
-        "carga_horaria": "Carga Horária",
-        "pessoas_treinadas": "Modalidade",
-        "data_realizacao": "Data da Realização",
-        "validade": "Validade",
-        "proximo_treinamento": "Data Próximo Treinamento",
-        "ultimo_exame": "Último Exame",
-        "periodicidade": "Periodicidade",
-        "tipo_exame": "Tipo Exame",
-        "proximo_exame": "Próximo Exame",
-        "epi": "EPI",
-        "ca": "CA",
-        "data_entrega": "Data Entrega",
-        "quantidade": "Quantidade",
-        "servico": "Serviço Executado",
-        "observacoes": "Observações",
-        "valor": "Valor do Serviço (R$)",
-        "nfes": "NFES",
-        "documento": "Documento",
-        "data_emissao": "Data Emissão",
-        "vigencia": "Vigência",
-        "proxima_renovacao": "Data da Próxima Renovação/Atualização",
-        "data_nascimento": "Data de Nascimento",
-    }
-    return df.rename(columns=rename_dict)
-
-@st.cache_data(ttl=300)
-def get_empresas():
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    empresas_set = set()
-    try:
-        df1 = pd.read_sql(
-            "SELECT DISTINCT nome_empresa FROM empresas WHERE nome_empresa IS NOT"
-            " NULL AND nome_empresa != '' ORDER BY nome_empresa ASC",
-            conn,
-        )
-        for e in df1["nome_empresa"].tolist():
-            if str(e).strip():
-                empresas_set.add(formatar_titulo(str(e).strip()))
-    except:
-        pass
-    conn.close()
-    return sorted(list(empresas_set))
-
-@st.cache_data(ttl=300)
-def get_cargos_por_empresa(empresa_nome):
-    if not empresa_nome or empresa_nome == "Nenhuma":
-        return []
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    try:
-        df_c = pd.read_sql(
-            "SELECT DISTINCT cargo FROM cad_cargos WHERE empresa = ? ORDER BY"
-            " cargo ASC",
-            conn,
-            params=(empresa_nome,),
-        )
-        conn.close()
-        if not df_c.empty:
-            return [
-                str(c).strip() for c in df_c["cargo"].tolist() if str(c).strip()
-            ]
-    except:
-        pass
-    conn.close()
-    return []
-
-@st.cache_data(ttl=300)
-def get_setores_por_empresa(empresa_nome):
-    if not empresa_nome or empresa_nome == "Nenhuma":
-        return []
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    try:
-        df_s = pd.read_sql(
-            "SELECT DISTINCT setor FROM cad_setores WHERE empresa = ? ORDER BY"
-            " setor ASC",
-            conn,
-            params=(empresa_nome,),
-        )
-        conn.close()
-        if not df_s.empty:
-            return [
-                str(s).strip() for s in df_s["setor"].tolist() if str(s).strip()
-            ]
-    except:
-        pass
-    conn.close()
-    return []
-
-def formatar_cpf(val):
-    if not val or pd.isna(val):
+def _extensao_arquivo(nome_arquivo):
+    if not nome_arquivo:
         return ""
-    numeros = re.sub(r"\D", "", str(val))
-    if len(numeros) == 11:
-        return f"{numeros[:3]}.{numeros[3:6]}.{numeros[6:9]}-{numeros[9:]}"
-    return str(val).strip()
+    return os.path.splitext(str(nome_arquivo))[1].lstrip(".").lower()
 
-def formatar_cnpj(val):
-    if not val or pd.isna(val):
-        return ""
-    numeros = re.sub(r"\D", "", str(val))
-    if len(numeros) == 14:
-        return (
-            f"{numeros[:2]}.{numeros[2:5]}.{numeros[5:8]}/{numeros[8:12]}-{numeros[12:]}"
-        )
-    return str(val).strip()
 
-def normalizar_cnae(cnae_input):
-    if not cnae_input:
-        return ""
-    digitos = "".join(filter(str.isdigit, str(cnae_input)))
-    if len(digitos) >= 5:
-        return f"{digitos[0:2]}.{digitos[2:4]}-{digitos[4]}"
-    return str(cnae_input)
+def _eh_valor_todas(texto):
+    t = str(texto or "").strip().lower()
+    return t in ("", "todas", "todas as empresas", "geral", "nenhuma")
 
-def consultar_grau_risco_por_cnae(cnae_str):
-    cnae_fmt = normalizar_cnae(cnae_str)
-    if not cnae_fmt:
-        return "1"
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT grau_risco FROM grau_risco_nr04 WHERE cnae = ?", (cnae_fmt,)
-    )
-    res = cursor.fetchone()
-    conn.close()
-    if res:
-        return str(res[0]).strip()
-    return "1"
 
-def consultar_cep(cep_str):
-    cep_limpo = re.sub(r"\D", "", str(cep_str))
-    if len(cep_limpo) == 8:
-        try:
-            url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
-            response = requests.get(url, timeout=3)
-            if response.status_code == 200:
-                dados = response.json()
-                if "erro" not in dados:
-                    localidade_fmt = formatar_titulo(dados.get("localidade", ""))
-                    uf_fmt = dados.get("uf", "").upper()
-                    cidade_res = f"{localidade_fmt} - {uf_fmt}" if uf_fmt else localidade_fmt
-                    return {
-                        "logradouro": formatar_titulo(dados.get("logradouro", "")),
-                        "bairro": formatar_titulo(dados.get("bairro", "")),
-                        "cidade": cidade_res,
-                    }
-        except:
-            pass
-    return None
+def _obter_empresa_especifica():
+    empresa_global = str(st.session_state.get("empresa_global", "")).strip()
+    if not _eh_valor_todas(empresa_global):
+        return empresa_global
 
-def consultar_cnpj(cnpj_str):
-    cnpj_limpo = re.sub(r"\D", "", str(cnpj_str))
-    if len(cnpj_limpo) == 14:
-        lista_cnaes = []
-        cnae_principal = ""
-        try:
-            url = f"https://minhareceita.org/{cnpj_limpo}"
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                dados = response.json()
-                mun = formatar_titulo(dados.get('municipio', ''))
-                uf_val = dados.get('uf', '').upper()
-                cidade_uf = f"{mun} - {uf_val}" if uf_val else mun
-                logradouro = dados.get("logradouro", "")
-                numero = dados.get("numero", "")
-                complemento = dados.get("complemento", "")
-                end_completo = formatar_titulo(logradouro)
-                if numero:
-                    end_completo += f", {numero}"
-                if complemento:
-                    end_completo += f" - {complemento}"
-                cnae_fiscal = dados.get("cnae_fiscal", "")
-                cnae_principal = normalizar_cnae(cnae_fiscal)
-                
-                porte_empresa = str(dados.get("porte", "")).strip().upper()
+    if not _eh_admin():
+        for chave in ("empresa_usuario", "empresa_cliente", "empresa_logada", "empresa"):
+            val = str(st.session_state.get(chave, "")).strip()
+            if not _eh_valor_todas(val):
+                return val
 
-                if cnae_principal:
-                    lista_cnaes.append(
-                        f"{cnae_principal} - {dados.get('cnae_fiscal_descricao', '')} (Principal)"
-                    )
-                for sec in dados.get("cnaes_secundarios", []):
-                    c_sec = normalizar_cnae(str(sec.get("codigo", "")))
-                    if c_sec:
-                        lista_cnaes.append(
-                            f"{c_sec} - {sec.get('descricao', '')} (Secundário)"
-                        )
-                grau_risco = consultar_grau_risco_por_cnae(cnae_fiscal)
-                return {
-                    "razao_social": formatar_titulo(dados.get("razao_social", "")),
-                    "cep": str(dados.get("cep", "")).zfill(8),
-                    "logradouro": end_completo,
-                    "bairro": formatar_titulo(dados.get("bairro", "")),
-                    "cidade": cidade_uf,
-                    "telefone": (
-                        dados.get("ddd_telefone_1", "") or dados.get("telefone", "")
-                    ),
-                    "email": dados.get("email", ""),
-                    "grau_risco": grau_risco,
-                    "cnae_principal": cnae_principal,
-                    "lista_cnaes": lista_cnaes,
-                    "porte": porte_empresa,
-                }
-        except:
-            pass
+    return ""
 
-        try:
-            url = f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                dados = response.json()
-                mun = formatar_titulo(dados.get('municipio', ''))
-                uf_val = dados.get('uf', '').upper()
-                cidade_uf = f"{mun} - {uf_val}" if uf_val else mun
-                logradouro = dados.get("logradouro", "")
-                numero = dados.get("numero", "")
-                complemento = dados.get("complemento", "")
-                end_completo = formatar_titulo(logradouro)
-                if numero:
-                    end_completo += f", {numero}"
-                if complemento:
-                    end_completo += f" - {complemento}"
-                cnae_fiscal = dados.get("cnae_fiscal", "")
-                cnae_principal = normalizar_cnae(cnae_fiscal)
-                
-                porte_empresa = str(dados.get("porte", "")).strip().upper()
 
-                if cnae_principal:
-                    lista_cnaes.append(
-                        f"{cnae_principal} - {dados.get('cnae_fiscal_descricao', '')} (Principal)"
-                    )
-                for sec in dados.get("cnaes_secundarios", []):
-                    c_sec = normalizar_cnae(str(sec.get("codigo", "")))
-                    if c_sec:
-                        lista_cnaes.append(
-                            f"{c_sec} - {sec.get('descricao', '')} (Secundário)"
-                        )
-                grau_risco = consultar_grau_risco_por_cnae(cnae_fiscal)
-                return {
-                    "razao_social": formatar_titulo(dados.get("razao_social", "")),
-                    "cep": str(dados.get("cep", "")).zfill(8),
-                    "logradouro": end_completo,
-                    "bairro": formatar_titulo(dados.get("bairro", "")),
-                    "cidade": cidade_uf,
-                    "telefone": dados.get("ddd_telefone_1", ""),
-                    "email": dados.get("email", ""),
-                    "grau_risco": grau_risco,
-                    "cnae_principal": cnae_principal,
-                    "lista_cnaes": lista_cnaes,
-                    "porte": porte_empresa,
-                }
-        except:
-            pass
-    return None
-
-def validar_e_formatar_data_input(data_str):
-    if (
-        not data_str
-        or pd.isna(data_str)
-        or str(data_str).strip() in ("", "nan", "None")
-    ):
-        return datetime.today().strftime("%d/%m/%Y")
-    str_val = str(data_str).strip()
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(str_val, fmt)
-            return dt.strftime("%d/%m/%Y")
-        except ValueError:
-            continue
-    return str_val
-
-def formatar_data_br(data_str):
-    return validar_e_formatar_data_input(data_str)
-
-def formatar_valor_brasileiro(valor):
+def _listar_empresas_banco(db_name):
+    empresas = []
+    conn = sqlite3.connect(db_name, timeout=10.0)
+    cur = conn.cursor()
     try:
-        if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-            return "0,00"
-        texto = str(valor).strip().replace("R$", "").replace(" ", "")
-        if not texto or texto.lower() in ("nan", "none"):
-            return "0,00"
-        if "," in texto:
-            texto = texto.replace(".", "").replace(",", ".")
-        numero = float(texto)
-        return (
-            f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
-    except (ValueError, TypeError):
-        return "0,00"
-
-def formatar_status_visual(val, tipo):
-    if pd.isna(val) or not str(val).strip():
-        if tipo == "func":
-            return "🟢 Ativo"
-        elif tipo == "trein":
-            return "🟢 em dia"
-        elif tipo == "ex":
-            return "🟢 Válido"
-        elif tipo == "epi":
-            return "🟢 Entregue"
-        elif tipo == "doc":
-            return "🟢 Válido"
-        else:
-            return "🟢 Concluído"
-    v = str(val).strip()
-    if "🟢" in v or "🔴" in v or "🟠" in v or "🟡" in v:
-        return v
-    v_low = v.lower()
-    if tipo == "func":
-        if "afastado" in v_low:
-            return f"🟠 {v}"
-        if "desligado" in v_low:
-            return f"🔴 {v}"
-        return f"🟢 {v}"
-    elif tipo == "trein" or tipo == "ex" or tipo == "doc":
-        if "vencido" in v_low:
-            return f"🔴 {v}"
-        if "a vencer" in v_low or "vencer" in v_low:
-            return f"🟠 {v}"
-        return f"🟢 {v}"
-    elif tipo == "epi":
-        if "devolvido" in v_low:
-            return f"🟠 {v}"
-        if "substituído" in v_low or "substituido" in v_low:
-            return f"🟡 {v}"
-        return f"🟢 {v}"
-    else:
-        if "andamento" in v_low:
-            return f"🟠 {v}"
-        if "agendado" in v_low:
-            return f"🟡 {v}"
-        if "cancelado" in v_low:
-            return f"🔴 {v}"
-        return f"🟢 {v}"
-
-def limpar_status_banco(val):
-    if pd.isna(val):
-        return "Ativo"
-    return (
-        str(val)
-        .replace("🟢", "")
-        .replace("🔴", "")
-        .replace("🟠", "")
-        .replace("🟡", "")
-        .strip()
-    )
-
-def filtrar_vencidos_e_proximos(df, coluna_data, coluna_status):
-    if df.empty:
-        return pd.DataFrame()
-    hoje = datetime.today()
-    indices_validos = []
-    for idx, row in df.iterrows():
-        st_val = str(row.get(coluna_status, "")).lower()
-        dt_val = row.get(coluna_data, "")
-        if "vencido" in st_val or "vencer" in st_val or "a vencer" in st_val:
-            indices_validos.append(idx)
-            continue
-        if dt_val:
-            for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                try:
-                    dt = datetime.strptime(str(dt_val).strip(), fmt)
-                    diff = (dt - hoje).days
-                    if diff <= 30:
-                        indices_validos.append(idx)
-                        break
-                except ValueError:
-                    continue
-    return df.loc[indices_validos] if indices_validos else pd.DataFrame()
-
-def renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario):
-    st.markdown("### 🎂 Aniversariantes do Mês")
-
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-    try:
-        df = pd.read_sql(
-            "SELECT DISTINCT funcionario, empresa, data_nascimento, cargo FROM"
-            " base_funcionarios",
-            conn,
-        )
-    except:
-        df = pd.DataFrame()
-    conn.close()
-
-    if df.empty or "data_nascimento" not in df.columns:
-        st.info(
-            "Nenhum funcionário cadastrado ou coluna de data de nascimento não"
-            " encontrada."
-        )
-        return
-
-    mes_atual = datetime.now().month
-    aniversariantes = []
-
-    for _, row in df.iterrows():
-        data_str = str(row.get("data_nascimento", "")).strip()
-        if not data_str:
-            continue
-        try:
-            partes = data_str.split("/")
-            if len(partes) >= 2:
-                mes_nasc = int(partes[1])
-                if mes_nasc == mes_atual:
-                    aniversariantes.append({
-                        "funcionario": row.get("funcionario", "Não informado"),
-                        "empresa": row.get("empresa", "Geral"),
-                        "cargo": row.get("cargo", ""),
-                        "data": data_str,
-                    })
-        except:
-            continue
-
-    if not aniversariantes:
-        st.info("🎉 Nenhum aniversariante registrado para este mês.")
-        return
-
-    df_aniv = pd.DataFrame(aniversariantes)
-    if not df_aniv.empty:
-        df_aniv = df_aniv.drop_duplicates(subset=['funcionario', 'data'], keep='first')
-
-    if not is_admin:
-        df_aniv = df_aniv[
-            df_aniv["empresa"].astype(str).str.strip().str.lower()
-            == str(emp_usuario).strip().lower()
-        ]
-
-    if df_aniv.empty:
-        st.info("Nenhum aniversariante neste mês para a sua empresa.")
-        return
-
-    empresas_unicas = df_aniv["empresa"].unique()
-
-    for emp in empresas_unicas:
-        with st.container():
-            st.markdown(f"#### 🏢 {emp}")
-            funcs_emp = df_aniv[df_aniv["empresa"] == emp]
-
-            for _, f in funcs_emp.iterrows():
-                cargo_txt = f" — *{f['cargo']}*" if f["cargo"] else ""
-                st.markdown(f"* **{f['data'][:5]}** — **{f['funcionario']}**{cargo_txt}")
-            st.markdown("")
-
-# --- CONTROLE DE SESSÃO COM TELA DE LOGIN CENTRALIZADA ---
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
-if "is_admin" not in st.session_state:
-    st.session_state["is_admin"] = False
-if "empresa_usuario" not in st.session_state:
-    st.session_state["empresa_usuario"] = ""
-if "nome_usuario" not in st.session_state:
-    st.session_state["nome_usuario"] = ""
-if "nivel_permissao" not in st.session_state:
-    st.session_state["nivel_permissao"] = "Somente Visualizar"
-if "msg_sucesso" not in st.session_state:
-    st.session_state["msg_sucesso"] = ""
-
-if not st.session_state["autenticado"]:
-    col_esq, col_centro, col_dir = st.columns([1, 1.4, 1])
-    with col_centro:
-        st.write("")
-        st.write("")
-        try:
-            st.image("logo.png", width=140)
-        except:
-            pass
-        st.markdown(
-            "<h1 style='font-size: 22px; margin-bottom: 0px;'>Cassilab Consultoria"
-            " e Treinamentos</h1>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            "<p style='color: gray; font-size: 14px; margin-top: 0px;'>Sistema de"
-            " Gestão Integrada em SST</p>",
-            unsafe_allow_html=True,
-        )
-        st.write("")
-        aba_login, aba_cadastro, aba_recuperar = st.tabs(
-            ["🔑 Entrar", "📝 Cadastrar", "🔄 Recuperar"]
-        )
-
-        with aba_login:
-            with st.form("form_login"):
-                usuario_input = st.text_input(
-                    "Usuário ou CPF (com ou sem pontuação)",
-                    value="",
-                    autocomplete="username",
-                )
-                senha_input = st.text_input(
-                    "Senha", value="", type="password", autocomplete="current-password"
-                )
-                btn_login = st.form_submit_button(
-                    "Acessar Sistema", use_container_width=True
-                )
-
-            # --- AVISO DE CONFORMIDADE LGPD NA TELA DE LOGIN ---
-            st.markdown(
-                """
-                <div style='text-align: center; font-size: 11px; color: #666; line-height: 1.4; margin-top: 15px;'>
-                    🔒 <b>Conformidade com a LGPD (Lei nº 13.709/2018)</b><br>
-                    Os dados de saúde e segurança do trabalho (SST) armazenados neste sistema são confidenciais, protegidos e utilizados exclusivamente para o cumprimento das Normas Regulamentadoras.
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            if btn_login:
-                if usuario_input == "admin" and senha_input == "Disc@5232":
-                    st.session_state["autenticado"] = True
-                    st.session_state["is_admin"] = True
-                    st.session_state["empresa_usuario"] = "Todas"
-                    st.session_state["nome_usuario"] = "Administrador"
-                    st.session_state["nivel_permissao"] = "Fazer Tudo"
-                    registrar_log("Administrador", "Todas", "Login no Sistema")
-                    st.success("Login efetuado com sucesso!")
-                    st.rerun()
-                else:
-                    cpf_limpo = re.sub(r"\D", "", usuario_input)
-                    cpf_fmt = (
-                        formatar_cpf(cpf_limpo) if len(cpf_limpo) == 11 else usuario_input
-                    )
-
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        """
-                        SELECT id, nome, cpf, empresa, email, celular, senha, status, nivel_permissao 
-                        FROM usuarios_sistema 
-                        WHERE (nome = ? OR cpf = ? OR cpf = ?) AND senha = ?
-                    """,
-                        (usuario_input, cpf_limpo, cpf_fmt, senha_input),
-                    )
-                    users_db = cursor.fetchall()
-                    conn.close()
-
-                    if users_db:
-                        users_ativos = [
-                            u
-                            for u in users_db
-                            if u[7] != "Bloqueado" and u[7] != "Pendente"
-                        ]
-                        users_pendentes = [u for u in users_db if u[7] == "Pendente"]
-
-                        if users_pendentes and not users_ativos:
-                            st.warning(
-                                "⏳ Seu cadastro ainda está aguardando aprovação do"
-                                " administrador."
-                            )
-                        elif not users_ativos and not users_pendentes:
-                            st.error("⛔ Este acesso foi bloqueado pelo administrador.")
-                        elif len(users_ativos) == 1:
-                            user_db = users_ativos[0]
-                            st.session_state["autenticado"] = True
-                            st.session_state["is_admin"] = False
-                            st.session_state["empresa_usuario"] = user_db[3]
-                            st.session_state["nome_usuario"] = user_db[1]
-                            st.session_state["nivel_permissao"] = (
-                                user_db[8]
-                                if len(user_db) > 8 and user_db[8]
-                                else "Somente Visualizar"
-                            )
-                            registrar_log(user_db[1], user_db[3], "Login no Sistema")
-                            st.success(f"Bem-vindo(a), {user_db[1]}!")
-                            st.rerun()
-                        elif len(users_ativos) > 1:
-                            st.session_state["usuarios_multiplos"] = users_ativos
-                            st.rerun()
-                    else:
-                        st.error("Usuário/CPF ou senha inválidos.")
-
-        if (
-            "usuarios_multiplos" in st.session_state
-            and st.session_state["usuarios_multiplos"]
-        ):
-            st.warning(
-                "⚠️ Encontramos mais de uma empresa vinculada ao seu CPF. Selecione"
-                " qual empresa deseja acessar:"
-            )
-            with st.form("form_selecionar_empresa_multipla"):
-                opcoes_empresas_map = {
-                    f"{u[3]} (Permissão: {u[8] if len(u) > 8 and u[8] else 'Somente Visualizar'})": u
-                    for u in st.session_state["usuarios_multiplos"]
-                }
-                escolha_emp_mult = st.selectbox(
-                    "Empresa Destino", list(opcoes_empresas_map.keys())
-                )
-                btn_confirmar_emp = st.form_submit_button(
-                    "Acessar Empresa Selecionada", use_container_width=True
-                )
-                if btn_confirmar_emp:
-                    user_db = opcoes_empresas_map[escolha_emp_mult]
-                    st.session_state["autenticado"] = True
-                    st.session_state["is_admin"] = False
-                    st.session_state["empresa_usuario"] = user_db[3]
-                    st.session_state["nome_usuario"] = user_db[1]
-                    st.session_state["nivel_permissao"] = (
-                        user_db[8]
-                        if len(user_db) > 8 and user_db[8]
-                        else "Somente Visualizar"
-                    )
-                    del st.session_state["usuarios_multiplos"]
-                    registrar_log(
-                        user_db[1],
-                        user_db[3],
-                        "Login no Sistema (Múltiplas Empresas)",
-                    )
-                    st.success(f"Bem-vindo(a) à empresa {user_db[3]}!")
-                    st.rerun()
-
-        with aba_cadastro:
-            with st.form("form_novo_usuario"):
-                st.markdown("### 📝 Solicitar Cadastro de Acesso")
-                st.markdown("Preencha os seus dados para solicitar acesso ao sistema vinculado à sua empresa.")
-                
-                cad_nome = st.text_input("Nome Completo", value="", autocomplete="off")
-                cad_cpf = st.text_input(
-                    "CPF (com ou sem pontuação)", value="", autocomplete="off"
-                )
-                cad_email = st.text_input("E-mail", value="", autocomplete="off")
-                cad_celular = st.text_input(
-                    "Celular / WhatsApp", value="", autocomplete="off"
-                )
-                cad_empresa_busca = st.text_input(
-                    "Nome da Empresa", value="", autocomplete="off"
-                )
-                cad_senha = st.text_input(
-                    "Crie uma Senha", value="", type="password", autocomplete="new-password"
-                )
-                
-                btn_cad_usuario = st.form_submit_button(
-                    "Solicitar Cadastro", use_container_width=True
-                )
-                
-                if btn_cad_usuario:
-                    if (
-                        cad_nome
-                        and cad_cpf
-                        and cad_email
-                        and cad_celular
-                        and cad_empresa_busca
-                        and cad_senha
-                    ):
-                        cpf_formatado = formatar_cpf(cad_cpf)
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        
-                        cursor.execute(
-                            "SELECT nome_empresa FROM empresas WHERE nome_empresa LIKE ? LIMIT 1",
-                            (f"%{cad_empresa_busca.strip()}%",),
-                        )
-                        emp_encontrada = cursor.fetchone()
-                        
-                        if emp_encontrada:
-                            empresa_final = emp_encontrada[0]
-                            
-                            cursor.execute(
-                                "SELECT status FROM usuarios_sistema WHERE cpf = ? AND empresa = ?",
-                                (cpf_formatado, empresa_final),
-                            )
-                            reg_existente = cursor.fetchone()
-                            
-                            if reg_existente:
-                                status_atual = reg_existente[0]
-                                if status_atual == "Pendente":
-                                    st.warning(
-                                        f"⏳ **Aviso:** Já existe um pedido de cadastro pendente para o CPF `{cpf_formatado}` "
-                                        f"na empresa **{empresa_final}**. O administrador já foi notificado e irá aprovar em breve."
-                                    )
-                                elif status_atual == "Bloqueado":
-                                    st.error(
-                                        "⛔ **Acesso Bloqueado:** Este acesso encontra-se atualmente bloqueado. "
-                                        "Por favor, entre em contacto com o suporte da Cassilab."
-                                    )
-                                else:
-                                    st.info(
-                                        f"ℹ️ **Conta Ativa:** Já possui um acesso ativo para a empresa **{empresa_final}**! "
-                                        "Pode utilizar a aba **'🔑 Entrar'** para iniciar sessão diretamente."
-                                    )
-                            else:
-                                try:
-                                    cursor.execute(
-                                        """INSERT INTO usuarios_sistema 
-                                           (nome, cpf, empresa, email, celular, senha, status, nivel_permissao) 
-                                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                                        (
-                                            formatar_titulo(cad_nome),
-                                            cpf_formatado,
-                                            empresa_final,
-                                            cad_email.strip(),
-                                            cad_celular.strip(),
-                                            cad_senha,
-                                            "Pendente",
-                                            "Somente Visualizar",
-                                        ),
-                                    )
-                                    conn.commit()
-
-                                    try:
-                                        cursor.execute("SELECT email FROM configuracoes_email LIMIT 1")
-                                        cfg_mail = cursor.fetchone()
-                                        if cfg_mail and cfg_mail[0]:
-                                            email_admin = cfg_mail[0]
-                                            assunto_adm = "🔔 Novo Cadastro Pendente de Aprovação - Sistema Cassilab SST"
-                                            corpo_adm = f"""Olá Administrador,
-
-Um novo usuário realizou o cadastro de acesso no sistema e está aguardando a sua aprovação:
-
-- Nome: {formatar_titulo(cad_nome)}
-- CPF: {cpf_formatado}
-- Empresa: {empresa_final}
-- E-mail: {cad_email.strip()}
-- Celular: {cad_celular.strip()}
-
-Aceda à aba Administração no seu painel para aprovar ou bloquear o acesso.
-
-Atenciosamente,
-Sistema Cassilab SST"""
-                                            enviar_email_smtp(email_admin, assunto_adm, corpo_adm)
-                                    except Exception:
-                                        pass
-
-                                    st.success(
-                                        f"✅ Cadastro realizado com sucesso para a empresa **{empresa_final}**! "
-                                        "O seu pedido foi enviado ao administrador e será liberado brevemente."
-                                    )
-                                    st.cache_data.clear()
-                                except Exception as e:
-                                    st.error(f"Erro ao realizar cadastro: {e}")
-                        else:
-                            st.error("⚠️ Nenhuma empresa encontrada com esse nome. Verifique a grafia e tente novamente.")
-                        conn.close()
-                    else:
-                        st.error("⚠️ Por favor, preencha todos os campos do formulário.")
-
-        with aba_recuperar:
-            with st.form("form_recuperar"):
-                rec_cpf = st.text_input(
-                    "Digite seu CPF cadastrado (com ou sem pontuação)",
-                    value="",
-                    autocomplete="off",
-                )
-                btn_rec_enviar = st.form_submit_button(
-                    "Enviar Instruções por E-mail", use_container_width=True
-                )
-                if btn_rec_enviar:
-                    if rec_cpf.strip():
-                        cpf_formatado = formatar_cpf(rec_cpf)
-                        cpf_limpo = re.sub(r"\D", "", rec_cpf)
-                        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "SELECT nome, email, celular, empresa, senha FROM"
-                            " usuarios_sistema WHERE cpf = ? OR cpf = ?",
-                            (cpf_formatado, cpf_limpo),
-                        )
-                        res_user = cursor.fetchone()
-                        conn.close()
-                        if res_user:
-                            nome_u, email_u, celular_u, empresa_u, senha_u = res_user
-                            if email_u and "@" in email_u:
-                                assunto = "Recuperação de Acesso - Sistema Cassilab SST"
-                                corpo = f"""Prezado(a) {nome_u},
-
-Recebemos uma solicitação de recuperação de senha vinculada ao seu CPF para o acesso ao Sistema de Gestão Integrada Cassilab SST.
-
-Seguem abaixo os seus dados cadastrados para acesso:
-- Empresa: {empresa_u}
-- CPF / Usuário: {cpf_formatado}
-- Senha: {senha_u}
-
-Recomendamos que você guarde essas informações em um local seguro. Caso não tenha solicitado essa recuperação, ignore esta mensagem.
-
-Atenciosamente,
-Cassilab Consultoria e Treinamentos em SST"""
-                                sucesso, msg_ret = enviar_email_smtp(email_u, assunto, corpo)
-                                if sucesso:
-                                    st.success(
-                                        f"As instruções de recuperação de senha foram enviadas"
-                                        f" para o e-mail {email_u}."
-                                    )
-                                    registrar_log(
-                                        nome_u,
-                                        empresa_u,
-                                        "Solicitou recuperação de senha por e-mail",
-                                    )
-                                else:
-                                    st.error("Erro ao enviar o e-mail: " + str(msg_ret))
-                            else:
-                                st.error(
-                                    "Este usuário não possui um e-mail válido cadastrado no"
-                                    " sistema."
-                                )
-                        else:
-                            st.error("CPF não encontrado.")
-                    else:
-                        st.error("Digite o CPF.")
-    st.stop()
-
-# --- SIDEBAR ---
-try:
-    st.sidebar.image("logo.png", width=120)
-except:
-    st.sidebar.markdown("### Cassilab SST")
-
-if not st.session_state["is_admin"]:
-    st.sidebar.info(
-        f"👤 **Perfil:** Colaborador\n"
-        f"🏢 **Empresa:** {st.session_state['empresa_usuario']}\n"
-        f"🔑 **Acesso:** {st.session_state['nivel_permissao']}"
-    )
-else:
-    st.sidebar.info("👤 **Perfil:** Administrador\n🔑 **Acesso:** Fazer Tudo")
-
-if st.session_state.get("is_admin", False):
-    query_params = st.query_params
-    empresa_url = query_params.get("emp", "Todas")
-    
-    empresas_disponiveis = ["Todas"] + get_empresas()
-    
-    empresa_inicial = empresa_url if empresa_url in empresas_disponiveis else st.session_state.get("empresa_global", "Todas")
-
-    empresa_global_escolhida = st.sidebar.selectbox(
-        "🏢 Empresa Ativa (Global)",
-        empresas_disponiveis,
-        index=empresas_disponiveis.index(empresa_inicial)
-        if empresa_inicial in empresas_disponiveis
-        else 0,
-        key="select_empresa_global_sidebar"
-    )
-
-    st.session_state["empresa_global"] = empresa_global_escolhida
-    st.query_params["emp"] = empresa_global_escolhida
-
-    if empresa_global_escolhida != st.session_state.get("ultima_empresa_trabalhada", ""):
-        atualizar_filtro_empresa(
-            empresa_global_escolhida if empresa_global_escolhida != "Todas" else ""
-        )
-    else:
-        st.session_state["empresa_global"] = st.session_state.get("empresa_usuario", "")
-        empresa_global_escolhida = st.session_state["empresa_global"]
-
-
-def _exibir_faixa_empresa_ativa(db_name, nome_empresa):
-    emp_nome = str(nome_empresa or "").strip()
-    if not emp_nome or emp_nome == "Todas":
-        return
-
-    logo_val = ""
-    cnpj_val = ""
-    risco_val = ""
-
-    try:
-        conn = sqlite_original.connect(db_name, timeout=10.0)
-        cur = conn.cursor()
-        for tabela in ["empresas", "clientes", "cad_empresas", "base_empresas"]:
-            try:
-                cur.execute(f"PRAGMA table_info({tabela})")
-                cols_info = cur.fetchall()
-                if not cols_info:
-                    continue
-                col_names = [c[1] for c in cols_info]
-                col_lower = [c.lower() for c in col_names]
-
-                idx_nome = (
-                    col_lower.index("nome_empresa")
-                    if "nome_empresa" in col_lower
-                    else next((i for i, c in enumerate(col_lower) if any(k in c for k in ["nome", "razao", "empresa"])), None)
-                )
-                if idx_nome is None:
-                    continue
-
-                idx_logo = col_names.index("logo_empresa") if "logo_empresa" in col_names else next((i for i, c in enumerate(col_lower) if "logo" in c), None)
-                idx_cnpj = col_names.index("cnpj") if "cnpj" in col_names else next((i for i, c in enumerate(col_lower) if "cnpj" in c), None)
-                idx_risco = col_names.index("grau_risco") if "grau_risco" in col_names else next((i for i, c in enumerate(col_lower) if "risco" in c or "grau" in c), None)
-
-                cur.execute(f"SELECT * FROM {tabela}")
-                for row in cur.fetchall():
-                    if str(row[idx_nome] or "").strip().lower() == emp_nome.lower():
-                        if idx_logo is not None and row[idx_logo]:
-                            logo_val = str(row[idx_logo]).strip()
-                        if idx_cnpj is not None and row[idx_cnpj]:
-                            cnpj_val = str(row[idx_cnpj]).strip()
-                        if idx_risco is not None and row[idx_risco]:
-                            risco_val = str(row[idx_risco]).strip()
-                        break
-                if logo_val:
-                    break
-            except Exception:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tabelas = [r[0] for r in cur.fetchall()]
+        for tab in tabelas:
+            if "empresa" not in tab.lower():
                 continue
+            cur.execute(f'PRAGMA table_info("{tab}")')
+            cols = [c[1] for c in cur.fetchall()]
+            for col_cand in ("empresa", "nome", "nome_fantasia", "razao_social"):
+                if col_cand in [c.lower() for c in cols]:
+                    col_real = next(c for c in cols if c.lower() == col_cand)
+                    cur.execute(f'SELECT DISTINCT "{col_real}" FROM "{tab}" WHERE "{col_real}" IS NOT NULL')
+                    for (nome_emp,) in cur.fetchall():
+                        s = str(nome_emp or "").strip()
+                        if not _eh_valor_todas(s) and s not in empresas:
+                            empresas.append(s)
+                    break
+    except Exception:
+        pass
+    finally:
         conn.close()
-    except Exception as e:
-        st.caption(f"Erro conexão faixa: {e}")
+    return sorted(empresas, key=lambda x: x.lower())
 
-    detalhes = []
-    if cnpj_val:
-        detalhes.append(f"CNPJ: {cnpj_val}")
-    if risco_val:
-        detalhes.append(f"Grau de Risco: {risco_val}")
-    meta_txt = "  •  ".join(detalhes) if detalhes else "Empresa Ativa"
-    
-    with st.container(border=True):
-        c_logo, c_info = st.columns([0.16, 0.84], vertical_alignment="center")
-        with c_logo:
-            mostrou_logo = False
-            if logo_val:
-                try:
-                    b64_raw = logo_val.split(",", 1)[1] if "," in logo_val and logo_val.startswith("data:") else logo_val
-                    b64_limpo = re.sub(r"\s+", "", b64_raw)
-                    st.image(base64.b64decode(b64_limpo), width=90)
-                    mostrou_logo = True
-                except Exception as e:
-                    st.caption(f"Erro logo: {e}")
-            if not mostrou_logo:
-                st.markdown("🏢")
-                st.caption("Sem logo no banco" if not logo_val else "Logo inválida")
-        with c_info:
-            st.markdown(f"**{emp_nome}**")
-            st.caption(meta_txt)
 
-query_params = st.query_params
-menu_url = query_params.get("menu", None)
+def _converter_para_image_reader(valor_logo):
+    if valor_logo is None:
+        return None
 
-if st.session_state.get("is_admin", False):
-    opcoes_menu = [
-        "Dashboard / Visão Geral",
-        "Cadastro de Empresas",
-        "Cadastros Gerais",
-        "Gestão de Funcionários",
-        "Treinamentos",
-        "Exames Ocupacionais",
-        "Controle de Absenteísmo",
-        "Controle de EPIs",
-        "Controle de Documentos",
-        "Alterar Senha",
-        "Serviços Realizados",
-        "Administração",
-        "Relatórios Consolidados",
-        "Emissor de Ordem de Serviço",
-        "Lista de Presença",
-        "Consulta de CAs",
-        "Normas Regulamentadoras",
-        "Checklists",
-    ]
-else:
-    opcoes_menu = [
-        "Dashboard / Visão Geral",
-        "Gestão de Funcionários",
-        "Treinamentos",
-        "Exames Ocupacionais",
-        "Controle de Absenteísmo",
-        "Controle de EPIs",
-        "Controle de Documentos",
-        "Alterar Senha",
-        "Relatórios Consolidados",
-        "Emissor de Ordem de Serviço",
-        "Consulta de CAs",
-        "Normas Regulamentadoras",
-        "Checklists",
-    ]
+    if isinstance(valor_logo, (bytes, bytearray, memoryview)):
+        raw = bytes(valor_logo)
+        if not raw:
+            return None
+        try:
+            texto = raw.decode("utf-8", errors="ignore").strip()
+            if texto.startswith("data:image") and "," in texto:
+                return ImageReader(io.BytesIO(base64.b64decode(texto.split(",", 1)[1])))
+        except Exception:
+            pass
+        try:
+            return ImageReader(io.BytesIO(raw))
+        except Exception:
+            return None
 
-idx_menu_inicial = opcoes_menu.index(menu_url) if menu_url in opcoes_menu else 0
+    if isinstance(valor_logo, str):
+        s = valor_logo.strip()
+        if not s:
+            return None
+        if s.startswith("data:image") and "," in s:
+            try:
+                return ImageReader(io.BytesIO(base64.b64decode(s.split(",", 1)[1])))
+            except Exception:
+                return None
+        if os.path.isfile(s):
+            try:
+                return ImageReader(s)
+            except Exception:
+                return None
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cand = os.path.join(base_dir, s)
+        if os.path.isfile(cand):
+            try:
+                return ImageReader(cand)
+            except Exception:
+                return None
+        try:
+            decoded = base64.b64decode(s, validate=True)
+            if len(decoded) > 100:
+                return ImageReader(io.BytesIO(decoded))
+        except Exception:
+            return None
 
-menu = st.sidebar.selectbox(
-    "Menu Principal",
-    opcoes_menu,
-    index=idx_menu_inicial,
-    key="select_menu_principal"
-)
+    return None
 
-st.query_params["menu"] = menu
 
-st.sidebar.markdown("---")
-if st.sidebar.button("💾 Salvar tudo e Sair"):
-    registrar_log(
-        st.session_state.get("nome_usuario", "Desconhecido"),
-        st.session_state.get("empresa_usuario", "Todas"),
-        "Encerrou Sessão / Sair",
-    )
-    st.session_state["autenticado"] = False
-    st.session_state["is_admin"] = False
-    st.session_state["empresa_usuario"] = ""
-    st.session_state["nome_usuario"] = ""
-    st.session_state["nivel_permissao"] = "Somente Visualizar"
-    st.sidebar.success("✅ Sessão encerrada com segurança!")
-    st.rerun()
+def _buscar_logo_empresa(db_name, nome_empresa):
+    if _eh_valor_todas(nome_empresa):
+        return None
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🛟 Suporte Técnico")
-st.sidebar.markdown(
-    '<a href="https://wa.me/5541985339760" target="_blank" style="text-decoration: none;">'
-    '<button style="width: 100%; background-color: #25D366; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px;">'
-    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></path></svg>'
-    '<span>Suporte</span>'
-    '</button></a>',
-    unsafe_allow_html=True
-)
+    alvo = nome_empresa.strip().lower()
+    candidatos_nome = ["empresa", "nome", "razao_social", "nome_fantasia"]
+    candidatos_logo = ["logo", "logotipo", "logo_empresa", "logo_path", "caminho_logo", "imagem_logo", "img_logo"]
 
-is_admin = st.session_state["is_admin"]
-emp_usuario = st.session_state["empresa_usuario"]
-nivel_permissao = st.session_state["nivel_permissao"]
-
-pode_lancar = is_admin or nivel_permissao in [
-    "Lançar",
-    "Editar",
-    "Fazer Tudo",
-]
-pode_editar = is_admin or nivel_permissao in ["Editar", "Fazer Tudo"]
-pode_excluir = is_admin or nivel_permissao == "Fazer Tudo"
-
-if st.session_state.get("msg_sucesso"):
-    msg = st.session_state["msg_sucesso"]
-    st.markdown(
-        f'<div style="background-color: #d4edda; color: #155724; padding: 15px 25px; border-radius: 10px; border: 2px solid #28a745; text-align: center; font-weight: bold; font-size: 18px; margin-bottom: 20px;">{msg}</div>',
-        unsafe_allow_html=True
-    )
-    st.session_state["msg_sucesso"] = ""
-
-_exibir_faixa_empresa_ativa(DB_NAME, st.session_state.get("empresa_global", ""))
-
-if menu == "Alterar Senha":
-    renderizar_aba_alterar_senha(DB_NAME, st.session_state.get("nome_usuario", ""))
-    
-# ==========================================
-# 0. DASHBOARD
-# ==========================================
-if menu == "Dashboard / Visão Geral":
-    col_t1, col_t2 = st.columns([0.8, 0.2])
-    with col_t1:
-        st.title("📊 Dashboard - Visão Geral Cassilab SST")
-    with col_t2:
-        st.write("")
-        if st.button("🔄 Atualizar Esta Tela"):
-            st.rerun()
-
-    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
+    conn = sqlite3.connect(db_name, timeout=10.0)
+    cur = conn.cursor()
     try:
-        total_empresas = (
-            pd.read_sql(
-                "SELECT COUNT(DISTINCT nome_empresa) as qtd FROM empresas WHERE"
-                " nome_empresa IS NOT NULL AND nome_empresa != ''",
-                conn,
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tabelas = [r[0] for r in cur.fetchall()]
+
+        for tab in tabelas:
+            if "empresa" not in tab.lower():
+                continue
+
+            cur.execute(f'PRAGMA table_info("{tab}")')
+            cols = [c[1] for c in cur.fetchall()]
+            cols_low = {c.lower(): c for c in cols}
+
+            col_logo = next((cols_low[k] for k in candidatos_logo if k in cols_low), None)
+            if not col_logo:
+                col_logo = next((c for c in cols if any(p in c.lower() for p in ("logo", "img", "imagem", "foto", "arquivo"))), None)
+            if not col_logo:
+                continue
+
+            cols_busca = [cols_low[k] for k in candidatos_nome if k in cols_low]
+            if not cols_busca:
+                continue
+
+            where_clauses = [f'LOWER(TRIM(COALESCE("{c}", \'\'))) = ?' for c in cols_busca]
+            params = [alvo for _ in cols_busca]
+
+            cur.execute(
+                f'SELECT "{col_logo}" FROM "{tab}" WHERE ' + " OR ".join(where_clauses) + " LIMIT 1",
+                params,
             )
-            .iloc[0]["qtd"]
-            if is_admin
-            else (1 if emp_usuario else 0)
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0]
+
+            where_like = [f'LOWER(COALESCE("{c}", \'\')) LIKE ?' for c in cols_busca]
+            params_like = [f"%{alvo}%" for _ in cols_busca]
+            cur.execute(
+                f'SELECT "{col_logo}" FROM "{tab}" WHERE ' + " OR ".join(where_like) + " LIMIT 1",
+                params_like,
+            )
+            row_like = cur.fetchone()
+            if row_like and row_like[0]:
+                return row_like[0]
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    return None
+
+
+def _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura_pag, altura_pag):
+    """Cria uma página PDF apenas com a faixa de cabeçalho (logo + nome da empresa) no topo."""
+    if not TEM_REPORTLAB:
+        return None
+
+    buf = io.BytesIO()
+    from reportlab.pdfgen import canvas as rl_canvas
+    c = rl_canvas.Canvas(buf, pagesize=(largura_pag, altura_pag))
+
+    tem_empresa = not _eh_valor_todas(empresa_especifica)
+    nome_exib = empresa_especifica.strip() if tem_empresa else "Todas as Empresas"
+
+    margem_x = 36
+    topo_y = altura_pag - 28
+    altura_faixa = 54
+
+    # Fundo branco no topo para cobrir eventual cabeçalho antigo
+    c.setFillColor(colors.white)
+    c.rect(0, topo_y - altura_faixa, largura_pag, altura_faixa + 28, stroke=0, fill=1)
+
+    x_texto = margem_x
+    if img_reader is not None:
+        try:
+            iw, ih = img_reader.getSize()
+            max_w = 95
+            max_h = 44
+            escala = min(max_w / float(iw), max_h / float(ih), 1.0)
+            w_draw = float(iw) * escala
+            h_draw = float(ih) * escala
+            y_logo = topo_y - (altura_faixa + h_draw) / 2.0
+            c.drawImage(img_reader, margem_x, y_logo, width=w_draw, height=h_draw, mask="auto")
+            x_texto = margem_x + w_draw + 12
+        except Exception:
+            x_texto = margem_x
+
+    c.setFillColor(colors.HexColor("#1B365D"))
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x_texto, topo_y - 22, nome_exib[:70])
+
+    c.setFillColor(colors.HexColor("#555555"))
+    c.setFont("Helvetica", 8)
+    c.drawString(x_texto, topo_y - 36, f"Checklist SST — Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+
+    c.setStrokeColor(colors.HexColor("#1B365D"))
+    c.setLineWidth(1.0)
+    c.line(margem_x, topo_y - altura_faixa, largura_pag - margem_x, topo_y - altura_faixa)
+
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+def _preparar_pdf_para_impressao(db_name, empresa_especifica, nome_arq, blob_dados):
+    """
+    Para PDF: mantém o arquivo original enviado e, quando há empresa específica,
+    aplica a logo + nome da empresa no cabeçalho da 1ª página (se pypdf estiver disponível).
+    Para outros arquivos: retorna os bytes originais.
+    """
+    raw = bytes(blob_dados)
+    ext = _extensao_arquivo(nome_arq)
+    if ext != "pdf" or not TEM_PYPDF:
+        return raw
+
+    tem_empresa = not _eh_valor_todas(empresa_especifica)
+    img_reader = _converter_para_image_reader(_buscar_logo_empresa(db_name, empresa_especifica)) if tem_empresa else None
+
+    if not tem_empresa and img_reader is None:
+        return raw
+
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        if len(reader.pages) == 0:
+            return raw
+
+        writer = PdfWriter()
+        primeira_pag = reader.pages[0]
+        largura = float(primeira_pag.mediabox.width)
+        altura = float(primeira_pag.mediabox.height)
+
+        overlay_buf = _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura, altura)
+        if overlay_buf is not None:
+            overlay_reader = PdfReader(overlay_buf)
+            primeira_pag.merge_page(overlay_reader.pages[0])
+
+        writer.add_page(primeira_pag)
+        for pag in reader.pages[1:]:
+            writer.add_page(pag)
+
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except Exception:
+        return raw
+
+
+def _renderizar_visualizador_html_impressao(titulo_arq, empresa_especifica, nome_arq, pdf_bytes, key_suffix):
+    """Renderiza visualização com botão Imprimir / Baixar (HTML + PDF embutido)."""
+    b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+    emp_txt = empresa_especifica.strip() if not _eh_valor_todas(empresa_especifica) else "Todas as Empresas"
+
+    html_code = f"""
+    <div style="border:1px solid #d0d7de;border-radius:8px;padding:12px;background:#ffffff;font-family:Arial,sans-serif;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <div>
+                <strong style="font-size:15px;color:#1B365D;">{titulo_arq}</strong><br/>
+                <span style="font-size:12px;color:#57606a;">Empresa: {emp_txt} • Arquivo: {nome_arq}</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button onclick="imprimirFrame_{key_suffix}()" style="background:#1B365D;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
+                    🖨️ Imprimir / Salvar PDF
+                </button>
+                <a download="{nome_arq}" href="data:application/pdf;base64,{b64_pdf}" style="background:#f6f8fa;color:#24292f;border:1px solid #d0d7de;padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:bold;">
+                    ⬇️ Baixar Arquivo
+                </a>
+            </div>
+        </div>
+        <iframe id="pdfFrame_{key_suffix}" src="data:application/pdf;base64,{b64_pdf}" width="100%" height="520px" style="border:1px solid #e1e4e8;border-radius:6px;"></iframe>
+    </div>
+    <script>
+        function imprimirFrame_{key_suffix}() {{
+            var frame = document.getElementById("pdfFrame_{key_suffix}");
+            if (frame && frame.contentWindow) {{
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            }} else {{
+                window.print();
+            }}
+        }}
+    </script>
+    """
+    components.html(html_code, height=600, scrolling=False)
+
+
+def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
+    _garantir_tabela_arquivos_checklist(db_name)
+
+    st.title("Checklists")
+    st.markdown("Checklists cadastrados para visualização, download e impressão")
+
+    empresa_especifica = _obter_empresa_especifica()
+    if empresa_especifica:
+        st.caption(f"Empresa ativa: **{empresa_especifica}**")
+    else:
+        st.caption("Visualização: **Todas as empresas** (impressão sem logo)")
+
+    admin_mode = _eh_admin()
+
+    if admin_mode:
+        opcoes_escopo = ["Todas as empresas (Geral)"] + _listar_empresas_banco(db_name)
+        with st.expander("➕ Adicionar novo arquivo de checklist (Admin)", expanded=False):
+            with st.form("form_upload_checklist", clear_on_submit=True):
+                titulo = st.text_input(
+                    "Título do Checklist",
+                    placeholder="Ex.: Checklist Andaimes - Inspeção de Segurança",
+                )
+                descricao = st.text_area(
+                    "Descrição (opcional)",
+                    placeholder="Ex.: Orientações gerais ou observações do checklist.",
+                    height=75,
+                )
+                escopo_empresa = st.selectbox("Disponível para", opcoes_escopo)
+                arquivo_up = st.file_uploader(
+                    "Selecione o arquivo (somente PDF ou DOCX)",
+                    type=["pdf", "docx"],
+                )
+                btn_enviar = st.form_submit_button("Salvar Arquivo")
+
+                if btn_enviar:
+                    ext = _extensao_arquivo(arquivo_up.name) if arquivo_up is not None else ""
+                    if not titulo.strip():
+                        st.error("Informe o título do checklist.")
+                    elif arquivo_up is None:
+                        st.error("Selecione um arquivo PDF ou DOCX para enviar.")
+                    elif ext not in EXTENSOES_PERMITIDAS:
+                        st.error("Formato não permitido. Envie apenas arquivos .PDF ou .DOCX.")
+                    else:
+                        dados_bytes = arquivo_up.getvalue()
+                        empresa_alvo = "" if escopo_empresa.startswith("Todas") else escopo_empresa
+                        data_agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        mime_final = MIME_POR_EXTENSAO.get(ext, arquivo_up.type or "application/octet-stream")
+
+                        conn = sqlite3.connect(db_name, timeout=10.0)
+                        cur = conn.cursor()
+                        cur.execute(
+                            """
+                            INSERT INTO checklist_arquivos
+                                (empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                empresa_alvo,
+                                titulo.strip(),
+                                descricao.strip(),
+                                arquivo_up.name,
+                                mime_final,
+                                len(dados_bytes),
+                                sqlite3.Binary(dados_bytes),
+                                data_agora,
+                            ),
+                        )
+                        conn.commit()
+                        conn.close()
+
+                        if callable(registrar_log_callback):
+                            registrar_log_callback(
+                                st.session_state.get("nome_usuario", "Administrador"),
+                                empresa_alvo or "Geral",
+                                f"Adicionou arquivo de checklist: {titulo.strip()} ({arquivo_up.name})",
+                            )
+
+                        st.success("Arquivo adicionado com sucesso!")
+                        st.rerun()
+
+    st.markdown("---")
+    st.subheader("Checklists Disponíveis")
+
+    conn = sqlite3.connect(db_name, timeout=10.0)
+    cur = conn.cursor()
+    if empresa_especifica:
+        cur.execute(
+            """
+            SELECT id, empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload
+            FROM checklist_arquivos
+            WHERE TRIM(COALESCE(empresa, '')) = ''
+               OR LOWER(TRIM(empresa)) = LOWER(TRIM(?))
+            ORDER BY LOWER(TRIM(titulo)) ASC, id DESC
+            """,
+            (empresa_especifica,),
         )
-        df_funcs_all = pd.read_sql("SELECT * FROM base_funcionarios", conn)
-        df_ex_all = pd.read_sql("SELECT * FROM exames", conn)
-        df_tr_all = pd.read_sql("SELECT * FROM treinamentos", conn)
-        df_docs_all = pd.read_sql("SELECT * FROM documentos", conn)
-    except:
-        (
-            total_empresas,
-            df_funcs_all,
-            df_ex_all,
-            df_tr_all,
-            df_docs_all,
-        ) = (0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+    else:
+        cur.execute(
+            """
+            SELECT id, empresa, titulo, descricao, nome_arquivo, tipo_mime, tamanho_bytes, conteudo_arquivo, data_upload
+            FROM checklist_arquivos
+            ORDER BY LOWER(TRIM(titulo)) ASC, id DESC
+            """
+        )
+    arquivos = cur.fetchall()
     conn.close()
 
-    if not is_admin and emp_usuario:
-        if not df_funcs_all.empty:
-            df_funcs_all = df_funcs_all[
-                df_funcs_all["empresa"].astype(str).str.strip().str.lower()
-                == str(emp_usuario).strip().lower()
-            ]
-        if not df_ex_all.empty:
-            df_ex_all = df_ex_all[
-                df_ex_all["empresa"].astype(str).str.strip().str.lower()
-                == str(emp_usuario).strip().lower()
-            ]
-        if not df_tr_all.empty:
-            df_tr_all = df_tr_all[
-                df_tr_all["empresa"].astype(str).str.strip().str.lower()
-                == str(emp_usuario).strip().lower()
-            ]
-        if not df_docs_all.empty:
-            df_docs_all = df_docs_all[
-                df_docs_all["empresa"].astype(str).str.strip().str.lower()
-                == str(emp_usuario).strip().lower()
-            ]
+    if not arquivos:
+        st.info("Nenhum arquivo de checklist disponível no momento.")
+        return
 
-    total_func_ativos = (
-        len(
-            df_funcs_all[
-                df_funcs_all["status"].astype(str).str.contains(
-                    "Ativo|ativo", na=False
+    item_aberto_key = "checklist_visualizar_id"
+    if item_aberto_key not in st.session_state:
+        st.session_state[item_aberto_key] = None
+
+    for arq_id, emp_arq, titulo_arq, desc_arq, nome_arq, mime_arq, tam_bytes, blob_dados, dt_up in arquivos:
+        ext_arq = _extensao_arquivo(nome_arq)
+        mime_download = MIME_POR_EXTENSAO.get(ext_arq, mime_arq or "application/octet-stream")
+        arquivo_preparado = _preparar_pdf_para_impressao(db_name, empresa_especifica, nome_arq, blob_dados)
+
+        with st.container(border=True):
+            col_info, col_acao = st.columns([4, 1.8])
+
+            with col_info:
+                escopo_txt = emp_arq.strip() if emp_arq and emp_arq.strip() else "Todas as empresas"
+                st.markdown(f"**{titulo_arq}**")
+                if desc_arq and desc_arq.strip():
+                    st.write(desc_arq.strip())
+                st.caption(
+                    f"Arquivo: `{nome_arq}` • Tamanho: {_formatar_tamanho(tam_bytes)} • Escopo: {escopo_txt} • Enviado em: {dt_up or '—'}"
                 )
-            ]
-        )
-        if not df_funcs_all.empty
-        else 0
-    )
-    total_ex_vencidos = (
-        len(
-            df_ex_all[
-                df_ex_all["status"].astype(str).str.contains(
-                    "Vencido|vencido", na=False
+
+            with col_acao:
+                st.download_button(
+                    label="⬇️ Baixar / Imprimir",
+                    data=arquivo_preparado,
+                    file_name=nome_arq,
+                    mime=mime_download,
+                    key=f"dl_print_{arq_id}",
+                    use_container_width=True,
                 )
-            ]
-        )
-        if not df_ex_all.empty
-        else 0
-    )
-    total_tr_vencidos = (
-        len(
-            df_tr_all[
-                df_tr_all["status"].astype(str).str.contains(
-                    "vencido|Vencido", na=False
-                )
-            ]
-        )
-        if not df_tr_all.empty
-        else 0
-    )
-    total_doc_vencidos = (
-        len(
-            df_docs_all[
-                df_docs_all["status"].astype(str).str.contains(
-                    "Vencido|vencido", na=False
-                )
-            ]
-        )
-        if not df_docs_all.empty
-        else 0
-    )
 
-    empresas_inativas_detalhes = []
-    hoje = datetime.today().date()
-
-    try:
-        conn_emp = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df_empresas = pd.read_sql("SELECT nome_empresa, data_registro FROM empresas", conn_emp)
-        
-        if not df_empresas.empty:
-            for _, row_e in df_empresas.iterrows():
-                emp_nome = row_e["nome_empresa"]
-                dt_reg_str = str(row_e.get("data_registro", "")).strip()
-                
-                datas_lancamentos = []
-                if dt_reg_str and dt_reg_str not in ("nan", "None", ""):
-                    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                        try:
-                            datas_lancamentos.append(datetime.strptime(dt_reg_str, fmt).date())
-                            break
-                        except ValueError:
-                            continue
-
-                tabelas_verificar = [
-                    ("base_funcionarios", "data_admissao"),
-                    ("exames", "ultimo_exame"),
-                    ("treinamentos", "data_realizacao"),
-                    ("documentos", "data_emissao"),
-                    ("servicos_realizados", "data_realizacao")
-                ]
-                
-                for tabela, col_d in tabelas_verificar:
-                    try:
-                        df_t = pd.read_sql(f"SELECT {col_d} FROM {tabela} WHERE empresa = ?", conn_emp, params=(emp_nome,))
-                        for _, r_t in df_t.iterrows():
-                            val_dt = str(r_t.get(col_d, "")).strip()[:10]
-                            if val_dt and val_dt not in ("nan", "None", ""):
-                                for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-                                    try:
-                                        datas_lancamentos.append(datetime.strptime(val_dt, fmt).date())
-                                        break
-                                    except ValueError:
-                                        continue
-                    except:
-                        pass
-
-                if datas_lancamentos:
-                    ultima_data = max(datas_lancamentos)
-                    dias_parada = (hoje - ultima_data).days
-                else:
-                    dias_parada = 999
-
-                if dias_parada > 30:
-                    empresas_inativas_detalhes.append({
-                        "empresa": emp_nome,
-                        "dias": dias_parada
-                    })
-        conn_emp.close()
-    except:
-        pass
-
-    inativas_30 = len(empresas_inativas_detalhes)
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-
-    with c1:
-        st.markdown(
-            f"<div style='font-size:14px; color:gray;'>🏢 Empresas Clientes</div>"
-            f"<div style='font-size:28px; font-weight:bold;'>{total_empresas}</div>"
-            f"<div style='font-size:12px; color:gray; margin-top:5px;'>Inativas 30 dias<br>"
-            f"<b style='color:black; font-size:14px;'>{inativas_30:02d}</b></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c2:
-        st.markdown(
-            f"<div style='font-size:14px; color:gray;'>👥 Funcionários</div>"
-            f"<div style='font-size:28px; font-weight:bold;'>{len(df_funcs_all)}</div>"
-            f"<div style='font-size:12px; color:gray; margin-top:5px;'>Ativos<br>"
-            f"<b style='color:black; font-size:14px;'>{total_func_ativos}</b></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c3:
-        st.markdown(
-            f"<div style='font-size:14px; color:gray;'>🩺 Exames</div>"
-            f"<div style='font-size:28px; font-weight:bold;'>{len(df_ex_all)}</div>"
-            f"<div style='font-size:12px; color:gray; margin-top:5px;'>Vencidos<br>"
-            f"<b style='color:red; font-size:14px;'>{total_ex_vencidos}</b></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c4:
-        st.markdown(
-            f"<div style='font-size:14px; color:gray;'>📚 Treinamentos</div>"
-            f"<div style='font-size:28px; font-weight:bold;'>{len(df_tr_all)}</div>"
-            f"<div style='font-size:12px; color:gray; margin-top:5px;'>Vencidos<br>"
-            f"<b style='color:red; font-size:14px;'>{total_tr_vencidos}</b></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c5:
-        st.markdown(
-            f"<div style='font-size:14px; color:gray;'>📄 Documentos</div>"
-            f"<div style='font-size:28px; font-weight:bold;'>{len(df_docs_all)}</div>"
-            f"<div style='font-size:12px; color:gray; margin-top:5px;'>Vencidos<br>"
-            f"<b style='color:red; font-size:14px;'>{total_doc_vencidos}</b></div>",
-            unsafe_allow_html=True,
-        )
-    st.markdown("---")
-
-    renderizar_painel_aniversariantes(DB_NAME, is_admin, emp_usuario)
-    st.markdown("---")
-
-    if is_admin:
-        st.markdown(
-            "### ⚠️ Painel de Alertas (Vencidos e a vencer em até 30 dias) - Acesso Restrito Admin"
-        )
-        col_v1, col_v2, col_v3 = st.columns(3)
-        
-        with col_v1:
-            st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
-            df_ex_alertas = filtrar_vencidos_e_proximos(
-                df_ex_all, "proximo_exame", "status"
-            )
-            if not df_ex_alertas.empty:
-                res_ex = df_ex_alertas[
-                    ["empresa", "funcionario", "tipo_exame", "proximo_exame"]
-                ].drop_duplicates()
-                for _, row in res_ex.iterrows():
-                    msg_ex = f"**{row['empresa']}**\n- {row['funcionario']} ({row['tipo_exame']}) - Vencimento: {row['proximo_exame']}"
-                    st.warning(msg_ex)
-            else:
-                st.success("Nenhum exame vencido ou próximo.")
-                
-        with col_v2:
-            st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
-            df_tr_alertas = filtrar_vencidos_e_proximos(
-                df_tr_all, "proximo_treinamento", "status"
-            )
-            if not df_tr_alertas.empty:
-                res_tr = df_tr_alertas[
-                    ["empresa", "funcionario", "treinamento", "proximo_treinamento"]
-                ].drop_duplicates()
-                for _, row in res_tr.iterrows():
-                    msg_tr = f"**{row['empresa']}**\n- {row['funcionario']} ({row['treinamento']}) - Vencimento: {row['proximo_treinamento']}"
-                    st.error(msg_tr)
-            else:
-                st.success("Nenhum treinamento vencido ou próximo.")
-                
-        with col_v3:
-            st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
-            df_docs_alertas = filtrar_vencidos_e_proximos(
-                df_docs_all, "proxima_renovacao", "status"
-            )
-            if not df_docs_alertas.empty:
-                res_doc = df_docs_alertas[
-                    ["empresa", "documento", "proxima_renovacao"]
-                ].drop_duplicates()
-                for _, row in res_doc.iterrows():
-                    st.error(f"**{row['empresa']}**\n- {row['documento']} - Renovação: {row['proxima_renovacao']}")
-            else:
-                st.success("Nenhum documento vencido ou próximo.")
-        
-        st.markdown("---")
-
-        if st.button(
-            "📧 Disparar Alertas por E-mail para Clientes com Vencimentos",
-            use_container_width=True,
-        ):
-            conn_m = sqlite_original.connect(DB_NAME, timeout=10.0)
-            cursor_m = conn_m.cursor()
-            alertas_por_empresa = {}
-            
-            if not df_ex_alertas.empty:
-                for _, row in df_ex_alertas.iterrows():
-                    emp = str(row["empresa"])
-                    item_id = row["id"]
-                    dt_venc = str(row["proximo_exame"])
-                    cursor_m.execute(
-                        "SELECT id FROM alertas_enviados WHERE empresa = ? AND tipo_item = 'exame' AND item_id = ? AND data_vencimento = ?",
-                        (emp, item_id, dt_venc),
-                    )
-                    if not cursor_m.fetchone():
-                        if emp not in alertas_por_empresa:
-                            alertas_por_empresa[emp] = {
-                                "exames": [],
-                                "treinamentos": [],
-                                "documentos": [],
-                                "tracking": [],
-                            }
-                        texto_ex = "Exame: " + str(row['funcionario']) + " (" + str(row['tipo_exame']) + ") - Vencimento: " + dt_venc
-                        alertas_por_empresa[emp]["exames"].append(texto_ex)
-                        alertas_por_empresa[emp]["tracking"].append(("exame", item_id, dt_venc))
-
-            if not df_tr_alertas.empty:
-                for _, row in df_tr_alertas.iterrows():
-                    emp = str(row["empresa"])
-                    item_id = row["id"]
-                    dt_venc = str(row["proximo_treinamento"])
-                    cursor_m.execute(
-                        "SELECT id FROM alertas_enviados WHERE empresa = ? AND tipo_item = 'treinamento' AND item_id = ? AND data_vencimento = ?",
-                        (emp, item_id, dt_venc),
-                    )
-                    if not cursor_m.fetchone():
-                        if emp not in alertas_por_empresa:
-                            alertas_por_empresa[emp] = {
-                                "exames": [],
-                                "treinamentos": [],
-                                "documentos": [],
-                                "tracking": [],
-                            }
-                        texto_tr = "Treinamento: " + str(row['funcionario']) + " (" + str(row['treinamento']) + ") - Vencimento: " + dt_venc
-                        alertas_por_empresa[emp]["treinamentos"].append(texto_tr)
-                        alertas_por_empresa[emp]["tracking"].append(("treinamento", item_id, dt_venc))
-
-            if not df_docs_alertas.empty:
-                for _, row in df_docs_alertas.iterrows():
-                    emp = str(row["empresa"])
-                    item_id = row["id"]
-                    dt_venc = str(row["proxima_renovacao"])
-                    cursor_m.execute(
-                        "SELECT id FROM alertas_enviados WHERE empresa = ? AND tipo_item = 'documento' AND item_id = ? AND data_vencimento = ?",
-                        (emp, item_id, dt_venc),
-                    )
-                    if not cursor_m.fetchone():
-                        if emp not in alertas_por_empresa:
-                            alertas_por_empresa[emp] = {
-                                "exames": [],
-                                "treinamentos": [],
-                                "documentos": [],
-                                "tracking": [],
-                            }
-                        texto_doc = "Documento: " + str(row['documento']) + " - Renovação: " + dt_venc
-                        alertas_por_empresa[emp]["documentos"].append(texto_doc)
-                        alertas_por_empresa[emp]["tracking"].append(("documento", item_id, dt_venc))
-
-            enviados = 0
-            erros = 0
-            hoje_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            relatorio_envios = []
-
-            for emp, dados_emp in alertas_por_empresa.items():
-                if not dados_emp["exames"] and not dados_emp["treinamentos"] and not dados_emp["documentos"]:
-                    continue
-                cursor_m.execute("SELECT email FROM empresas WHERE nome_empresa = ?", (emp,))
-                res_emp_email = cursor_m.fetchone()
-                email_emp = res_emp_email[0] if res_emp_email and res_emp_email[0] else None
-
-                if email_emp and "@" in email_emp:
-                    corpo_msg = f"Prezados(as) da empresa {emp},\n\nIdentificamos em nosso sistema de Gestão SST (Cassilab) itens vencidos ou próximos do vencimento (prazo de 30 dias) que exigem atenção:\n\n"
-                    
-                    itens_empresa_texto = []
-                    if dados_emp["exames"]:
-                        corpo_msg += "Exames Ocupacionais:\n" + "\n".join(["- " + i for i in dados_emp["exames"]]) + "\n\n"
-                        itens_empresa_texto.extend(dados_emp["exames"])
-                    if dados_emp["treinamentos"]:
-                        corpo_msg += "Treinamentos:\n" + "\n".join(["- " + i for i in dados_emp["treinamentos"]]) + "\n\n"
-                        itens_empresa_texto.extend(dados_emp["treinamentos"])
-                    if dados_emp["documentos"]:
-                        corpo_msg += "Documentos:\n" + "\n".join(["- " + i for i in dados_emp["documentos"]]) + "\n\n"
-                        itens_empresa_texto.extend(dados_emp["documentos"])
-                    
-                    corpo_msg += "Por favor, entre em contato conosco ou regularize as pendências.\n\nAtenciosamente,\nCassilab Consultoria e Treinamentos em SST"
-                    
-                    sucesso, msg_ret = enviar_email_smtp(email_emp, "⚠️ Alerta de Vencimentos (30 dias) - Gestão SST Cassilab", corpo_msg)
-                    if sucesso:
-                        enviados += 1
-                        for tipo_t, id_t, dt_t in dados_emp["tracking"]:
-                            cursor_m.execute(
-                                "INSERT INTO alertas_enviados (empresa, tipo_item, item_id, data_vencimento, data_envio) VALUES (?, ?, ?, ?, ?)",
-                                (emp, tipo_t, id_t, dt_t, hoje_str),
-                            )
-                        conn_m.commit()
-                        
-                        texto_itens = "".join([f" * {item}\n" for item in itens_empresa_texto])
-                        relatorio_envios.append(f"**{emp}** ({email_emp}):\n{texto_itens}")
-                    else:
-                        erros += 1
-                else:
-                    erros += 1
-
-            conn_m.close()
-            
-            if enviados > 0:
-                st.success("✅ Alertas novos enviados com sucesso para " + str(enviados) + " empresa(s)!")
-                st.markdown("### 📋 Resumo dos Avisos Disparados:")
-                for r in relatorio_envios:
-                    st.markdown(r)
-            elif erros > 0 and enviados == 0:
-                st.warning("⚠️ Nenhuma nova mensagem foi enviada (verifique se as empresas possuem e-mail cadastrado ou se os itens já haviam sido notificados).")
-            else:
-                st.info("ℹ️ Todos os vencimentos atuais já haviam sido notificados anteriormente.")
-            st.markdown("---")
-    else:
-        st.markdown("### ⚠️ Alertas de Vencimentos da sua Empresa (30 dias)")
-        col_cv1, col_cv2, col_cv3 = st.columns(3)
-        with col_cv1:
-            st.markdown("#### 🩺 Exames (Vencidos / 30 dias)")
-            df_ex_alertas_cli = filtrar_vencidos_e_proximos(
-                df_ex_all, "proximo_exame", "status"
-            )
-            if not df_ex_alertas_cli.empty:
-                res_ex_cli = df_ex_alertas_cli[
-                    ["funcionario", "tipo_exame", "proximo_exame"]
-                ].drop_duplicates()
-                for _, row in res_ex_cli.iterrows():
-                    st.warning(
-                        f"- **{row['funcionario']}** ({row['tipo_exame']}) - Vencimento:"
-                        f" {row['proximo_exame']}"
-                    )
-            else:
-                st.success("Nenhum exame vencido ou próximo.")
-        with col_cv2:
-            st.markdown("#### 📚 Treinamentos (Vencidos / 30 dias)")
-            df_tr_alertas_cli = filtrar_vencidos_e_proximos(
-                df_tr_all, "proximo_treinamento", "status"
-            )
-            if not df_tr_alertas_cli.empty:
-                res_tr_cli = df_tr_alertas_cli[
-                    ["funcionario", "treinamento", "proximo_treinamento"]
-                ].drop_duplicates()
-                for _, row in res_tr_cli.iterrows():
-                    st.error(
-                        f"- **{row['funcionario']}** ({row['treinamento']}) -"
-                        f" Vencimento: {row['proximo_treinamento']}"
-                    )
-            else:
-                st.success("Nenhum treinamento vencido ou próximo.")
-        with col_cv3:
-            st.markdown("#### 📄 Documentos (Vencidos / 30 dias)")
-            df_docs_alertas_cli = filtrar_vencidos_e_proximos(
-                df_docs_all, "proxima_renovacao", "status"
-            )
-            if not df_docs_alertas_cli.empty:
-                res_doc_cli = df_docs_alertas_cli[
-                    ["documento", "proxima_renovacao"]
-                ].drop_duplicates()
-                for _, row in res_doc_cli.iterrows():
-                    st.error(
-                        f"- {row['documento']} - Renovação: {row['proxima_renovacao']}"
-                    )
-            else:
-                st.success("Nenhum documento vencido ou próximo.")
-        st.markdown("---")
-
-# ==========================================
-# 1. CADASTRO DE EMPRESAS & 2. CADASTROS GERAIS
-# ==========================================
-if menu == "Cadastro de Empresas":
-    #st.write("DEBUG: Entrou no Cadastro de Empresas")
-    try:
-        renderizar_aba_empresas(
-            DB_NAME,
-            is_admin,
-            emp_usuario,
-            formatar_titulo,
-            formatar_data_br,
-            formatar_cnpj,
-            consultar_cnpj,
-            consultar_cep,
-            consultar_grau_risco_por_cnae,
-            formatar_colunas_tabela,
-            adicionar_numeracao,
-            atualizar_filtro_empresa,
-            registrar_log,
-        )
-    except Exception as e:
-        st.error(f"Erro ao carregar a aba de Empresas: {e}")
-
-if menu == "Cadastros Gerais":
-    st.success("✅ Acessou com sucesso: Cadastros Gerais!")
-    
-    aba_selecionada = st.radio(
-        "Selecione o tipo de cadastro:",
-        ["Cargos", "Setores", "Serviços", "Treinamentos", "EPIs"],
-        horizontal=True,
-        key="radio_sub_cadastros_gerais_completo"
-    )
-    st.markdown("---")
-
-    if aba_selecionada == "Cargos":
-        empresa_global_cargo = str(st.session_state.get("empresa_global", "")).strip()
-        emp_ativa_cargo = (
-            empresa_global_cargo
-            if empresa_global_cargo and empresa_global_cargo.lower() not in ("todas", "todas as empresas")
-            else ""
-        )
-
-        st.subheader("Gerenciar Cargos")
-        if not emp_ativa_cargo:
-            st.warning("⚠️ Selecione uma empresa específica em **Empresa Ativa (Global)** no menu lateral para gerenciar os cargos.")
-            st.stop()
-
-        st.caption(f"🏢 Empresa ativa no menu: **{emp_ativa_cargo}**")
-
-        with st.form("form_cad_cargo_unico_geral"):
-            novo_cargo = st.text_input("Novo Cargo")
-            descritivo_funcao_novo = st.text_area(
-                "Descritivo de função",
-                placeholder="Descreva as atividades e atribuições do cargo...",
-                height=100,
-            )
-            btn_add_salvar_cargo = st.form_submit_button("Adicionar e Salvar Cargo")
-            if btn_add_salvar_cargo:
-                if novo_cargo.strip():
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    cursor.execute("PRAGMA table_info(cad_cargos)")
-                    cols_cad_cargos = [c[1].lower() for c in cursor.fetchall()]
-                    if "descritivo_funcao" not in cols_cad_cargos:
-                        cursor.execute("ALTER TABLE cad_cargos ADD COLUMN descritivo_funcao TEXT")
-
-                    cargo_fmt = formatar_titulo(novo_cargo)
-                    descritivo_fmt = descritivo_funcao_novo.strip()
-                    cursor.execute(
-                        "SELECT id FROM cad_cargos WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?)) AND LOWER(TRIM(cargo)) = LOWER(TRIM(?))",
-                        (emp_ativa_cargo, cargo_fmt),
-                    )
-                    existe = cursor.fetchone()
-                    if existe:
-                        st.error(f"Este cargo já está cadastrado para a empresa {emp_ativa_cargo}.")
-                    else:
-                        cursor.execute(
-                            "INSERT INTO cad_cargos (empresa, cargo, descritivo_funcao) VALUES (?, ?, ?)",
-                            (emp_ativa_cargo, cargo_fmt, descritivo_fmt),
-                        )
-                        conn.commit()
-                        if "edit_cargos_gerais_tbl_global" in st.session_state:
-                            del st.session_state["edit_cargos_gerais_tbl_global"]
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "✅ Cargo cadastrado com sucesso!"
-                        registrar_log(
-                            st.session_state.get("nome_usuario", "Administrador"),
-                            emp_ativa_cargo,
-                            f"Adicionou cargo: {cargo_fmt}",
-                        )
+                if ext_arq == "pdf":
+                    esta_aberto = st.session_state[item_aberto_key] == arq_id
+                    btn_txt = "🔼 Fechar Visualização" if esta_aberto else "👁️ Visualizar / Imprimir"
+                    if st.button(btn_txt, key=f"view_html_{arq_id}", use_container_width=True):
+                        st.session_state[item_aberto_key] = None if esta_aberto else arq_id
                         st.rerun()
-                    conn.close()
-                else:
-                    st.error("Preencha o nome do cargo.")
 
-        st.markdown("---")
+                if admin_mode:
+                    if st.button("🗑️ Remover", key=f"del_checklist_{arq_id}", use_container_width=True):
+                        conn_del = sqlite3.connect(db_name, timeout=10.0)
+                        conn_del.execute("DELETE FROM checklist_arquivos WHERE id = ?", (arq_id,))
+                        conn_del.commit()
+                        conn_del.close()
 
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        try:
-            df_cargos_geral = pd.read_sql(
-                "SELECT id, empresa, cargo, descritivo_funcao FROM cad_cargos WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?)) ORDER BY cargo ASC",
-                conn,
-                params=(emp_ativa_cargo,),
-            )
-        except Exception:
-            try:
-                df_cargos_geral = pd.read_sql(
-                    "SELECT id, empresa, cargo FROM cad_cargos WHERE LOWER(TRIM(empresa)) = LOWER(TRIM(?)) ORDER BY cargo ASC",
-                    conn,
-                    params=(emp_ativa_cargo,),
-                )
-            except Exception:
-                df_cargos_geral = pd.DataFrame()
-        conn.close()
-        
-        if not df_cargos_geral.empty:
-            if "sel_id_cargo_geral" not in st.session_state:
-                st.session_state["sel_id_cargo_geral"] = None
-                
-            df_cargos_geral["_id_banco"] = df_cargos_geral["id"]
-            df_cargos_geral["Selecionar"] = (
-                df_cargos_geral["_id_banco"] == st.session_state["sel_id_cargo_geral"]
-            )
-            df_cargos_geral = df_cargos_geral[["Selecionar", "_id_banco", "empresa", "cargo"]]
-            df_cargos_ex = formatar_colunas_tabela(df_cargos_geral)
-            df_cargos_ex = adicionar_numeracao(df_cargos_ex)
-            
-            edit_cargos_geral = st.data_editor(
-                df_cargos_ex,
-                hide_index=True,
-                num_rows="fixed",
-                key=f"edit_cargos_gerais_tbl_{emp_ativa_cargo}",
-                width="stretch",
-                column_config={
-                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
-                    "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                    "Empresa": st.column_config.TextColumn("Empresa", disabled=True),
-                },
-            )
-            
-            curr_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]["_id_banco"].tolist()
-            new_cargo = [uid for uid in curr_cargo if uid != st.session_state["sel_id_cargo_geral"]]
-            if new_cargo:
-                st.session_state["sel_id_cargo_geral"] = new_cargo[-1]
-                st.rerun()
-            elif not curr_cargo and st.session_state["sel_id_cargo_geral"] is not None:
-                st.session_state["sel_id_cargo_geral"] = None
-                st.rerun()
-                
-            linhas_sel_cargo = edit_cargos_geral[edit_cargos_geral["Selecionar"] == True]
-
-            descritivo_edicao_valor = None
-            cargo_id_edicao = None
-
-            if len(linhas_sel_cargo) == 1:
-                cargo_id_edicao = int(linhas_sel_cargo.iloc[0]["_id_banco"])
-                nome_cargo_sel = str(linhas_sel_cargo.iloc[0].get("Cargo", linhas_sel_cargo.iloc[0].get("cargo", "")))
-
-                conn_desc = sqlite_original.connect(DB_NAME, timeout=10.0)
-                cur_desc = conn_desc.cursor()
-                cur_desc.execute("PRAGMA table_info(cad_cargos)")
-                cols_desc = [c[1].lower() for c in cur_desc.fetchall()]
-                desc_atual = ""
-                if "descritivo_funcao" in cols_desc:
-                    cur_desc.execute(
-                        "SELECT descritivo_funcao FROM cad_cargos WHERE id = ?",
-                        (cargo_id_edicao,),
-                    )
-                    row_desc = cur_desc.fetchone()
-                    if row_desc and row_desc[0] is not None:
-                        desc_atual = str(row_desc[0])
-                conn_desc.close()
-
-                st.markdown("---")
-                st.markdown(f"**Descritivo de função — {nome_cargo_sel}**")
-                descritivo_edicao_valor = st.text_area(
-                    "Descritivo de função",
-                    value=desc_atual,
-                    height=120,
-                    key=f"txt_desc_cargo_sel_{cargo_id_edicao}",
-                )
-
-            col_cg_1, col_cg_2 = st.columns(2)
-
-            # BOTÕES FORA DO FORMULÁRIO (FUNCIONAM PERFEITAMENTE)
-            if col_cg_1.button("💾 Salvar Alterações na Tabela de Cargos", use_container_width=True, key="btn_salvar_cargos_global"):
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA table_info(cad_cargos)")
-                cols_cad_cargos = [c[1].lower() for c in cursor.fetchall()]
-                if "descritivo_funcao" not in cols_cad_cargos:
-                    cursor.execute("ALTER TABLE cad_cargos ADD COLUMN descritivo_funcao TEXT")
-
-                for _, row in edit_cargos_geral.iterrows():
-                    c_id = row.get("_id_banco", row.get("id"))
-                    e_val = row.get("Empresa", row.get("empresa"))
-                    c_val = row.get("Cargo", row.get("cargo"))
-                    if pd.notna(e_val) and pd.notna(c_val) and str(c_val).strip():
-                        if pd.notna(c_id) and str(c_id).strip() not in ("", "nan", "None"):
-                            id_num = int(c_id)
-                            if cargo_id_edicao is not None and id_num == cargo_id_edicao and descritivo_edicao_valor is not None:
-                                cursor.execute(
-                                    "UPDATE cad_cargos SET empresa=?, cargo=?, descritivo_funcao=? WHERE id=?",
-                                    (str(e_val).strip(), formatar_titulo(c_val), descritivo_edicao_valor.strip(), id_num),
-                                )
-                            else:
-                                cursor.execute(
-                                    "UPDATE cad_cargos SET empresa=?, cargo=? WHERE id=?",
-                                    (str(e_val).strip(), formatar_titulo(c_val), id_num),
-                                )
-                conn.commit()
-                conn.close()
-                if "edit_cargos_gerais_tbl_global" in st.session_state:
-                    del st.session_state["edit_cargos_gerais_tbl_global"]
-                st.session_state["sel_id_cargo_geral"] = None
-                st.cache_data.clear()
-                st.session_state["msg_sucesso"] = "✅ Cargos e descritivos atualizados com sucesso!"
-                st.rerun()
-
-            if col_cg_2.button("🗑️ Excluir Cargo Selecionado", use_container_width=True, key="btn_excluir_cargo_global"):
-                if len(linhas_sel_cargo) == 1:
-                    cargo_id_exc = int(linhas_sel_cargo.iloc[0]["_id_banco"])
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    conn.execute("DELETE FROM cad_cargos WHERE id = ?", (cargo_id_exc,))
-                    conn.commit()
-                    conn.close()
-                    if "edit_cargos_gerais_tbl_global" in st.session_state:
-                        del st.session_state["edit_cargos_gerais_tbl_global"]
-                    st.session_state["sel_id_cargo_geral"] = None
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "🗑️ Cargo excluído com sucesso!"
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Selecione um cargo marcando o quadradinho.")
-        else:
-            st.info("ℹ️ Nenhum cargo cadastrado.")
-            
-    elif aba_selecionada == "Setores":
-        st.subheader("Gerenciar Setores por Empresa")
-        with st.form("form_cad_setor_unico"):
-            empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-            empresa_setor_sel = st.selectbox(
-                "Selecione a Empresa",
-                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                key="sel_emp_setor",
-            )
-            novo_setor = st.text_input("Novo Setor")
-            btn_add_salvar_setor = st.form_submit_button("Adicionar e Salvar Setor")
-            if btn_add_salvar_setor:
-                if empresa_setor_sel != "Nenhuma" and novo_setor.strip():
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    setor_fmt = formatar_titulo(novo_setor)
-                    cursor.execute(
-                        "SELECT id FROM cad_setores WHERE empresa = ? AND setor = ?",
-                        (empresa_setor_sel, setor_fmt),
-                    )
-                    existe = cursor.fetchone()
-                    if existe:
-                        st.error(f"Este setor já está cadastrado para a empresa {empresa_setor_sel}.")
-                    else:
-                        cursor.execute(
-                            "INSERT INTO cad_setores (empresa, setor) VALUES (?, ?)",
-                            (empresa_setor_sel, setor_fmt),
-                        )
-                        conn.commit()
-                        if "edit_setores_tbl" in st.session_state:
-                            del st.session_state["edit_setores_tbl"]
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                        registrar_log(
-                            st.session_state.get("nome_usuario", "Administrador"),
-                            empresa_setor_sel,
-                            f"Adicionou setor: {setor_fmt}",
-                        )
-                        st.rerun()
-                    conn.close()
-                else:
-                    st.error("Selecione a empresa e preencha o nome do setor.")
-        st.markdown("---")
-        filtro_setor_emp = st.selectbox(
-            "Filtrar por Empresa",
-            ["Todas as Empresas"] + (empresas_cadastradas if "empresas_cadastradas" in locals() else []),
-            key="filtro_setor_emp_view",
-        )
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        df_setores_geral = pd.read_sql(
-            "SELECT id, empresa, setor FROM cad_setores ORDER BY empresa, setor ASC",
-            conn,
-        )
-        conn.close()
-        if filtro_setor_emp != "Todas as Empresas" and not df_setores_geral.empty:
-            df_setores_geral = df_setores_geral[
-                df_setores_geral["empresa"].astype(str).str.strip().str.lower()
-                == str(filtro_setor_emp).strip().lower()
-            ]
-        if not df_setores_geral.empty:
-            if "sel_id_setor_geral" not in st.session_state:
-                st.session_state["sel_id_setor_geral"] = None
-            df_setores_geral["_id_banco"] = df_setores_geral["id"]
-            df_setores_geral["Selecionar"] = (
-                df_setores_geral["_id_banco"] == st.session_state["sel_id_setor_geral"]
-            )
-            df_setores_geral = df_setores_geral[["Selecionar", "_id_banco", "empresa", "setor"]]
-            df_setores_ex = formatar_colunas_tabela(df_setores_geral)
-            df_setores_ex = adicionar_numeracao(df_setores_ex)
-            edit_setores = st.data_editor(
-                df_setores_ex,
-                hide_index=True,
-                num_rows="fixed",
-                key="edit_setores_tbl",
-                use_container_width=True,
-                column_config={
-                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
-                    "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                },
-            )
-            curr_s_geral = edit_setores[edit_setores["Selecionar"] == True]["_id_banco"].tolist()
-            new_s_geral = [
-                uid for uid in curr_s_geral if uid != st.session_state["sel_id_setor_geral"]
-            ]
-            if new_s_geral:
-                st.session_state["sel_id_setor_geral"] = new_s_geral[-1]
-                st.rerun()
-            elif not curr_s_geral and st.session_state["sel_id_setor_geral"] is not None:
-                st.session_state["sel_id_setor_geral"] = None
-                st.rerun()
-            linhas_sel_setor = edit_setores[edit_setores["Selecionar"] == True]
-            col_sg_1, col_sg_2 = st.columns(2)
-            if col_sg_1.button("💾 Salvar Alterações na Tabela de Setores", use_container_width=True):
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                for _, row in edit_setores.iterrows():
-                    s_id = row.get("_id_banco", row.get("id"))
-                    e_val = row.get("Empresa", row.get("empresa"))
-                    s_val = row.get("Setor", row.get("setor"))
-                    if pd.notna(e_val) and pd.notna(s_val) and str(s_val).strip():
-                        if pd.notna(s_id) and str(s_id).strip() not in ("", "nan", "None"):
-                            cursor.execute(
-                                "UPDATE cad_setores SET empresa=?, setor=? WHERE id=?",
-                                (str(e_val).strip(), formatar_titulo(s_val), int(s_id)),
-                            )
-                conn.commit()
-                conn.close()
-                if "edit_setores_tbl" in st.session_state:
-                    del st.session_state["edit_setores_tbl"]
-                st.session_state["sel_id_setor_geral"] = None
-                st.cache_data.clear()
-                st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                registrar_log(
-                    st.session_state.get("nome_usuario", "Administrador"),
-                    "Todas",
-                    "Atualização na tabela de setores",
-                )
-                st.rerun()
-            if col_sg_2.button("🗑️ Excluir Setor Selecionado", use_container_width=True):
-                if len(linhas_sel_setor) == 1:
-                    setor_id_exc = int(linhas_sel_setor.iloc[0]["_id_banco"])
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    conn.execute("DELETE FROM cad_setores WHERE id = ?", (setor_id_exc,))
-                    conn.commit()
-                    conn.close()
-                    if "edit_setores_tbl" in st.session_state:
-                        del st.session_state["edit_setores_tbl"]
-                    st.session_state["sel_id_setor_geral"] = None
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "🗑️ Setor excluído com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Administrador"),
-                        "Todas",
-                        f"Excluiu setor ID {setor_id_exc}",
-                    )
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Selecione um setor marcando o quadradinho.")
-        else:
-            st.info("ℹ️ Nenhum setor cadastrado.")
-
-    elif aba_selecionada == "Serviços":
-        st.subheader("🛠️ Catálogo Geral de Serviços da Cassilab")
-        st.write("Cadastre os serviços oficiais da empresa. Eles ficarão disponíveis globalmente nas listas suspensas do sistema.")
-
-        with st.form("form_cad_servico_unico"):
-            novo_servico = st.text_input("Nome do Novo Serviço")
-            btn_add_salvar_servico = st.form_submit_button("Adicionar ao Catálogo")
-            
-            if btn_add_salvar_servico:
-                if novo_servico.strip():
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    serv_fmt = formatar_titulo(novo_servico)
-                    
-                    try:
-                        cursor.execute("ALTER TABLE cad_servicos ADD COLUMN empresa TEXT;")
-                        conn.commit()
-                    except:
-                        pass
-
-                    # Verifica duplicidade no catálogo geral
-                    cursor.execute(
-                        "SELECT id FROM cad_servicos WHERE servico = ?",
-                        (serv_fmt,),
-                    )
-                    existe = cursor.fetchone()
-                    salvou_ok = False
-                    if existe:
-                        st.error(f"⚠️ O serviço '{serv_fmt}' já está cadastrado no catálogo.")
-                    else:
-                        salvou_ok = False
-                        try:
-                            # Salva globalmente (definindo 'Geral' ou mantendo padrão para a empresa)
-                            cursor.execute(
-                                "INSERT INTO cad_servicos (empresa, servico) VALUES (?, ?)",
-                                ("Geral", serv_fmt),
-                            )
-                            conn.commit()
-                            if "edit_servicos_tbl" in st.session_state:
-                                del st.session_state["edit_servicos_tbl"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Serviço cadastrado com sucesso!"
-                            registrar_log(
+                        if callable(registrar_log_callback):
+                            registrar_log_callback(
                                 st.session_state.get("nome_usuario", "Administrador"),
-                                "Geral",
-                                f"Adicionou serviço ao catálogo: {serv_fmt}",
+                                emp_arq or "Geral",
+                                f"Removeu arquivo de checklist: {titulo_arq} ({nome_arq})",
                             )
-                            salvou_ok = True
-                        except Exception as e:
-                            st.error(f"Erro ao salvar: {e}")
-                            salvou_ok = False
-                        finally:
-                            try:
-                                conn.close()
-                            except Exception:
-                                pass
-        salvou_ok = False
-        if salvou_ok:
-            st.rerun()
 
-        st.markdown("---")
-        st.subheader("📋 Serviços Cadastrados no Catálogo")
-
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        try:
-            df_serv_geral = pd.read_sql(
-                "SELECT id, empresa, servico FROM cad_servicos ORDER BY servico ASC",
-                conn,
-            )
-        except:
-            df_temp = pd.read_sql("SELECT id, servico FROM cad_servicos ORDER BY servico ASC", conn)
-            df_temp["empresa"] = "Geral"
-            df_serv_geral = df_temp[["id", "empresa", "servico"]]
-        conn.close()
-
-        if not df_serv_geral.empty:
-            if "sel_id_servico_geral" not in st.session_state:
-                st.session_state["sel_id_servico_geral"] = None
-            
-            df_serv_geral["_id_banco"] = df_serv_geral["id"]
-            df_serv_geral["Selecionar"] = (
-                df_serv_geral["_id_banco"] == st.session_state["sel_id_servico_geral"]
-            )
-            df_serv_geral = df_serv_geral[["Selecionar", "_id_banco", "servico"]]
-            
-            df_serv_ex = formatar_colunas_tabela(df_serv_geral)
-            df_serv_ex = adicionar_numeracao(df_serv_ex)
-            
-            edit_servicos = st.data_editor(
-                df_serv_ex,
-                hide_index=True,
-                num_rows="fixed",
-                key="edit_servicos_tbl",
-                use_container_width=True,
-                column_config={
-                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
-                    "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                },
-            )
-            
-            curr_s = edit_servicos[edit_servicos["Selecionar"] == True]["_id_banco"].tolist()
-            new_s = [uid for uid in curr_s if uid != st.session_state["sel_id_servico_geral"]]
-            if new_s:
-                st.session_state["sel_id_servico_geral"] = new_s[-1]
-                st.rerun()
-            elif not curr_s and st.session_state["sel_id_servico_geral"] is not None:
-                st.session_state["sel_id_servico_geral"] = None
-                st.rerun()
-                
-            linhas_sel_serv = edit_servicos[edit_servicos["Selecionar"] == True]
-            col_sv_1, col_sv_2 = st.columns(2)
-            
-            if col_sv_1.button("💾 Salvar Alterações no Catálogo", use_container_width=True):
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                for _, row in edit_servicos.iterrows():
-                    sv_id = row.get("_id_banco", row.get("id"))
-                    sv_val = row.get("Serviço", row.get("servico"))
-                    if pd.notna(sv_val) and str(sv_val).strip():
-                        if pd.notna(sv_id) and str(sv_id).strip() not in ("", "nan", "None"):
-                            cursor.execute(
-                                "UPDATE cad_servicos SET servico=? WHERE id=?",
-                                (formatar_titulo(sv_val), int(sv_id)),
-                            )
-                conn.commit()
-                conn.close()
-                if "edit_servicos_tbl" in st.session_state:
-                    del st.session_state["edit_servicos_tbl"]
-                st.session_state["sel_id_servico_geral"] = None
-                st.cache_data.clear()
-                st.session_state["msg_sucesso"] = "✅ Catálogo de serviços atualizado com sucesso!"
-                st.rerun()
-                
-            if col_sv_2.button("🗑️ Excluir Serviço Selecionado", use_container_width=True):
-                if len(linhas_sel_serv) == 1:
-                    serv_id_exc = int(linhas_sel_serv.iloc[0]["_id_banco"])
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    conn.execute("DELETE FROM cad_servicos WHERE id = ?", (serv_id_exc,))
-                    conn.commit()
-                    conn.close()
-                    if "edit_servicos_tbl" in st.session_state:
-                        del st.session_state["edit_servicos_tbl"]
-                    st.session_state["sel_id_servico_geral"] = None
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "🗑️ Serviço excluído do catálogo!"
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Selecione um serviço marcando o quadradinho.")
-        else:
-            st.info("ℹ️ Nenhum serviço cadastrado no catálogo geral.")
-
-    elif aba_selecionada == "Treinamentos":
-        st.subheader("Gerenciar Treinamentos por Empresa")
-        empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-        
-        with st.form("form_cad_treinamento_geral_unico"):
-            empresa_trein_sel = st.selectbox(
-                "Selecione a Empresa",
-                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                key="sel_emp_treinamento_geral",
-            )
-            
-            # Puxa TODOS os serviços cadastrados na sub-aba Serviços (Catálogo Geral)
-            conn_base = sqlite_original.connect(DB_NAME, timeout=10.0)
-            try:
-                df_serv_base = pd.read_sql(
-                    "SELECT DISTINCT servico FROM cad_servicos ORDER BY servico ASC", 
-                    conn_base
-                )
-            except:
-                df_serv_base = pd.DataFrame()
-            conn_base.close()
-            
-            lista_base_servicos = df_serv_base["servico"].tolist() if not df_serv_base.empty else []
-
-            c_tr_1, c_tr_2, c_tr_3 = st.columns([0.4, 0.4, 0.2])
-            
-            if lista_base_servicos:
-                novo_treinamento_geral = c_tr_1.selectbox("Selecionar do Catálogo de Serviços", ["-- Digitar Novo --"] + lista_base_servicos)
-                if novo_treinamento_geral == "-- Digitar Novo --":
-                    novo_treinamento_geral = c_tr_2.text_input("Nome do Novo Treinamento")
-            else:
-                novo_treinamento_geral = c_tr_1.text_input("Nome do Treinamento")
-            
-            nova_carga_horaria_geral = c_tr_3.text_input("Carga Horária", value="8 horas")
-            btn_add_treinamento_geral = st.form_submit_button("Adicionar e Salvar Treinamento")
-            
-            if btn_add_treinamento_geral:
-                trein_para_salvar = novo_treinamento_geral if novo_treinamento_geral != "-- Digitar Novo --" else ""
-                
-                if empresa_trein_sel != "Nenhuma" and str(trein_para_salvar).strip():
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    trein_fmt = formatar_titulo(trein_para_salvar)
-                    
-                    try:
-                        cursor.execute("ALTER TABLE cad_treinamentos ADD COLUMN empresa TEXT;")
-                        conn.commit()
-                    except:
-                        pass
-                        
-                    try:
-                        cursor.execute(
-                            "SELECT id FROM cad_treinamentos WHERE empresa = ? AND treinamento = ?",
-                            (empresa_trein_sel, trein_fmt),
-                        )
-                        existe = cursor.fetchone()
-                        if existe:
-                            st.error(f"Este treinamento já está cadastrado para a empresa {empresa_trein_sel}.")
-                        else:
-                            cursor.execute(
-                                "INSERT INTO cad_treinamentos (empresa, treinamento, carga_horaria) VALUES (?, ?, ?)",
-                                (empresa_trein_sel, trein_fmt, nova_carga_horaria_geral.strip()),
-                            )
-                            conn.commit()
-                            if "edit_treinamentos_gerais_tbl" in st.session_state:
-                                del st.session_state["edit_treinamentos_gerais_tbl"]
-                            st.cache_data.clear()
-                            st.session_state["msg_sucesso"] = "✅ Treinamento cadastrado com sucesso!"
-                            registrar_log(
-                                st.session_state.get("nome_usuario", "Administrador"),
-                                empresa_trein_sel,
-                                f"Adicionou treinamento: {trein_fmt}",
-                            )
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao cadastrar treinamento: {e}")
-                    conn.close()
-                else:
-                    st.error("Selecione a empresa e preencha ou escolha o nome do treinamento.")
-                    
-        st.markdown("---")
-        filtro_treinamento_emp = st.selectbox(
-            "Filtrar por Empresa",
-            ["Todas as Empresas"] + empresas_cadastradas,
-            key="filtro_treinamento_emp_view",
-        )
-        
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        try:
-            df_tr_geral = pd.read_sql(
-                "SELECT id, empresa, treinamento, carga_horaria FROM cad_treinamentos ORDER BY empresa, treinamento ASC",
-                conn,
-            )
-        except:
-            try:
-                df_temp = pd.read_sql("SELECT id, treinamento, carga_horaria FROM cad_treinamentos ORDER BY treinamento ASC", conn)
-                df_temp["empresa"] = "Todas"
-                df_tr_geral = df_temp[["id", "empresa", "treinamento", "carga_horaria"]]
-            except:
-                df_tr_geral = pd.DataFrame()
-        conn.close()
-
-        # Filtro flexível por empresa selecionada
-        if filtro_treinamento_emp != "Todas as Empresas" and not df_tr_geral.empty:
-            if "empresa" in df_tr_geral.columns:
-                df_tr_geral = df_tr_geral[
-                    df_tr_geral["empresa"].astype(str).str.strip().str.lower()
-                    == str(filtro_treinamento_emp).strip().lower()
-                ]
-
-        if not df_tr_geral.empty:
-            if "sel_id_tr_geral" not in st.session_state:
-                st.session_state["sel_id_tr_geral"] = None
-            df_tr_geral["_id_banco"] = df_tr_geral["id"]
-            df_tr_geral["Selecionar"] = (
-                df_tr_geral["_id_banco"] == st.session_state["sel_id_tr_geral"]
-            )
-            df_tr_geral = df_tr_geral[["Selecionar", "_id_banco", "empresa", "treinamento", "carga_horaria"]]
-            df_tr_ex = formatar_colunas_tabela(df_tr_geral)
-            df_tr_ex = adicionar_numeracao(df_tr_ex)
-            
-            edit_tr_geral = st.data_editor(
-                df_tr_ex,
-                hide_index=True,
-                num_rows="fixed",
-                key=f"edit_tr_geral_{filtro_treinamento_emp}",
-                use_container_width=True,
-                column_config={
-                    "Selecionar": st.column_config.CheckboxColumn("Selecionar", required=True),
-                    "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                },
-            )
-            
-            curr_trg = edit_tr_geral[edit_tr_geral["Selecionar"] == True]["_id_banco"].tolist()
-            new_trg = [uid for uid in curr_trg if uid != st.session_state["sel_id_tr_geral"]]
-            if new_trg:
-                st.session_state["sel_id_tr_geral"] = new_trg[-1]
-                st.rerun()
-            elif not curr_trg and st.session_state["sel_id_tr_geral"] is not None:
-                st.session_state["sel_id_tr_geral"] = None
-                st.rerun()
-
-            col_tr_1, col_tr_2 = st.columns(2)
-            
-            if col_tr_1.button("💾 Salvar Alterações em Treinamentos", use_container_width=True, key=f"btn_salvar_tr_geral_tbl_{filtro_treinamento_emp}"):
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                for _, row in edit_tr_geral.iterrows():
-                    t_id = row.get("_id_banco", row.get("id"))
-                    e_val = row.get("Empresa", row.get("empresa"))
-                    tr_val = row.get("Treinamento", row.get("treinamento"))
-                    ch_val = row.get("Carga Horária", row.get("carga_horaria"))
-                    
-                    if pd.notna(e_val) and pd.notna(tr_val) and str(tr_val).strip():
-                        if pd.notna(t_id) and str(t_id).strip() not in ("", "nan", "None"):
-                            cursor.execute(
-                                "UPDATE cad_treinamentos SET empresa=?, treinamento=?, carga_horaria=? WHERE id=?",
-                                (str(e_val).strip(), formatar_titulo(tr_val), str(ch_val), int(t_id)),
-                            )
-                conn.commit()
-                conn.close()
-                
-                st.session_state["sel_id_tr_geral"] = None
-                st.cache_data.clear()
-                st.session_state["msg_sucesso"] = "✅ Treinamentos atualizados com sucesso!"
-                st.rerun()
-
-            if col_tr_2.button("🗑️ Excluir Treinamento Selecionado", use_container_width=True, key=f"btn_excluir_tr_{filtro_treinamento_emp}"):
-                if st.session_state["sel_id_tr_geral"] is not None:
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM cad_treinamentos WHERE id=?", (int(st.session_state["sel_id_tr_geral"]),))
-                    conn.commit()
-                    conn.close()
-                    
-                    st.session_state["sel_id_tr_geral"] = None
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "🗑️ Treinamento excluído com sucesso!"
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Selecione um treinamento na caixa de seleção da tabela para excluir.")
-        else:
-            st.info("ℹ️ Nenhum treinamento cadastrado para o filtro selecionado.")
-
-    elif aba_selecionada == "EPIs":
-        st.subheader("Gerenciar EPIs por Empresa (com CA, Validade e Status)")
-        empresas_cadastradas = get_empresas() if "get_empresas" in globals() else []
-        with st.form("form_cad_epi_unico"):
-            empresa_epi_sel = st.selectbox(
-                "Selecione a Empresa",
-                empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-                key="sel_emp_epi_geral",
-            )
-            tipos_epi_lista = [
-                "Calçados de Segurança",
-                "Óculos",
-                "Protetor Auricular",
-                "Trabalho em Altura",
-                "Máscaras",
-                "Respiradores",
-                "Luvas",
-                "Diversos",
-            ]
-            c_epi_1, c_epi_2, c_epi_3 = st.columns(3)
-            novo_epi_nome = c_epi_1.text_input("Nome do EPI")
-            novo_epi_ca = c_epi_2.text_input("Número do CA", key="input_ca_geral_temp")
-            tipo_epi_sel = c_epi_3.selectbox("Tipo / Categoria", tipos_epi_lista)
-            
-            # --- CONSULTA TRATADA PARA DADOS AGRUPADOS NO CSV/SQLITE ---
-            ca_digitado_bruto = str(st.session_state.get("input_ca_geral_temp", "")).strip()
-            ca_digitado = ca_digitado_bruto.replace('.', '')
-            status_ca_preview = "⚪ Aguardando CA..."
-            val_ca_gravacao = ""
-            
-            if ca_digitado:
-                try:
-                    import sqlite3, os, pandas as pd
-                    if os.path.exists("cassilab_sst.db"):
-                        conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
-                        cur_sst = conn_sst.cursor()
-                        cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                        tabelas = [r[0] for r in cur_sst.fetchall()]
-                        
-                        linha_encontrada_str = None
-                        ca_limpo_num = ca_digitado.lstrip('0')
-                        
-                        # Varre as tabelas procurando o número do CA em qualquer parte da linha ou coluna
-                        for tab in tabelas:
-                            try:
-                                cur_sst.execute(f"PRAGMA table_info({tab});")
-                                cols = [col[1] for col in cur_sst.fetchall()]
-                                for col in cols:
-                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? LIMIT 5"
-                                    
-                                    # Calcula a versão com pontos antes de executar a query
-                                    ca_com_pontos = f"{ca_digitado[:-3]}.{ca_digitado[-3:]}" if ca_digitado.isdigit() and len(ca_digitado) > 3 else ca_digitado_bruto
-                                    
-                                    # Passa os três formatos na consulta
-                                    df_res = pd.read_sql(query, conn_sst, params=(f"%{ca_digitado_bruto}%", f"%{ca_digitado}%", f"%{ca_com_pontos}%"))
-                                    
-                                    if not df_res.empty:
-                                        for _, row in df_res.iterrows():
-                                            linha_completa = ";".join([str(val) for val in row.values])
-                                            # Verifica se o CA bate exatamente como campo (entre aspas ou delimitado)
-                                            if f'"{ca_digitado}"' in linha_completa or f'"{ca_limpo_num}"' in linha_completa or f';{ca_digitado};' in linha_completa:
-                                                linha_encontrada_str = linha_completa
-                                                break
-                                        if linha_encontrada_str:
-                                            break
-                                if linha_encontrada_str:
-                                    break
-                            except Exception:
-                                continue
-                                
-                        if linha_encontrada_str:
-                            # Limpa as aspas e divide os campos pelo ponto e vírgula (;)
-                            partes = [p.strip('"') for p in linha_encontrada_str.split(';')]
-                            
-                            val_oficial = ""
-                            situacao_bruta = "VÁLIDO"
-                            
-                            import re
-                            for parte in partes:
-                                # Procura por padrão de data (DD/MM/AAAA ou AAAA-MM-DD)
-                                if re.match(r'^\d{2}/\d{2}/\d{4}$', parte) or re.match(r'^\d{4}-\d{2}-\d{2}$', parte):
-                                    if "202" in parte or "203" in parte or "201" in parte: # Prioriza datas recentes/futuras
-                                        val_oficial = parte
-                                # Procura pela situação do CA
-                                elif parte.upper() in ("VÁLIDO", "VALIDO", "VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO"):
-                                    situacao_bruta = parte.upper()
-                                    
-                            sit_upper = situacao_bruta.upper()
-                            if any(p in sit_upper for p in ("VENCIDO", "CANCELADO", "SUSPENSO", "CASSADO", "INATIVO")):
-                                status_ca_preview = f"🔴 {situacao_bruta.capitalize()} (Validade: {val_oficial if val_oficial else 'N/D'})"
-                                val_ca_gravacao = val_oficial if val_oficial else "Vencido"
-                            else:
-                                status_ca_preview = f"🟢 Válido (Validade Oficial: {val_oficial if val_oficial else 'N/D'})"
-                                val_ca_gravacao = val_oficial if val_oficial else "Válido"
-                        else:
-                            status_ca_preview = "⚪ CA não localizado na base oficial"
-                            val_ca_gravacao = "Não localizado"
-                        conn_sst.close()
-                    else:
-                        status_ca_preview = "⚠️ Base de CAs ausente"
-                        val_ca_gravacao = "Base ausente"
-                except Exception as e:
-                    status_ca_preview = f"⚠️ Erro: {e}"
-                    val_ca_gravacao = "Erro na consulta"
-                    
-            if ca_digitado:
-                st.info(f"🔍 **Consulta do CA em tempo real:** {status_ca_preview}")
-            # ------------------------------------------------------------------
-    
-            btn_add_salvar_epi = c_epi_1.form_submit_button(
-                "Adicionar e Salvar EPI e CA"
-            )
-            if btn_add_salvar_epi:
-                if empresa_epi_sel != "Nenhuma" and novo_epi_nome.strip():
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    try:
-                        conn.execute("ALTER TABLE cad_epis ADD COLUMN tipo TEXT;")
-                    except:
-                        pass
-                    try:
-                        conn.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
-                    except:
-                        pass
-                        
-                    try:
-                        epi_fmt = formatar_titulo(novo_epi_nome)
-                        
-                        conn.execute(
-                            "INSERT INTO cad_epis (empresa, epi, ca, tipo, validade_ca) VALUES (?, ?, ?, ?, ?)",
-                            (empresa_epi_sel, epi_fmt, ca_digitado, tipo_epi_sel, val_ca_gravacao),
-                        )
-                        conn.commit()
-                        if "edit_epis_tbl" in st.session_state:
-                            del st.session_state["edit_epis_tbl"]
-                        st.cache_data.clear()
-                        st.session_state["msg_sucesso"] = "✅ EPI cadastrado com sucesso!"
-                        registrar_log(
-                            st.session_state.get("nome_usuario", "Administrador"),
-                            empresa_epi_sel,
-                            f"Adicionou EPI: {epi_fmt} (CA: {ca_digitado}, Validade: {val_ca_gravacao})",
-                        )
+                        st.success("Arquivo removido!")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao cadastrar EPI: {e}")
-                    conn.close()
-                else:
-                    st.error("Selecione a empresa e preencha o nome do EPI.")
-                    
-        st.markdown("---")
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            filtro_epi_geral_emp = st.selectbox(
-                "Filtrar por Empresa",
-                ["Todas as Empresas"] + empresas_cadastradas,
-                key="filtro_epi_geral_emp_view",
+
+        if ext_arq == "pdf" and st.session_state[item_aberto_key] == arq_id:
+            _renderizar_visualizador_html_impressao(
+                titulo_arq=titulo_arq,
+                empresa_especifica=empresa_especifica,
+                nome_arq=nome_arq,
+                pdf_bytes=arquivo_preparado,
+                key_suffix=str(arq_id),
             )
-        with col_f2:
-            tipos_epi_filtro_lista = [
-                "Todos os Tipos",
-                "Calçados de Segurança",
-                "Óculos",
-                "Protetor Auricular",
-                "Trabalho em Altura",
-                "Máscaras",
-                "Respiradores",
-                "Luvas",
-                "Diversos",
-            ]
-            filtro_tipo_epi_sel = st.selectbox(
-                "Filtrar por Tipo de EPI",
-                tipos_epi_filtro_lista,
-                key="filtro_epi_tipo_view",
-            )
-
-        conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-        try:
-            df_epis_geral = pd.read_sql(
-                "SELECT id, empresa, epi, ca, tipo, validade_ca FROM cad_epis ORDER BY empresa, epi ASC",
-                conn,
-            )
-        except:
-            df_epis_geral = pd.read_sql(
-                "SELECT id, empresa, epi, ca FROM cad_epis ORDER BY empresa, epi ASC",
-                conn,
-            )
-            if "tipo" not in df_epis_geral.columns:
-                df_epis_geral["tipo"] = "Diversos"
-            if "validade_ca" not in df_epis_geral.columns:
-                df_epis_geral["validade_ca"] = ""
-        conn.close()
-
-        # FILTRO ROBUSTO POR EMPRESA
-        if filtro_epi_geral_emp != "Todas as Empresas" and not df_epis_geral.empty:
-            df_epis_geral = df_epis_geral[
-                df_epis_geral["empresa"].astype(str).str.strip().str.lower()
-                == str(filtro_epi_geral_emp).strip().lower()
-            ]
-
-        # FILTRO POR TIPO DE EPI
-        if filtro_tipo_epi_sel != "Todos os Tipos" and not df_epis_geral.empty:
-            df_epis_geral = df_epis_geral[
-                df_epis_geral["tipo"].astype(str).str.strip().str.lower()
-                == str(filtro_tipo_epi_sel).strip().lower()
-            ]
-
-        if not df_epis_geral.empty:
-            # --- BOTÃO PARA ATUALIZAÇÃO EM MASSA DOS CAs ANTIGOS ---
-            if st.button("🔄 Atualizar Validades e Status dos CAs em Massa", use_container_width=True, key="btn_atualizar_massa_ca"):
-                conn_upd = sqlite_original.connect(DB_NAME, timeout=10.0)
-                try:
-                    conn_upd.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
-                except:
-                    pass
-                
-                # Busca todos os registos cadastrados
-                df_todos = pd.read_sql("SELECT id, ca FROM cad_epis", conn_upd)
-                atualizados = 0
-                
-                if not df_todos.empty and os.path.exists("cassilab_sst.db"):
-                    import sqlite3, os, pandas as pd, re
-                    conn_sst = sqlite3.connect("cassilab_sst.db", timeout=5.0)
-                    cur_sst = conn_sst.cursor()
-                    cur_sst.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                    tabelas = [r[0] for r in cur_sst.fetchall()]
-                    
-                    for _, r_cad in df_todos.iterrows():
-                        ca_val = str(r_cad.get("ca", "")).strip()
-                        if not ca_val:
-                            continue
-                        
-                        ca_limpo_num = ca_val.lstrip('0')
-                        linha_encontrada_str = None
-                        
-                        # Varre a base oficial procurando o CA
-                        for tab in tabelas:
-                            try:
-                                cur_sst.execute(f"PRAGMA table_info({tab});")
-                                cols = [col[1] for col in cur_sst.fetchall()]
-                                for col in cols:
-                                    query = f"SELECT * FROM {tab} WHERE CAST({col} AS TEXT) LIKE ? OR CAST({col} AS TEXT) LIKE ? LIMIT 5"
-                                    df_res = pd.read_sql(query, conn_sst, params=(f"%{ca_val}%", f"%{ca_limpo_num}%"))
-                                    if not df_res.empty:
-                                        for _, row in df_res.iterrows():
-                                            linha_completa = ";".join([str(val) for val in row.values])
-                                            if f'"{ca_val}"' in linha_completa or f'"{ca_limpo_num}"' in linha_completa or f';{ca_val};' in linha_completa or f';{ca_limpo_num};' in linha_completa:
-                                                linha_encontrada_str = linha_completa
-                                                break
-                                        if linha_encontrada_str:
-                                            break
-                                if linha_encontrada_str:
-                                    break
-                            except Exception:
-                                continue
-                                
-                        val_ca_gravacao = "Não localizado"
-                        if linha_encontrada_str:
-                            partes = [p.strip('"') for p in linha_encontrada_str.split(';')]
-                            val_oficial = ""
-                            for parte in partes:
-                                if re.match(r'^\d{2}/\d{2}/\d{4}$', parte) or re.match(r'^\d{4}-\d{2}-\d{2}$', parte):
-                                    if "202" in parte or "203" in parte or "201" in parte:
-                                        val_oficial = parte
-                            if val_oficial:
-                                val_ca_gravacao = val_oficial
-                            else:
-                                val_ca_gravacao = "Válido"
-                        
-                        conn_upd.execute("UPDATE cad_epis SET validade_ca = ? WHERE id = ?", (val_ca_gravacao, int(r_cad["id"])))
-                        atualizados += 1
-                    conn_sst.close()
-                    
-                conn_upd.commit()
-                conn_upd.close()
-                st.success(f"✅ {atualizados} CAs atualizados em massa com sucesso baseados no registo oficial!")
-                st.rerun()
-            # -----------------------------------------------------------------
-            # Calcula o status automaticamente com base na data de validade do CA
-            df_epis_geral["status"] = df_epis_geral["validade_ca"].apply(
-                lambda x: formatar_status_visual(calcular_status_por_data(x), "doc")
-            )
-            
-            if "sel_id_epi_geral" not in st.session_state:
-                st.session_state["sel_id_epi_geral"] = None
-            df_epis_geral["_id_banco"] = df_epis_geral["id"]
-            df_epis_geral["Selecionar"] = (
-                df_epis_geral["_id_banco"] == st.session_state["sel_id_epi_geral"]
-            )
-            
-            cols_epi_exib = ["Selecionar", "_id_banco", "empresa"]
-            if "tipo" in df_epis_geral.columns:
-                cols_epi_exib.append("tipo")
-            cols_epi_exib.extend(["epi", "ca", "validade_ca", "status"])
-            
-            df_epis_geral = df_epis_geral[cols_epi_exib]
-
-            df_epis_ex = formatar_colunas_tabela(df_epis_geral)
-            df_epis_ex = adicionar_numeracao(df_epis_ex)
-
-            edit_epis = st.data_editor(
-                df_epis_ex,
-                hide_index=True,
-                num_rows="fixed",
-                key="edit_epis_tbl",
-                use_container_width=True,
-                column_config={
-                    "Selecionar": st.column_config.CheckboxColumn(
-                        "Selecionar", required=True
-                    ),
-                    "_id_banco": None,
-                    "Nº": st.column_config.NumberColumn("Nº", disabled=True),
-                    "tipo": st.column_config.SelectboxColumn(
-                        "Tipo",
-                        options=tipos_epi_lista,
-                        required=True,
-                    ),
-                    "Tipo": st.column_config.SelectboxColumn(
-                        "Tipo",
-                        options=tipos_epi_lista,
-                        required=True,
-                    ),
-                    "validade_ca": st.column_config.TextColumn("Validade CA (DD/MM/AAAA)"),
-                    "Validade Ca": st.column_config.TextColumn("Validade CA (DD/MM/AAAA)"),
-                    "status": st.column_config.TextColumn("Status CA", disabled=True),
-                    "Status": st.column_config.TextColumn("Status CA", disabled=True),
-                },
-            )
-            curr_ep_geral = edit_epis[edit_epis["Selecionar"] == True][
-                "_id_banco"
-            ].tolist()
-            new_ep_geral = [
-                uid
-                for uid in curr_ep_geral
-                if uid != st.session_state["sel_id_epi_geral"]
-            ]
-            if new_ep_geral:
-                st.session_state["sel_id_epi_geral"] = new_ep_geral[-1]
-                st.rerun()
-            elif not curr_ep_geral and st.session_state["sel_id_epi_geral"] is not None:
-                st.session_state["sel_id_epi_geral"] = None
-                st.rerun()
-
-            linhas_sel_epi_geral = edit_epis[edit_epis["Selecionar"] == True]
-            col_ep_1, col_ep_2 = st.columns(2)
-            if col_ep_1.button(
-                "💾 Salvar Alterações na Tabela de EPIs", use_container_width=True
-            ):
-                conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                cursor = conn.cursor()
-                erro_integridade = False
-                
-                for _, row in edit_epis.iterrows():
-                    epi_id = row.get("_id_banco", row.get("id"))
-                    e_val = row.get("Empresa", row.get("empresa"))
-                    epi_val = row.get("EPI", row.get("epi"))
-                    ca_val = row.get("CA", row.get("ca"))
-                    tipo_val = row.get("Tipo", row.get("tipo", "Diversos"))
-                    val_ca_val = row.get("Validade Ca", row.get("validade_ca", ""))
-                    
-                    val_ca_fmt = validar_e_formatar_data_input(val_ca_val)
-                    
-                    if pd.notna(e_val) and pd.notna(epi_val) and str(epi_val).strip():
-                        if pd.notna(epi_id) and str(epi_id).strip() not in (
-                            "",
-                            "nan",
-                            "None",
-                        ):
-                            try:
-                                cursor.execute("ALTER TABLE cad_epis ADD COLUMN validade_ca TEXT;")
-                            except:
-                                pass
-                                
-                            try:
-                                cursor.execute(
-                                    "UPDATE cad_epis SET empresa=?, epi=?, ca=?, tipo=?, validade_ca=? WHERE id=?",
-                                    (
-                                        str(e_val).strip(),
-                                        formatar_titulo(epi_val),
-                                        str(ca_val).strip(),
-                                        str(tipo_val).strip(),
-                                        val_ca_fmt,
-                                        int(epi_id),
-                                    ),
-                                )
-                            except sqlite_original.IntegrityError:
-                                erro_integridade = True
-                                st.error(f"❌ Conflito: Já existe um EPI chamado '{formatar_titulo(epi_val)}' cadastrado para a empresa '{str(e_val).strip()}'.")
-
-                if not erro_integridade:
-                    conn.commit()
-                    conn.close()
-                    if "edit_epis_tbl" in st.session_state:
-                        del st.session_state["edit_epis_tbl"]
-                    st.session_state["sel_id_epi_geral"] = None
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "✅ Operação salva com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Administrador"),
-                        "Todas",
-                        "Atualização na tabela de EPIs cadastrados",
-                    )
-                    st.rerun()
-                else:
-                    conn.rollback()
-                    conn.close()
-            if col_ep_2.button(
-                "🗑️ Excluir EPI Selecionado", use_container_width=True
-            ):
-                if len(linhas_sel_epi_geral) == 1:
-                    epi_id_exc = int(linhas_sel_epi_geral.iloc[0]["_id_banco"])
-                    conn = sqlite_original.connect(DB_NAME, timeout=10.0)
-                    conn.execute("DELETE FROM cad_epis WHERE id = ?", (epi_id_exc,))
-                    conn.commit()
-                    conn.close()
-                    if "edit_epis_tbl" in st.session_state:
-                        del st.session_state["edit_epis_tbl"]
-                    st.session_state["sel_id_epi_geral"] = None
-                    st.cache_data.clear()
-                    st.session_state["msg_sucesso"] = "🗑️ EPI excluído com sucesso!"
-                    registrar_log(
-                        st.session_state.get("nome_usuario", "Administrador"),
-                        "Todas",
-                        f"Excluiu EPI cadastrado ID {epi_id_exc}",
-                    )
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Selecione um EPI marcando o quadradinho.")
-        else:
-            st.info("ℹ️ Nenhum EPI cadastrado com os filtros selecionados.")
-
-        # --- RELATÓRIO DE EPIS COM COMPONENTE SEGURO DE IMPRESSÃO ---
-        st.markdown("---")
-        st.subheader("📄 Relatório de EPIs Cadastrados")
-        st.markdown("Gere o relatório em formato paisagem com validades, status e abertura automática da janela de impressão.")
-
-        col_pdf_e1, col_pdf_e2 = st.columns([2, 1])
-        empresa_rel_epi_geral = col_pdf_e1.selectbox(
-            "Selecione a Empresa para o Relatório", 
-            empresas_cadastradas if empresas_cadastradas else ["Nenhuma"],
-            key="sel_emp_rel_epi_geral_pdf"
-        )
-        
-        with col_pdf_e2:
-            st.write("")
-            st.write("")
-            btn_gerar_pdf_cad_epis = st.button("🖨️ Preparar Relatório", use_container_width=True, key="btn_exec_pdf_cad_epis")
-
-        if btn_gerar_pdf_cad_epis:
-            if empresa_rel_epi_geral == "Nenhuma":
-                st.warning("⚠️ Selecione uma empresa válida para gerar o relatório.")
-            else:
-                conn_pdf_e = sqlite_original.connect(DB_NAME, timeout=10.0)
-                try:
-                    df_pdf_epis = pd.read_sql(
-                        "SELECT tipo, epi, ca, validade_ca FROM cad_epis WHERE empresa = ? ORDER BY tipo ASC, epi ASC",
-                        conn_pdf_e,
-                        params=(empresa_rel_epi_geral,)
-                    )
-                except:
-                    df_pdf_epis = pd.DataFrame()
-                conn_pdf_e.close()
-
-                if df_pdf_epis.empty:
-                    st.warning(f"⚠️ Não há EPIs cadastrados para a empresa **{empresa_rel_epi_geral}**.")
-                else:
-                    def calcular_status_pdf(val_str):
-                        val_str = str(val_str or "").strip()
-                        if not val_str or val_str in ("Não localizado", "Base ausente", "Erro na consulta", "⚪ Não encontrado"):
-                            return "⚪ Não localizado"
-                        if "VENCIDO" in val_str.upper() or "CANCELADO" in val_str.upper():
-                            return "🔴 Vencido"
-                        if "VÁLIDO" in val_str.upper() or "🟢" in val_str:
-                            return "🟢 Válido"
-                        
-                        import datetime, re
-                        match = re.search(r'(\d{2})/(\d{2})/(\d{4})', val_str)
-                        if match:
-                            try:
-                                d, m, y = map(int, match.groups())
-                                data_val = datetime.date(y, m, d)
-                                if data_val >= datetime.date.today():
-                                    return "🟢 Válido"
-                                else:
-                                    return "🔴 Vencido"
-                            except:
-                                pass
-                        return "🟢 Válido"
-
-                    df_pdf_epis["Validade CA"] = df_pdf_epis["validade_ca"]
-                    df_pdf_epis["Status CA"] = df_pdf_epis["validade_ca"].apply(calcular_status_pdf)
-                    
-                    df_html_tabela = df_pdf_epis[["tipo", "epi", "ca", "Validade CA", "Status CA"]].rename(
-                        columns={"tipo": "Tipo / Categoria", "epi": "Nome do EPI", "ca": "Número do CA"}
-                    )
-
-                    # HTML formatado com .format()
-                    html_relatorio = """
-                    <html>
-                        <head>
-                            <title>Relatório de EPIs - {empresa}</title>
-                            <style>
-                                @page {{
-                                    size: landscape;
-                                    margin: 15mm;
-                                }}
-                                body {{
-                                    font-family: Arial, sans-serif;
-                                    color: #333;
-                                    margin: 20px;
-                                }}
-                                h2 {{
-                                    text-align: center;
-                                    color: #1b365d;
-                                    margin-bottom: 5px;
-                                }}
-                                p.sub {{
-                                    text-align: center;
-                                    font-size: 14px;
-                                    color: #555;
-                                    margin-bottom: 20px;
-                                }}
-                                table {{
-                                    width: 100%;
-                                    border-collapse: collapse;
-                                    margin-top: 10px;
-                                }}
-                                th, td {{
-                                    border: 1px solid #dcdcdc;
-                                    padding: 10px;
-                                    text-align: left;
-                                    font-size: 13px;
-                                }}
-                                th {{
-                                    background-color: #1b365d;
-                                    color: white;
-                                }}
-                                tr:nth-child(even) {{
-                                    background-color: #f8f9fa;
-                                }}
-                                .footer {{
-                                    margin-top: 30px;
-                                    text-align: right;
-                                    font-size: 11px;
-                                    color: #888;
-                                }}
-                            </style>
-                        </head>
-                        <body>
-                            <h2>Relatório de EPIs, CAs e Validades Cadastrados</h2>
-                            <p class="sub"><b>Empresa:</b> {empresa} &nbsp;|&nbsp; <b>Emitido em:</b> {data_emissao}</p>
-                            {tabela_html}
-                            <div class="footer">
-                                Cassilab & Ízitus SST - Sistema de Gestão de EPIs
-                            </div>
-                            <script>
-                                window.onload = function() {{
-                                    window.print();
-                                }};
-                            </script>
-                        </body>
-                    </html>
-                    """.format(
-                        empresa=empresa_rel_epi_geral,
-                        data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'),
-                        tabela_html=df_html_tabela.to_html(index=False, classes='table')
-                    )
-
-                    import streamlit.components.v1 as components
-                    import base64
-
-                    st.success("✅ Relatório pronto! Clique no botão abaixo para abrir a janela de impressão.")
-                    
-                    # Codifica o HTML do relatório em Base64 (zero risco de quebrar o JavaScript)
-                    html_bytes = html_relatorio.encode('utf-8')
-                    html_base64 = base64.b64encode(html_bytes).decode('utf-8')
-                    
-                    # Componente limpo e seguro
-                    print_component = f"""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <style>
-                            body {{
-                                margin: 0;
-                                padding: 0;
-                                font-family: sans-serif;
-                            }}
-                            .btn-imprimir {{
-                                width: 100%;
-                                background-color: #ff4b4b;
-                                color: white;
-                                border: none;
-                                padding: 0.7rem 1rem;
-                                border-radius: 6px;
-                                font-weight: 600;
-                                font-size: 15px;
-                                cursor: pointer;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            }}
-                            .btn-imprimir:hover {{
-                                background-color: #ff2b2b;
-                            }}
-                        </style>
-                    </head>
-                    <body>
-                        <button class="btn-imprimir" onclick="imprimirRelatorio()">
-                            🖨️ Clique para Imprimir Relatório de EPIs
-                        </button>
-
-                        <script>
-                        function imprimirRelatorio() {{
-                            // Decodifica o Base64 com segurança total na hora do clique
-                            var base64Html = "{html_base64}";
-                            var binString = atob(base64Html);
-                            var bytes = Uint8Array.from(binString, (m) => m.codePointAt(0));
-                            var decodedHtml = new TextDecoder().decode(bytes);
-                            
-                            var win = window.open('', '_blank');
-                            if (win) {{
-                                win.document.open();
-                                win.document.write(decodedHtml);
-                                win.document.close();
-                            }} else {{
-                                alert('O navegador bloqueou a abertura da janela. Por favor, permita pop-ups.');
-                            }}
-                        }}
-                        </script>
-                    </body>
-                    </html>
-                    """
-                    
-                    # Renderiza o componente com altura perfeita
-                    components.html(print_component, height=70)
-                   
-elif menu == "Consulta de CAs":
-    from modulo_ca import renderizar_modulo_ca
-    renderizar_modulo_ca('cassilab_sst.db', is_admin)
-
-# ==========================================
-# 3. GESTÃO DE FUNCIONÁRIOS
-# ==========================================
-
-elif menu == "Gestão de Funcionários":
-    renderizar_aba_funcionarios(
-        DB_NAME,
-        is_admin,
-        emp_usuario,
-        pode_lancar,
-        pode_editar,
-        pode_excluir,
-        get_empresas,
-        get_cargos_por_empresa,
-        get_setores_por_empresa,
-        formatar_titulo,
-        formatar_cpf,
-        validar_e_formatar_data_input,
-        limpar_status_banco,
-        atualizar_filtro_empresa,
-        registrar_log,
-        formatar_data_br,
-        formatar_status_visual,
-        formatar_colunas_tabela,
-        adicionar_numeracao,
-        reset_func_selection,
-        dialog_editar_funcionario,
-    )
-
-# ==========================================
-# 4. TREINAMENTOS (Com Matriz Integrada)
-# ==========================================
-elif menu == "Treinamentos":
-    renderizar_aba_treinamentos(
-        DB_NAME,
-        is_admin,
-        emp_usuario,
-        pode_lancar,
-        pode_editar,
-        pode_excluir,
-        get_empresas,
-        calcular_proximo_treinamento,
-        validar_e_formatar_data_input,
-        limpar_status_banco,
-        sincronizar_status_treinamentos,
-        atualizar_filtro_empresa,
-        registrar_log,
-        formatar_data_br,
-        formatar_status_visual,
-        formatar_colunas_tabela,
-        adicionar_numeracao,
-        reset_tr_selection,
-        dialog_editar_treinamento,
-        renderizar_matriz_treinamentos,
-    )
-
-# ==========================================
-# 5. EXAMES OCUPACIONAIS
-# ==========================================
-elif menu == "Exames Ocupacionais":
-    renderizar_aba_exames(
-        DB_NAME,
-        is_admin,
-        emp_usuario,
-        pode_lancar,
-        pode_editar,
-        pode_excluir,
-        get_empresas,
-        calcular_proximo_exame,
-        validar_e_formatar_data_input,
-        limpar_status_banco,
-        sincronizar_status_exames,
-        atualizar_filtro_empresa,
-        registrar_log,
-        formatar_data_br,
-        formatar_status_visual,
-        formatar_colunas_tabela,
-        adicionar_numeracao,
-        reset_ex_selection,
-        dialog_editar_exame,
-    )
-
-# ==========================================
-# 6. CONTROLE DE ABSENTEÍSMO
-# ==========================================
-elif menu == "Controle de Absenteísmo":
-    renderizar_aba_absenteismo(
-        DB_NAME, is_admin, emp_usuario, get_empresas, registrar_log
-    )
-
-# ==========================================
-# 7. CONTROLE DE EPIS
-# ==========================================
-elif menu == "Controle de EPIs":
-    renderizar_aba_epis(
-        DB_NAME,
-        is_admin,
-        emp_usuario,
-        pode_lancar,
-        pode_editar,
-        pode_excluir,
-        get_empresas,
-        validar_e_formatar_data_input,
-        limpar_status_banco,
-        atualizar_filtro_empresa,
-        registrar_log,
-        formatar_data_br,
-        formatar_status_visual,
-        formatar_colunas_tabela,
-        adicionar_numeracao,
-        reset_epi_selection,
-        dialog_editar_epi,
-    )
-
-# ==========================================
-# 8. CONTROLE DE DOCUMENTOS
-# ==========================================
-elif menu == "Controle de Documentos":
-    renderizar_aba_documentos(
-        DB_NAME,
-        is_admin,
-        emp_usuario,
-        pode_lancar,
-        pode_editar,
-        pode_excluir,
-        get_empresas,
-        calcular_proxima_renovacao,
-        calcular_status_por_data,
-        validar_e_formatar_data_input,
-        sincronizar_status_documentos,
-        atualizar_filtro_empresa,
-        registrar_log,
-        formatar_data_br,
-        formatar_status_visual,
-        formatar_titulo,
-        formatar_colunas_tabela,
-        adicionar_numeracao,
-        reset_doc_selection,
-        dialog_editar_documento,
-    )
-
-# ==========================================
-# 9. SERVIÇOS REALIZADOS (Exclusivo Admin)
-# ==========================================
-elif menu == "Serviços Realizados":
-    renderizar_aba_servicos(
-        DB_NAME,
-        is_admin,
-        get_empresas,
-        validar_e_formatar_data_input,
-        formatar_titulo,
-        formatar_valor_brasileiro,
-        limpar_status_banco,
-        atualizar_filtro_empresa,
-        registrar_log,
-        formatar_status_visual,
-        adicionar_numeracao,
-        reset_serv_selection,
-        dialog_editar_servico,
-    )
-
-# ==========================================
-# 10. ADMINISTRAÇÃO
-# ==========================================
-elif menu == "Administração":
-    renderizar_aba_admin(
-        DB_NAME, is_admin, enviar_email_smtp, adicionar_numeracao, registrar_log
-    )
-
-# ==========================================
-# 11. RELATÓRIOS CONSOLIDADOS
-# ==========================================
-elif menu == "Relatórios Consolidados":
-    renderizar_aba_relatorios(
-        DB_NAME, is_admin, emp_usuario, get_empresas, formatar_colunas_tabela, adicionar_numeracao
-    )
-
-# ==========================================
-# 12. ELABORAÇÃO DE OS (ORDEM DE SERVIÇO)
-# ==========================================
-elif menu == "Emissor de Ordem de Serviço":
-    renderizar_aba_os(DB_NAME, get_empresas, registrar_log)
-
-# ==========================================
-# 13. LISTA DE PRESENÇA
-# ==========================================
-elif menu == "Lista de Presença":
-    renderizar_aba_lista_presenca(DB_NAME, is_admin, emp_usuario, get_empresas, registrar_log)
-
-# ==========================================
-# 14. NORMAS REGULAMENTADORAS (NRs)
-# ==========================================
-elif menu == "Normas Regulamentadoras":
-    renderizar_aba_normas(
-        DB_NAME=DB_NAME,
-        is_admin=is_admin,
-        emp_usuario=emp_usuario,
-        get_empresas=get_empresas,
-        registrar_log=registrar_log,
-    )
-
-# ==========================================
-# 15. CHECKLISTS
-# ==========================================
-elif menu == "Checklists":
-    renderizar_modulo_checklist(
-        DB_NAME,
-        registrar_log if "registrar_log" in globals() else None,
-    )
