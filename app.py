@@ -4593,13 +4593,13 @@ elif menu == "Normas Regulamentadoras":
         emp_usuario=emp_usuario,
         get_empresas=get_empresas,
         registrar_log=registrar_log,
-        )
+    )
 
-    # ==========================================
-    # 15. CHECKLISTS
-    # ==========================================
-    elif menu == "Checklists":
-        renderizar_modulo_checklist(
-            DB_NAME,
-            registrar_log if "registrar_log" in globals() else None,
-        )
+# ==========================================
+# 15. CHECKLISTS
+# ==========================================
+elif menu == "Checklists":
+    renderizar_modulo_checklist(
+        DB_NAME,
+        registrar_log if "registrar_log" in globals() else None,
+    )
