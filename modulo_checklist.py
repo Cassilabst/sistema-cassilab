@@ -700,7 +700,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
         else:
             st.caption("Visualização: **Todas as empresas** (impressão sem logo)")
 
-        admin_mode = _eh_admin()
+        admin_mode = _pode_gerenciar_checklists()
 
         if admin_mode:
             opcoes_escopo = ["Todas as empresas (Geral)"] + _listar_empresas_banco(db_name)
