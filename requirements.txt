@@ -8,3 +8,4 @@ libsql-client
 extra-streamlit-components
 plotly
 reportlab>=4.0.0
+python-docx
