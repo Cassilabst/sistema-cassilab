@@ -90,15 +90,8 @@ def _eh_cliente():
 
 def _eh_admin():
     empresa_user = str(st.session_state.get("empresa_usuario", "")).strip().lower()
-    perfil_user = str(st.session_state.get("perfil", "")).strip().lower()
     nivel_user = str(st.session_state.get("nivel_permissao", "")).strip().lower()
-    is_admin_flag = st.session_state.get("is_admin")
-
-    if is_admin_flag is True or str(is_admin_flag).strip().lower() == "true":
-        return True
-
-    if any(t in perfil_user for t in ("cliente", "usuário", "usuario", "leitura", "visualizador")):
-        return False
+    perfil_user = str(st.session_state.get("perfil", "")).strip().lower()
 
     if "cassilab" in empresa_user and nivel_user in ("fazer tudo", "administrador", "admin"):
         return True
