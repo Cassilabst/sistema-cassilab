@@ -948,9 +948,17 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
         for arq_id, emp_arq, titulo_arq, desc_arq, nome_arq, mime_arq, tam_bytes, blob_dados, dt_up in arquivos:
             empresa_efetiva = empresa_especifica or ("" if _eh_valor_todas(emp_arq) else str(emp_arq).strip())
             arquivo_preparado = _preparar_arquivo_para_baixar(db_name, empresa_efetiva, nome_arq, blob_dados)
+            logo_card_bytes = _obter_logo_empresa_bytes(db_name, empresa_efetiva) if empresa_efetiva else None
 
             with st.container(border=True):
-                col_info, col_acao = st.columns([4, 1.8])
+                if logo_card_bytes:
+                    col_logo, col_info, col_acao = st.columns([0.9, 3.3, 1.8])
+                else:
+                    col_info, col_acao = st.columns([4, 1.8])
+
+                if logo_card_bytes:
+                    with col_logo:
+                        st.image(logo_card_bytes, use_container_width=True)
 
                 with col_info:
                     escopo_txt = emp_arq.strip() if emp_arq and emp_arq.strip() else "Todas as empresas"
