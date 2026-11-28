@@ -793,7 +793,7 @@ def _renderizar_visualizador_direto(db_name, titulo_arq, empresa_especifica, nom
             </head>
             <body>
               <div class="barra-topo">
-                <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
+                <span><strong>{titulo_seguro}</strong></span>
                 <button class="btn-imprimir" onclick="imprimirDocx()">🖨️ Imprimir</button>
               </div>
               <div class="folha" id="areaImpressao">
