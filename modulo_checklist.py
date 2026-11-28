@@ -739,18 +739,64 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
     try:
         _garantir_tabela_arquivos_checklist(db_name)
 
-        # --- DIAGNÓSTICO FILTRADO (remova depois de testar) ---
-        chaves_relevantes = {
-            str(k): str(v)
-            for k, v in st.session_state.items()
-            if any(
-                p in str(k).lower()
-                for p in ("perfil", "acesso", "permiss", "usuario", "user", "role", "nivel", "tipo", "cliente", "admin")
-            )
-        }
-        st.caption(f"Debug _eh_admin(): {_eh_admin()}")
-        st.json(chaves_relevantes)
-        # --------------------------------------------------------
+        def _eh_admin():
+    is_admin_flag = st.session_state.get("is_admin")
+
+    chaves_perfil = (
+        "perfil",
+        "perfil_usuario",
+        "tipo_perfil",
+        "tipo_usuario",
+        "nivel_acesso",
+        "nivel_permissao",
+        "cargo_sistema",
+        "funcao_usuario",
+        "acesso",
+        "acesso_usuario",
+        "permissao",
+        "permissoes",
+        "role",
+        "usuario_perfil",
+        "nivel",
+    )
+
+    termos_bloqueados = (
+        "cliente",
+        "usuario",
+        "usuário",
+        "visualizador",
+        "leitura",
+        "somente leitura",
+        "convidado",
+        "externo",
+        "restrito",
+    )
+
+    termos_admin = ("administrador", "admin", "fazer tudo")
+
+    tem_permissao_admin = False
+
+    for chave in chaves_perfil:
+        val = st.session_state.get(chave)
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if any(t in v for t in termos_bloqueados):
+                return False
+            if v in termos_admin:
+                tem_permissao_admin = True
+        elif isinstance(val, dict):
+            for sub in val.values():
+                if isinstance(sub, str):
+                    s = sub.strip().lower()
+                    if any(t in s for t in termos_bloqueados):
+                        return False
+                    if s in termos_admin:
+                        tem_permissao_admin = True
+
+    if is_admin_flag is True:
+        return True
+
+    return tem_permissao_admin
 
         st.title("Checklists")
         st.markdown("Checklists cadastrados para visualização e impressão direta")
