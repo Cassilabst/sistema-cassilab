@@ -146,7 +146,133 @@ def _eh_admin():
     if is_admin_flag is True:
         return True
 
-    return tem_permissao_admin
+    return tem_permissao_adminimport base64
+import html
+import io
+import os
+import sqlite3
+from datetime import datetime
+import streamlit as st
+import streamlit.components.v1 as components
+
+try:
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib import colors
+    from reportlab.lib.utils import ImageReader
+    TEM_REPORTLAB = True
+except ImportError:
+    TEM_REPORTLAB = False
+
+try:
+    from pypdf import PdfReader, PdfWriter
+    TEM_PYPDF = True
+except ImportError:
+    TEM_PYPDF = False
+
+try:
+    import docx as python_docx
+    from docx.shared import Inches
+    TEM_DOCX = True
+except ImportError:
+    TEM_DOCX = False
+
+
+EXTENSOES_PERMITIDAS = {"pdf", "docx"}
+
+MIME_POR_EXTENSAO = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _garantir_tabela_arquivos_checklist(db_name):
+    conn = sqlite3.connect(db_name, timeout=10.0)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS checklist_arquivos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            empresa TEXT,
+            titulo TEXT NOT NULL,
+            descricao TEXT,
+            nome_arquivo TEXT NOT NULL,
+            tipo_mime TEXT,
+            tamanho_bytes INTEGER,
+            conteudo_arquivo BLOB NOT NULL,
+            data_upload TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _eh_cliente():
+    chaves_cliente = (
+        "perfil",
+        "perfil_usuario",
+        "tipo_perfil",
+        "tipo_usuario",
+        "nivel_acesso",
+        "cargo_sistema",
+        "funcao_usuario",
+        "acesso",
+        "acesso_usuario",
+        "permissao",
+    )
+    termos_cliente = ("cliente", "empresa_cliente", "portal_cliente", "visualizador", "leitura")
+
+    for chave in chaves_cliente:
+        val = st.session_state.get(chave)
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if v in termos_cliente or v.startswith("cliente"):
+                return True
+        elif isinstance(val, dict):
+            for sub in val.values():
+                if isinstance(sub, str):
+                    s = sub.strip().lower()
+                    if s in termos_cliente or s.startswith("cliente"):
+                        return True
+    return False
+
+
+def _eh_admin():
+    is_admin_flag = st.session_state.get("is_admin")
+
+    chaves_perfil = (
+        "perfil",
+        "perfil_usuario",
+        "tipo_perfil",
+        "tipo_usuario",
+        "nivel_acesso",
+        "nivel_permissao",
+        "cargo_sistema",
+        "funcao_usuario",
+        "acesso",
+        "acesso_usuario",
+        "permissao",
+        "permissoes",
+        "role",
+        "usuario_perfil",
+        "nivel",
+    )
+
+    termos_bloqueados = (
+        "cliente",
+        "usuario",
+        "usuário",
+        "visualizador",
+        "leitura",
+        "somente leitura",
+        "convidado",
+        "externo",
+        "restrito",
+    )
+
+    termos_admin = ("administrador", "admin", "fazer tudo")
+
+    tem_permissao_admin = False
 
     for chave in chaves_perfil:
         val = st.session_state.get(chave)
@@ -169,24 +295,6 @@ def _eh_admin():
         return True
 
     return tem_permissao_admin
-
-    # 2. Se nenhuma chave de perfil respondeu, coleta tudo sem dar return no meio do loop
-    textos = []
-    for chave, valor in st.session_state.items():
-        if any(ign in str(chave).lower() for ign in ("empresa", "filtro", "busca", "titulo", "checklist")):
-            continue
-        if isinstance(valor, str):
-            textos.append(valor.strip().lower())
-        elif isinstance(valor, dict):
-            textos.extend(sub.strip().lower() for sub in valor.values() if isinstance(sub, str))
-
-    if any(any(t in txt for t in termos_cliente) for txt in textos):
-        return False
-    if any(any(t in txt for t in termos_admin) for txt in textos):
-        return True
-
-    return False
-
 
 def _formatar_tamanho(num_bytes):
     if not num_bytes:
@@ -591,7 +699,6 @@ def _renderizar_visualizador_direto(db_name, titulo_arq, empresa_especifica, nom
     empresa_segura = html.escape(empresa_especifica) if tem_empresa else "Todas as empresas"
     data_str = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    # Busca a logo da empresa para o cabeçalho do DOCX (tela e impressão)
     logo_html = ""
     if tem_empresa:
         valor_logo = _buscar_logo_empresa(db_name, empresa_especifica)
@@ -758,65 +865,6 @@ def _renderizar_visualizador_direto(db_name, titulo_arq, empresa_especifica, nom
 def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
     try:
         _garantir_tabela_arquivos_checklist(db_name)
-
-        def _eh_admin():
-    is_admin_flag = st.session_state.get("is_admin")
-
-    chaves_perfil = (
-        "perfil",
-        "perfil_usuario",
-        "tipo_perfil",
-        "tipo_usuario",
-        "nivel_acesso",
-        "nivel_permissao",
-        "cargo_sistema",
-        "funcao_usuario",
-        "acesso",
-        "acesso_usuario",
-        "permissao",
-        "permissoes",
-        "role",
-        "usuario_perfil",
-        "nivel",
-    )
-
-    termos_bloqueados = (
-        "cliente",
-        "usuario",
-        "usuário",
-        "visualizador",
-        "leitura",
-        "somente leitura",
-        "convidado",
-        "externo",
-        "restrito",
-    )
-
-    termos_admin = ("administrador", "admin", "fazer tudo")
-
-    tem_permissao_admin = False
-
-    for chave in chaves_perfil:
-        val = st.session_state.get(chave)
-        if isinstance(val, str):
-            v = val.strip().lower()
-            if any(t in v for t in termos_bloqueados):
-                return False
-            if v in termos_admin:
-                tem_permissao_admin = True
-        elif isinstance(val, dict):
-            for sub in val.values():
-                if isinstance(sub, str):
-                    s = sub.strip().lower()
-                    if any(t in s for t in termos_bloqueados):
-                        return False
-                    if s in termos_admin:
-                        tem_permissao_admin = True
-
-    if is_admin_flag is True:
-        return True
-
-    return tem_permissao_admin
 
         st.title("Checklists")
         st.markdown("Checklists cadastrados para visualização e impressão direta")
