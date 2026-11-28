@@ -860,7 +860,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
 
         admin_mode = _eh_admin()
 
-        if admin_mode:
+        if admin_mode and not _eh_cliente():
             opcoes_escopo = ["Todas as empresas (Geral)"] + _listar_empresas_banco(db_name)
             with st.expander("➕ Adicionar novo arquivo de checklist (Admin)", expanded=False):
                 with st.form("form_upload_checklist", clear_on_submit=True):
@@ -985,7 +985,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
                         st.session_state[item_aberto_key] = None if esta_aberto else arq_id
                         st.rerun()
 
-                    if admin_mode:
+                    if admin_mode and not _eh_cliente():
                         if st.button("🗑️ Remover", key=f"del_checklist_{arq_id}", use_container_width=True):
                             conn_del = sqlite3.connect(db_name, timeout=10.0)
                             conn_del.execute("DELETE FROM checklist_arquivos WHERE id = ?", (arq_id,))
