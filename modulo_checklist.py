@@ -716,9 +716,17 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
     try:
         _garantir_tabela_arquivos_checklist(db_name)
 
-        # --- DIAGNÓSTICO TEMPORÁRIO (remova depois de testar) ---
+        # --- DIAGNÓSTICO FILTRADO (remova depois de testar) ---
+        chaves_relevantes = {
+            str(k): str(v)
+            for k, v in st.session_state.items()
+            if any(
+                p in str(k).lower()
+                for p in ("perfil", "acesso", "permiss", "usuario", "user", "role", "nivel", "tipo", "cliente", "admin")
+            )
+        }
         st.caption(f"Debug _eh_admin(): {_eh_admin()}")
-        st.json({str(k): str(v) for k, v in st.session_state.items()})
+        st.json(chaves_relevantes)
         # --------------------------------------------------------
 
         st.title("Checklists")
