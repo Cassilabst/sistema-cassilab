@@ -842,7 +842,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
         if empresa_especifica:
             st.caption(f"Empresa ativa: **{empresa_especifica}**")
         else:
-            st.caption("Visualização: **Todas as empresas** (impressão sem logo)")
+            st.caption("Visualização: **Todas as empresas**")
 
         admin_mode = bool(st.session_state.get("is_admin", False))
 
