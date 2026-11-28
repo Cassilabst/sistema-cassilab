@@ -552,41 +552,42 @@ def _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura_pag, altu
     c = rl_canvas.Canvas(buf, pagesize=(largura_pag, altura_pag))
 
     tem_empresa = not _eh_valor_todas(empresa_especifica)
-    nome_exib = empresa_especifica.strip() if tem_empresa else "Todas as Empresas"
+    nome_exib = (
+        empresa_especifica.strip()
+        if tem_empresa
+        else (str(st.session_state.get("empresa_usuario", "")).strip() or "Cassilab Consultoria e Treinamentos em SST")
+    )
 
     margem_x = 36
-    topo_y = altura_pag - 28
-    altura_faixa = 54
+    topo_y = altura_pag - 20
+    y_atual = topo_y
 
     c.setFillColor(colors.white)
-    c.rect(0, topo_y - altura_faixa, largura_pag, altura_faixa + 28, stroke=0, fill=1)
+    c.rect(0, topo_y - 68, largura_pag, 88, stroke=0, fill=1)
 
-    x_texto = margem_x
     if img_reader is not None:
         try:
             iw, ih = img_reader.getSize()
-            max_w = 95
-            max_h = 44
+            max_w = 80
+            max_h = 28
             escala = min(max_w / float(iw), max_h / float(ih), 1.0)
             w_draw = float(iw) * escala
             h_draw = float(ih) * escala
-            y_logo = topo_y - (altura_faixa + h_draw) / 2.0
-            c.drawImage(img_reader, margem_x, y_logo, width=w_draw, height=h_draw, mask="auto")
-            x_texto = margem_x + w_draw + 12
+            y_logo = y_atual - h_draw
+            c.drawImage(img_reader, margem_x, y_logo, width=w_draw, height=h_draw, mask="auto", preserveAspectRatio=True)
+            y_atual = y_logo - 12
         except Exception:
-            x_texto = margem_x
+            y_atual = topo_y - 12
+    else:
+        y_atual = topo_y - 12
 
     c.setFillColor(colors.HexColor("#1B365D"))
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(x_texto, topo_y - 22, nome_exib[:70])
-
-    c.setFillColor(colors.HexColor("#555555"))
-    c.setFont("Helvetica", 8)
-    c.drawString(x_texto, topo_y - 36, f"Checklist SST — Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(margem_x, y_atual, nome_exib[:75])
 
     c.setStrokeColor(colors.HexColor("#1B365D"))
     c.setLineWidth(1.0)
-    c.line(margem_x, topo_y - altura_faixa, largura_pag - margem_x, topo_y - altura_faixa)
+    c.line(margem_x, y_atual - 8, largura_pag - margem_x, y_atual - 8)
 
     c.save()
     buf.seek(0)
@@ -596,14 +597,16 @@ def _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura_pag, altu
 def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_dados):
     raw = bytes(blob_dados)
     ext = _extensao_arquivo(nome_arq)
-    tem_empresa = not _eh_valor_todas(empresa_especifica)
-    valor_logo = _buscar_logo_empresa(db_name, empresa_especifica) if tem_empresa else None
+    empresa_para_logo = (
+        empresa_especifica.strip()
+        if not _eh_valor_todas(empresa_especifica)
+        else (str(st.session_state.get("empresa_usuario", "")).strip() or "Cassilab Consultoria e Treinamentos em SST")
+    )
+    valor_logo = _buscar_logo_empresa(db_name, empresa_para_logo)
     logo_bytes, _ = _extrair_bytes_e_mime_logo(valor_logo)
 
     if ext == "pdf" and (TEM_PYPDF and TEM_REPORTLAB):
-        img_reader = _converter_para_image_reader(valor_logo) if tem_empresa else None
-        if not tem_empresa and img_reader is None:
-            return raw
+        img_reader = _converter_para_image_reader(valor_logo)
 
         try:
             reader = PdfReader(io.BytesIO(raw))
