@@ -89,17 +89,7 @@ def _eh_cliente():
     return False
 
 def _eh_admin():
-    empresa_user = str(st.session_state.get("empresa_usuario", "")).strip().lower()
-    nivel_user = str(st.session_state.get("nivel_permissao", "")).strip().lower()
-    perfil_user = str(st.session_state.get("perfil", "")).strip().lower()
-
-    if "cassilab" in empresa_user and nivel_user in ("fazer tudo", "administrador", "admin"):
-        return True
-
-    if perfil_user in ("administrador", "admin"):
-        return True
-
-    return False
+    return bool(st.session_state.get("is_admin", False))
 
     for chave in chaves_perfil:
         val = st.session_state.get(chave)
@@ -851,7 +841,7 @@ def renderizar_modulo_checklist(db_name, registrar_log_callback=None):
         else:
             st.caption("Visualização: **Todas as empresas** (impressão sem logo)")
 
-        admin_mode = _eh_admin()
+        admin_mode = bool(st.session_state.get("is_admin", False))
 
         if admin_mode and not _eh_cliente():
             opcoes_escopo = ["Todas as empresas (Geral)"] + _listar_empresas_banco(db_name)
