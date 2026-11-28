@@ -88,43 +88,25 @@ def _eh_cliente():
                         return True
     return False
 
-
 def _eh_admin():
+    empresa_user = str(st.session_state.get("empresa_usuario", "")).strip().lower()
+    perfil_user = str(st.session_state.get("perfil", "")).strip().lower()
+    nivel_user = str(st.session_state.get("nivel_permissao", "")).strip().lower()
     is_admin_flag = st.session_state.get("is_admin")
 
-    chaves_perfil = (
-        "perfil",
-        "perfil_usuario",
-        "tipo_perfil",
-        "tipo_usuario",
-        "nivel_acesso",
-        "nivel_permissao",
-        "cargo_sistema",
-        "funcao_usuario",
-        "acesso",
-        "acesso_usuario",
-        "permissao",
-        "permissoes",
-        "role",
-        "usuario_perfil",
-        "nivel",
-    )
+    if is_admin_flag is True or str(is_admin_flag).strip().lower() == "true":
+        return True
 
-    termos_bloqueados = (
-        "cliente",
-        "usuario",
-        "usuário",
-        "visualizador",
-        "leitura",
-        "somente leitura",
-        "convidado",
-        "externo",
-        "restrito",
-    )
+    if any(t in perfil_user for t in ("cliente", "usuário", "usuario", "leitura", "visualizador")):
+        return False
 
-    termos_admin = ("administrador", "admin", "fazer tudo")
+    if "cassilab" in empresa_user and nivel_user in ("fazer tudo", "administrador", "admin"):
+        return True
 
-    tem_permissao_admin = False
+    if perfil_user in ("administrador", "admin"):
+        return True
+
+    return False
 
     for chave in chaves_perfil:
         val = st.session_state.get(chave)
