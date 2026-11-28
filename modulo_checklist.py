@@ -643,10 +643,10 @@ if ext == "pdf" and (TEM_PYPDF and TEM_REPORTLAB):
         except Exception:
             return raw
 
-    if ext == "docx" and logo_bytes:
-        return _aplicar_logo_no_docx(raw, logo_bytes)
+if ext == "docx" and logo_bytes:
+    return _aplicar_logo_no_docx(raw, logo_bytes)
 
-    return raw
+return raw
 
 
 def _extrair_texto_docx_html(blob_dados):
