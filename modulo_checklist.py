@@ -735,7 +735,7 @@ def _renderizar_visualizador_direto(db_name, titulo_arq, empresa_especifica, nom
             </head>
             <body>
               <div class="barra">
-                <span><strong>{titulo_seguro}</strong> — {empresa_segura}</span>
+                <span><strong>{titulo_seguro}</strong></span>
                 <button class="btn-acao" onclick="abrirPdfNovaAba()">🗗 Visualizar / Imprimir PDF</button>
               </div>
               <div class="aviso">
