@@ -146,7 +146,8 @@ def _eh_admin():
     if is_admin_flag is True:
         return True
 
-    return tem_permissao_adminimport base64
+    return tem_permissao_admin
+import base64
 import html
 import io
 import os
