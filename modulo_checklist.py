@@ -594,24 +594,34 @@ def _criar_faixa_cabecalho_pdf(empresa_especifica, img_reader, largura_pag, altu
     return buf
 
 
-def _preparar_arquivo_para_baixar(db_name, empresa_especifica, nome_arq, blob_dados):
-    raw = bytes(blob_dados)
-    ext = _extensao_arquivo(nome_arq)
-    empresa_para_logo = (
-        empresa_especifica.strip()
-        if not _eh_valor_todas(empresa_especifica)
-        else (str(st.session_state.get("empresa_usuario", "")).strip() or "Cassilab Consultoria e Treinamentos em SST")
-    )
-    valor_logo = _buscar_logo_empresa(db_name, empresa_para_logo)
-    logo_bytes, _ = _extrair_bytes_e_mime_logo(valor_logo)
-
-    if ext == "pdf" and (TEM_PYPDF and TEM_REPORTLAB):
+if ext == "pdf" and (TEM_PYPDF and TEM_REPORTLAB):
         img_reader = _converter_para_image_reader(valor_logo)
 
         try:
             reader = PdfReader(io.BytesIO(raw))
             if len(reader.pages) == 0:
                 return raw
+
+            writer = PdfWriter()
+            primeira_pag = reader.pages[0]
+            largura = float(primeira_pag.mediabox.width)
+            altura = float(primeira_pag.mediabox.height)
+
+            overlay_buf = _criar_faixa_cabecalho_pdf(empresa_para_logo, img_reader, largura, altura)
+            if overlay_buf is not None:
+                overlay_reader = PdfReader(overlay_buf)
+                primeira_pag.merge_page(overlay_reader.pages[0], over=True)
+
+            writer.add_page(primeira_pag)
+            for pag in reader.pages[1:]:
+                writer.add_page(pag)
+
+            out = io.BytesIO()
+            writer.write(out)
+            return out.getvalue()
+        except Exception as e:
+            st.session_state["ultimo_erro_pdf_checklist"] = str(e)
+            return raw
 
             writer = PdfWriter()
             primeira_pag = reader.pages[0]
