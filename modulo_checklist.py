@@ -110,7 +110,6 @@ def _eh_admin():
         "nivel",
     )
 
-    # Qualquer um desses termos bloqueia imediatamente (cliente, usuário comum, etc.)
     termos_bloqueados = (
         "cliente",
         "usuario",
@@ -123,10 +122,31 @@ def _eh_admin():
         "restrito",
     )
 
-    # Só libera se tiver exatamente permissão de administrador ou acesso total
     termos_admin = ("administrador", "admin", "fazer tudo")
 
     tem_permissao_admin = False
+
+    for chave in chaves_perfil:
+        val = st.session_state.get(chave)
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if any(t in v for t in termos_bloqueados):
+                return False
+            if v in termos_admin:
+                tem_permissao_admin = True
+        elif isinstance(val, dict):
+            for sub in val.values():
+                if isinstance(sub, str):
+                    s = sub.strip().lower()
+                    if any(t in s for t in termos_bloqueados):
+                        return False
+                    if s in termos_admin:
+                        tem_permissao_admin = True
+
+    if is_admin_flag is True:
+        return True
+
+    return tem_permissao_admin
 
     for chave in chaves_perfil:
         val = st.session_state.get(chave)
